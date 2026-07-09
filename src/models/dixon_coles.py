@@ -44,8 +44,15 @@ class DixonColes:
 
     # ---------- fitting ----------
 
-    def fit(self, df: pd.DataFrame) -> "DixonColes":
-        """df columns: date (datetime), home, away, hg, ag (ints)."""
+    def fit(self, df: pd.DataFrame, reg: float = 0.0) -> "DixonColes":
+        """
+        df columns: date (datetime), home, away, hg, ag (ints).
+        reg: L2 penalty on attack/defence parameters (ridge shrinkage
+        toward the average team). Use reg=0 for a full club season with
+        ~15-20 games/team. Use reg > 0 (try 5-15) for small, sparse
+        samples like an in-progress international tournament, where the
+        model can otherwise be underdetermined and unstable.
+        """
         df = df.dropna(subset=["hg", "ag"]).copy()
         self.teams = sorted(set(df["home"]) | set(df["away"]))
         n = len(self.teams)
@@ -76,7 +83,8 @@ class DixonColes:
                 + poisson.logpmf(hg, lam)
                 + poisson.logpmf(ag, mu)
             )
-            return -ll.sum()
+            penalty = reg * (np.sum(atk ** 2) + np.sum(dfn ** 2)) if reg else 0.0
+            return -ll.sum() + penalty
 
         # identifiability: mean attack = 0
         cons = [{"type": "eq", "fun": lambda p: p[:n].sum()}]
@@ -106,7 +114,13 @@ class DixonColes:
         for x in range(2):
             for y in range(2):
                 m[x, y] *= _tau(x, y, lam, mu, rho)
-        return m / m.sum()
+        total = m.sum()
+        if total < 1e-6:
+            raise ValueError(
+                f"score_matrix collapsed for {home} vs {away} "
+                f"(lam={lam:.2f}, mu={mu:.2f}) — refit with reg>0."
+            )
+        return m / total
 
     def predict(self, home: str, away: str) -> dict:
         m = self.score_matrix(home, away)
