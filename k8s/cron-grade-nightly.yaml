@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: grade-nightly, namespace: futbol }
+spec:
+  schedule: "0 4 * * *"          # 04:00, after ingest
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: grade
+            image: gitea.lab/bernal-labs/futbol-modelo:latest
+            command: ["python","-c","from grading.grader import run_nightly; import grading.observed as obs; import psycopg2,os; c=psycopg2.connect(os.environ['FUTBOL_DSN']); print(run_nightly(c, obs.fetch_observed))"]
+            env:
+            - name: FUTBOL_DSN
+              valueFrom: { secretKeyRef: { name: futbol-db, key: dsn } }

@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: predict-prematch, namespace: futbol }
+spec:
+  schedule: "0 */6 * * *"        # every 6h; covers fixtures in next 24h
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: predict
+            image: gitea.lab/bernal-labs/futbol-modelo:latest
+            command: ["python","scripts/predict_upcoming.py"]
+            env:
+            - name: FUTBOL_DSN
+              valueFrom: { secretKeyRef: { name: futbol-db, key: dsn } }
