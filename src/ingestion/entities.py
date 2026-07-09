@@ -54,22 +54,62 @@ TEAM_SEED: dict[str, dict[str, str]] = {
     "Udinese":            {"fbref": "Udinese", "understat": "Udinese"},
     "Verona":             {"fbref": "Hellas Verona", "understat": "Verona"},
 
-    # ---- World Cup 2026: national teams still alive (R16 onward) ----
-    # Add earlier-eliminated teams here if you later backfill group stage.
-    "Brazil":             {"fbref": "Brazil"},
-    "Norway":             {"fbref": "Norway"},
+    # ---- World Cup 2026: full 48-team field ----
+    # Hosts
+    "Canada":             {"fbref": "Canada"},
     "Mexico":             {"fbref": "Mexico"},
-    "England":            {"fbref": "England"},
-    "Portugal":           {"fbref": "Portugal"},
-    "Spain":              {"fbref": "Spain"},
     "United States":      {"fbref": "United States"},
-    "Belgium":            {"fbref": "Belgium"},
+    # CONMEBOL
     "Argentina":          {"fbref": "Argentina"},
-    "Egypt":              {"fbref": "Egypt"},
-    "Switzerland":        {"fbref": "Switzerland"},
+    "Brazil":             {"fbref": "Brazil"},
     "Colombia":           {"fbref": "Colombia"},
+    "Ecuador":            {"fbref": "Ecuador"},
+    "Paraguay":           {"fbref": "Paraguay"},
+    "Uruguay":            {"fbref": "Uruguay"},
+    # UEFA
+    "Austria":            {"fbref": "Austria"},
+    "Belgium":            {"fbref": "Belgium"},
+    "Bosnia and Herzegovina": {"fbref": "Bosnia–Herz"},
+    "Croatia":            {"fbref": "Croatia"},
+    "Czechia":            {"fbref": "Czechia"},
+    "England":            {"fbref": "England"},
     "France":             {"fbref": "France"},
+    "Germany":            {"fbref": "Germany"},
+    "Netherlands":        {"fbref": "Netherlands"},
+    "Norway":             {"fbref": "Norway"},
+    "Portugal":           {"fbref": "Portugal"},
+    "Scotland":           {"fbref": "Scotland"},
+    "Spain":              {"fbref": "Spain"},
+    "Sweden":             {"fbref": "Sweden"},
+    "Switzerland":        {"fbref": "Switzerland"},
+    "Turkey":             {"fbref": "Türkiye"},
+    # AFC
+    "Australia":          {"fbref": "Australia"},
+    "Iraq":               {"fbref": "Iraq"},
+    "Iran":               {"fbref": "IR Iran"},
+    "Japan":              {"fbref": "Japan"},
+    "Jordan":             {"fbref": "Jordan"},
+    "South Korea":        {"fbref": "Korea Republic"},
+    "Qatar":              {"fbref": "Qatar"},
+    "Saudi Arabia":       {"fbref": "Saudi Arabia"},
+    "Uzbekistan":         {"fbref": "Uzbekistan"},
+    # CAF
+    "Algeria":            {"fbref": "Algeria"},
+    "Cape Verde":         {"fbref": "Cabo Verde"},
+    "DR Congo":           {"fbref": "Congo DR"},
+    "Ivory Coast":        {"fbref": "Côte d'Ivoire"},
+    "Egypt":              {"fbref": "Egypt"},
+    "Ghana":              {"fbref": "Ghana"},
     "Morocco":            {"fbref": "Morocco"},
+    "Senegal":            {"fbref": "Senegal"},
+    "South Africa":       {"fbref": "South Africa"},
+    "Tunisia":            {"fbref": "Tunisia"},
+    # CONCACAF
+    "Curacao":            {"fbref": "Curaçao"},
+    "Haiti":              {"fbref": "Haiti"},
+    "Panama":             {"fbref": "Panama"},
+    # OFC
+    "New Zealand":        {"fbref": "New Zealand"},
 }
 
 
