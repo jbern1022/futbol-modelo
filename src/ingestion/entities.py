@@ -53,6 +53,23 @@ TEAM_SEED: dict[str, dict[str, str]] = {
     "Torino":             {"fbref": "Torino", "understat": "Torino"},
     "Udinese":            {"fbref": "Udinese", "understat": "Udinese"},
     "Verona":             {"fbref": "Hellas Verona", "understat": "Verona"},
+
+    # ---- World Cup 2026: national teams still alive (R16 onward) ----
+    # Add earlier-eliminated teams here if you later backfill group stage.
+    "Brazil":             {"fbref": "Brazil"},
+    "Norway":             {"fbref": "Norway"},
+    "Mexico":             {"fbref": "Mexico"},
+    "England":            {"fbref": "England"},
+    "Portugal":           {"fbref": "Portugal"},
+    "Spain":              {"fbref": "Spain"},
+    "United States":      {"fbref": "United States"},
+    "Belgium":            {"fbref": "Belgium"},
+    "Argentina":          {"fbref": "Argentina"},
+    "Egypt":              {"fbref": "Egypt"},
+    "Switzerland":        {"fbref": "Switzerland"},
+    "Colombia":           {"fbref": "Colombia"},
+    "France":             {"fbref": "France"},
+    "Morocco":            {"fbref": "Morocco"},
 }
 
 

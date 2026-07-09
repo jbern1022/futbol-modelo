@@ -33,6 +33,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 LEAGUES = {
     "EPL":     {"soccerdata": "ENG-Premier League", "code": "EPL",     "name": "Premier League"},
     "SERIE_A": {"soccerdata": "ITA-Serie A",        "code": "SERIE_A", "name": "Serie A"},
+    "WC":      {"soccerdata": "INT-World Cup",      "code": "WC",      "name": "World Cup",
+                "is_international": True},
 }
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
@@ -42,11 +44,11 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 # Upsert helpers (idempotent by design)
 # ------------------------------------------------------------------
 
-def upsert_league(cur, code: str, name: str) -> int:
+def upsert_league(cur, code: str, name: str, is_international: bool = False) -> int:
     cur.execute(
-        """INSERT INTO futbol.leagues (code, name) VALUES (%s, %s)
+        """INSERT INTO futbol.leagues (code, name, is_international) VALUES (%s, %s, %s)
            ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
-           RETURNING league_id""", (code, name))
+           RETURNING league_id""", (code, name, is_international))
     return cur.fetchone()[0]
 
 
@@ -201,6 +203,71 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
         conn.commit()
 
 
+def load_world_cup(conn, seasons: list[str]):
+    """
+    World Cup via FBref schedule only (Understat doesn't cover internationals).
+    Handles: score parsing incl. AET/penalties notation, knockout stage flag,
+    and the smaller/looser team seed (national teams, no club aliases).
+    """
+    import soccerdata as sd
+    fb = sd.FBref(leagues=["INT-World Cup"], seasons=seasons)
+    lg = LEAGUES["WC"]
+
+    with conn.cursor() as cur:
+        league_id = upsert_league(cur, lg["code"], lg["name"],
+                                  is_international=True)
+        sched = fb.read_schedule().reset_index()
+        log.info("World Cup schedule: %d rows", len(sched))
+
+        for _, r in sched.iterrows():
+            season_id = upsert_season(cur, league_id, str(r["season"]))
+            home = entities.resolve_team("fbref", r["home_team"])
+            away = entities.resolve_team("fbref", r["away_team"])
+            hid, aid = upsert_team(cur, home), upsert_team(cur, away)
+
+            hg, ag, went_et, went_pens = _parse_score(r.get("score"))
+            status = "final" if hg is not None else "scheduled"
+            stage = r.get("round")  # e.g. 'Round of 16', 'Quarter-finals'
+
+            cur.execute(
+                """INSERT INTO futbol.matches
+                     (season_id, home_team_id, away_team_id, kickoff_utc,
+                      stage, home_goals, away_goals, went_to_et, went_to_pens,
+                      status, external_ref)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
+                   DO UPDATE SET home_goals = EXCLUDED.home_goals,
+                                 away_goals = EXCLUDED.away_goals,
+                                 status     = EXCLUDED.status,
+                                 went_to_et = EXCLUDED.went_to_et,
+                                 went_to_pens = EXCLUDED.went_to_pens
+                   RETURNING match_id""",
+                (season_id, hid, aid, r["date"], stage, hg, ag,
+                 went_et, went_pens, status, f"fbref-wc:{r.get('game_id','')}"))
+        conn.commit()
+    log.info("World Cup load complete")
+
+
+def _parse_score(raw) -> tuple[int | None, int | None, bool, bool]:
+    """
+    FBref score formats seen: '2-1', '1-1 (4-3)' [penalties],
+    '2-1 (AET)'. Returns (home_goals, away_goals, went_to_et, went_to_pens).
+    90'-result goals are used for grading (standard convention);
+    the paren group, if present, signals ET/pens occurred.
+    """
+    import pandas as pd, re
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return None, None, False, False
+    s = str(raw).strip()
+    m = re.match(r"(\d+)[\u2013\-](\d+)", s)
+    if not m:
+        return None, None, False, False
+    hg, ag = int(m.group(1)), int(m.group(2))
+    went_pens = "(" in s and any(c.isdigit() for c in s.split("(")[-1])
+    went_et = "aet" in s.lower() or went_pens
+    return hg, ag, went_et, went_pens
+
+
 def _find_match(cur, row, team_id) -> int | None:
     """Locate the match by date + team participation (source-agnostic join)."""
     cur.execute(
@@ -240,11 +307,14 @@ def main():
     ap.add_argument("--seasons", nargs="+", default=["2526"])
     args = ap.parse_args()
 
-    lg = LEAGUES[args.league]["soccerdata"]
     conn = psycopg2.connect(DSN)
     try:
-        load_understat(conn, lg, args.seasons)
-        load_fbref(conn, lg, args.seasons)
+        if args.league == "WC":
+            load_world_cup(conn, args.seasons)
+        else:
+            lg = LEAGUES[args.league]["soccerdata"]
+            load_understat(conn, lg, args.seasons)
+            load_fbref(conn, lg, args.seasons)
     finally:
         conn.close()
     log.info("done: %s %s %s", args.mode, args.league, args.seasons)
