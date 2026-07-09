@@ -137,8 +137,9 @@ def load_understat(conn, league_key: str, seasons: list[str]):
                       situation, body_part, result, source_xg)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (row[0], pid, tid, _int(s.get("minute")), _num(s.get("location_x")),
-                 _num(s.get("location_y")), s.get("situation"),
-                 s.get("body_part"), s.get("result"), _num(s.get("xg"))))
+                 _num(s.get("location_y")), _clean(s.get("situation")),
+                 _clean(s.get("body_part")), _clean(s.get("result")),
+                 _num(s.get("xg"))))
         conn.commit()
 
 
@@ -187,7 +188,7 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
             if mid is None:
                 continue
             pid = entities.link_player(cur, "fbref", str(r.get("player_id", r["player"])),
-                                       r["player"], team, r.get("position"))
+                                       r["player"], team, _clean(r.get("position")))
             cur.execute(
                 """INSERT INTO futbol.player_match_stats
                      (match_id, player_id, team_id, minutes, goals, assists,
@@ -281,6 +282,19 @@ def _find_match(cur, row, team_id) -> int | None:
 
 # ------------------------------------------------------------------
 
+def _clean(v):
+    """Convert any pandas missing-value sentinel (NaN, NaT, pd.NA) to None."""
+    import pandas as pd
+    if v is None:
+        return None
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return v
+
+
 def _season_label(s) -> str:
     s = str(s)
     return f"20{s[:2]}-{s[2:]}" if len(s) == 4 else s
@@ -305,6 +319,10 @@ def main():
     ap.add_argument("mode", choices=["backfill", "matchday"])
     ap.add_argument("--league", required=True, choices=list(LEAGUES))
     ap.add_argument("--seasons", nargs="+", default=["2526"])
+    ap.add_argument("--skip-understat", action="store_true",
+                    help="Skip Understat stage (use when re-running after "
+                         "Understat already committed but FBref failed)")
+    ap.add_argument("--skip-fbref", action="store_true")
     args = ap.parse_args()
 
     conn = psycopg2.connect(DSN)
@@ -313,11 +331,39 @@ def main():
             load_world_cup(conn, args.seasons)
         else:
             lg = LEAGUES[args.league]["soccerdata"]
-            load_understat(conn, lg, args.seasons)
-            load_fbref(conn, lg, args.seasons)
+            if not args.skip_understat:
+                load_understat(conn, lg, args.seasons)
+            else:
+                log.info("skipping Understat stage")
+            if not args.skip_fbref:
+                _load_fbref_with_retry(conn, lg, args.seasons)
+            else:
+                log.info("skipping FBref stage")
     finally:
         conn.close()
     log.info("done: %s %s %s", args.mode, args.league, args.seasons)
+
+
+def _load_fbref_with_retry(conn, lg, seasons, attempts=3):
+    import time
+    last_err = None
+    for attempt in range(1, attempts + 1):
+        try:
+            load_fbref(conn, lg, seasons)
+            return
+        except ValueError as e:
+            if "No objects to concatenate" not in str(e):
+                raise
+            last_err = e
+            wait = 10 * attempt
+            log.info("FBref season-index came back empty (attempt %d/%d), "
+                     "retrying in %ds...", attempt, attempts, wait)
+            time.sleep(wait)
+    raise RuntimeError(
+        f"FBref season-index kept returning empty after {attempts} attempts. "
+        f"This is usually transient bot-detection — try again in a few minutes, "
+        f"or run with --skip-understat to retry just this stage."
+    ) from last_err
 
 
 if __name__ == "__main__":
