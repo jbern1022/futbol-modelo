@@ -135,7 +135,9 @@ def load_understat(conn, league_key: str, seasons: list[str]):
                 """INSERT INTO futbol.shots
                      (match_id, player_id, team_id, minute, x, y,
                       situation, body_part, result, source_xg)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (match_id, player_id, minute, x, y, situation, result)
+                   DO NOTHING""",
                 (row[0], pid, tid, _int(s.get("minute")), _num(s.get("location_x")),
                  _num(s.get("location_y")), _clean(s.get("situation")),
                  _clean(s.get("body_part")), _clean(s.get("result")),
