@@ -63,7 +63,7 @@ def upsert_season(cur, league_id: int, label: str) -> int:
 def upsert_team(cur, canonical: str) -> int:
     cur.execute(
         """INSERT INTO futbol.teams (name) VALUES (%s)
-           ON CONFLICT DO NOTHING""", (canonical,))
+           ON CONFLICT (name) DO NOTHING""", (canonical,))
     cur.execute("SELECT team_id FROM futbol.teams WHERE name = %s", (canonical,))
     return cur.fetchone()[0]
 
