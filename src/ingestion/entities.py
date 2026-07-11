@@ -39,6 +39,13 @@ TEAM_SEED: dict[str, dict[str, str]] = {
     "Leeds United":       {"fbref": "Leeds United", "understat": "Leeds"},
     "Burnley":            {"fbref": "Burnley", "understat": "Burnley"},
     "Sunderland":         {"fbref": "Sunderland", "understat": "Sunderland"},
+    "Leicester City":     {"fbref": "Leicester City", "understat": "Leicester"},
+    "Norwich City":       {"fbref": "Norwich City", "understat": "Norwich"},
+    "Watford":            {"fbref": "Watford", "understat": "Watford"},
+    "Luton Town":         {"fbref": "Luton Town", "understat": "Luton"},
+    "Sheffield United":   {"fbref": "Sheffield United", "understat": "Sheffield United"},
+    "Ipswich Town":       {"fbref": "Ipswich Town", "understat": "Ipswich"},
+    "Southampton":        {"fbref": "Southampton", "understat": "Southampton"},
     # promoted sides vary by season — add per-season during backfill
     # ---- Serie A ----
     "Atalanta":           {"fbref": "Atalanta", "understat": "Atalanta"},
@@ -61,6 +68,13 @@ TEAM_SEED: dict[str, dict[str, str]] = {
     "Parma":              {"fbref": "Parma", "understat": "Parma Calcio 1913"},
     "Pisa":               {"fbref": "Pisa", "understat": "Pisa"},
     "Sassuolo":           {"fbref": "Sassuolo", "understat": "Sassuolo"},
+    "Empoli":             {"fbref": "Empoli", "understat": "Empoli"},
+    "Monza":              {"fbref": "Monza", "understat": "Monza"},
+    "Spezia":             {"fbref": "Spezia", "understat": "Spezia"},
+    "Sampdoria":          {"fbref": "Sampdoria", "understat": "Sampdoria"},
+    "Salernitana":        {"fbref": "Salernitana", "understat": "Salernitana"},
+    "Venezia":            {"fbref": "Venezia", "understat": "Venezia"},
+    "Frosinone":          {"fbref": "Frosinone", "understat": "Frosinone"},
 
     # ---- World Cup 2026: full 48-team field ----
     # Hosts

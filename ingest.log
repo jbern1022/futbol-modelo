@@ -1,0 +1,43 @@
+[07/09/26 15:55:35] INFO     No custom team name replacements found. You can configure    _config.py:92
+                             these in                                                                  
+                             /Users/joebernal/soccerdata/config/teamname_replacements.jso              
+                             n.                                                                        
+                    INFO     No custom league dict found. You can configure additional   _config.py:190
+                             leagues in                                                                
+                             /Users/joebernal/soccerdata/config/league_dict.json.                      
+                    INFO     Saving cached data to                                       _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                                
+[2026-07-09 15:55:35] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                          libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-                 
+                             modelo/.venv/lib/python3.14/site-packages/tls_requests/bi                 
+                             n/tls-client-darwin-arm64-1.13.1.dylib                                    
+[07/09/26 15:55:36] INFO     Understat schedule: 380 rows                                  loader.py:99
+[07/09/26 15:56:02] INFO     Understat shots: 9373 rows                                   loader.py:122
+[07/09/26 16:17:25] INFO     Saving cached data to                                       _common.py:250
+                             /Users/joebernal/soccerdata/data/FBref                                    
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 338, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 331, in main
+    load_fbref(conn, lg, args.seasons)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 165, in load_fbref
+    df = fb.read_team_match_stats(stat_type=stat_type).reset_index()
+         ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/soccerdata/fbref.py", line 393, in read_team_match_stats
+    df_teams = self.read_team_season_stats()
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/soccerdata/fbref.py", line 295, in read_team_season_stats
+    seasons = self.read_seasons()
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/soccerdata/fbref.py", line 231, in read_seasons
+    df = pd.concat(seasons).pipe(standardize_colnames)
+         ~~~~~~~~~^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/pandas/core/reshape/concat.py", line 407, in concat
+    objs, keys, ndims = _clean_keys_and_objs(objs, keys)
+                        ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/pandas/core/reshape/concat.py", line 808, in _clean_keys_and_objs
+    raise ValueError("No objects to concatenate")
+ValueError: No objects to concatenate
