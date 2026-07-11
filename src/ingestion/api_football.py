@@ -41,6 +41,12 @@ NAME_ALIASES = {
     "Newcastle Utd": "Newcastle",
     "Nott'm Forest": "Nottingham Forest",
     "Wolverhampton Wanderers": "Wolves",
+    "Leeds": "Leeds United",
+    "Leicester": "Leicester City",
+    "Norwich": "Norwich City",
+    "Luton": "Luton Town",
+    "Sheffield Utd": "Sheffield United",
+    "Ipswich": "Ipswich Town",
 }
 
 CACHE_FILE = Path.home() / ".api_football_cache.json"
