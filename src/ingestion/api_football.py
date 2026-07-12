@@ -164,6 +164,55 @@ def upsert_league_season(cur, league_code: str, league_name: str, season_label: 
     return cur.fetchone()[0]
 
 
+def resolve_or_create_player_id(cur, api_player_id: int, player_name: str,
+                                position: str | None = None) -> int:
+    """Player identity is resolved purely by api_football_id (no name-based
+    conflict resolution, unlike teams — player names collide legitimately
+    all the time; the numeric id is the only safe key)."""
+    cur.execute(
+        """INSERT INTO futbol.players (full_name, position, api_football_id)
+           VALUES (%s, %s, %s)
+           ON CONFLICT (api_football_id) DO UPDATE SET full_name = EXCLUDED.full_name
+           RETURNING player_id""",
+        (player_name, position, api_player_id))
+    return cur.fetchone()[0]
+
+
+def load_fixture_players(session, cur, match_id: int, fixture_id: int,
+                         home_id: int, away_id: int, home_api_id: int):
+    """Pull per-player stats for one finished fixture (fixtures/players)
+    and populate player_match_stats."""
+    resp = _get(session, "fixtures/players", {"fixture": fixture_id})
+    for team_block in resp:
+        api_tid = team_block["team"]["id"]
+        tid = home_id if api_tid == home_api_id else away_id
+        for p in team_block["players"]:
+            stats = p["statistics"][0] if p["statistics"] else {}
+            games = stats.get("games", {}) or {}
+            shots = stats.get("shots", {}) or {}
+            goals = stats.get("goals", {}) or {}
+            passes = stats.get("passes", {}) or {}
+
+            minutes = games.get("minutes")
+            if minutes is None or minutes == 0:
+                continue
+
+            pid = resolve_or_create_player_id(
+                cur, p["player"]["id"], p["player"]["name"], games.get("position"))
+
+            cur.execute(
+                """INSERT INTO futbol.player_match_stats
+                     (match_id, player_id, team_id, minutes, goals, assists,
+                      shots, shots_on_target, key_passes, saves, goals_conceded)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (match_id, player_id) DO UPDATE SET
+                     minutes = EXCLUDED.minutes, goals = EXCLUDED.goals,
+                     shots = EXCLUDED.shots, shots_on_target = EXCLUDED.shots_on_target""",
+                (match_id, pid, tid, minutes, goals.get("total") or 0,
+                 goals.get("assists") or 0, shots.get("total"), shots.get("on"),
+                 passes.get("key"), goals.get("saves"), goals.get("conceded")))
+
+
 def backfill_primary(league_code: str, season_start_year: int):
     """
     Full primary-source backfill for leagues with no Understat/FBref
@@ -250,6 +299,9 @@ def backfill_primary(league_code: str, season_start_year: int):
                          num("Shots on Goal"), num("Total Shots"),
                          num("Ball Possession"), match_id, tid))
                 updated_stats += 1
+
+                load_fixture_players(session, cur, match_id, fixture_id,
+                                     home_id, away_id, home_api_id)
 
             if created % 20 == 0:
                 conn.commit()
