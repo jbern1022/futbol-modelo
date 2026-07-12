@@ -13,9 +13,10 @@ WITH base AS (
         se.league_id,
         s.corners, s.shots, s.shots_on_target, s.xg,
         s.possession_pct, s.ppda, s.deep_completions,
-        -- opponent's row for the same match (conceded stats)
+        s.fouls, s.yellows, s.reds,
         o.corners  AS corners_conceded,
         o.shots    AS shots_conceded,
+        o.shots_on_target AS sot_conceded,
         o.xg       AS xg_conceded
     FROM team_match_stats s
     JOIN matches m USING (match_id)
@@ -27,7 +28,6 @@ WITH base AS (
 rolled AS (
     SELECT
         match_id, team_id, is_home, kickoff_utc, season_id, league_id,
-        -- windows exclude the current match: 1 PRECEDING is the guard
         AVG(corners)          OVER w5  AS corners_for_r5,
         AVG(corners)          OVER w10 AS corners_for_r10,
         AVG(corners_conceded) OVER w5  AS corners_against_r5,
@@ -36,13 +36,21 @@ rolled AS (
         AVG(shots)            OVER w10 AS shots_for_r10,
         AVG(shots_conceded)   OVER w5  AS shots_against_r5,
         AVG(shots_conceded)   OVER w10 AS shots_against_r10,
+        AVG(shots_on_target)  OVER w5  AS sot_for_r5,
+        AVG(shots_on_target)  OVER w10 AS sot_for_r10,
+        AVG(sot_conceded)     OVER w5  AS sot_against_r5,
+        AVG(sot_conceded)     OVER w10 AS sot_against_r10,
+        AVG(fouls)             OVER w5  AS fouls_for_r5,
+        AVG(yellows)           OVER w5  AS yellows_for_r5,
+        AVG(yellows)           OVER w10 AS yellows_for_r10,
+        AVG(reds)               OVER w5  AS reds_for_r5,
         AVG(xg)               OVER w5  AS xg_for_r5,
         AVG(xg_conceded)      OVER w5  AS xg_against_r5,
         AVG(possession_pct)   OVER w5  AS possession_r5,
         AVG(ppda)             OVER w5  AS ppda_r5,
         AVG(deep_completions) OVER w5  AS deep_completions_r5,
         LAG(kickoff_utc)      OVER seq AS prev_kickoff,
-        COUNT(*)              OVER w10 AS n_prior   -- support size, for filtering
+        COUNT(*)              OVER w10 AS n_prior
     FROM base
     WINDOW
         seq AS (PARTITION BY team_id ORDER BY kickoff_utc),
@@ -57,7 +65,6 @@ FROM rolled r;
 
 CREATE INDEX idx_tmf ON team_match_features (match_id, team_id);
 
--- Player features: rolling shot/save rates, minutes-weighted
 DROP TABLE IF EXISTS player_match_features;
 CREATE TABLE player_match_features AS
 SELECT
@@ -81,12 +88,3 @@ WINDOW
             ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING);
 
 CREATE INDEX idx_pmf ON player_match_features (match_id, player_id);
-
--- Leakage spot-check helper: compare a rolling value against a manual calc
--- Usage: pick any team/match, run both, numbers must agree.
--- SELECT corners_for_r5 FROM team_match_features WHERE match_id=X AND team_id=Y;
--- SELECT AVG(corners) FROM (
---   SELECT s.corners FROM team_match_stats s JOIN matches m USING(match_id)
---   WHERE s.team_id=Y AND m.status='final'
---     AND m.kickoff_utc < (SELECT kickoff_utc FROM matches WHERE match_id=X)
---   ORDER BY m.kickoff_utc DESC LIMIT 5) t;
