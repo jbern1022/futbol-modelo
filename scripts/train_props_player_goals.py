@@ -1,8 +1,8 @@
 """
-Player goals-scorer props model — first player-level market, using real
-player_match_stats/player_match_features data from API-Football (MLS).
-Only one season exists so far, so this uses a chronological within-season
-split, same honest pattern as the original train_props_goals.py.
+Player goals-scorer props model — now with real multi-season depth
+(6 MLS seasons backfilled with player-level stats). Uses the same
+season-holdout discipline as the team-level props models: train on
+2021-2025, test on the held-out 2026 season.
 
     python scripts/train_props_player_goals.py
 """
@@ -22,11 +22,12 @@ except ImportError:
     lgb = None
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
+HOLDOUT_SEASON = "2026"
 
 Q = """
 SELECT
     f.p_shots_r5, f.p_minutes_r5, f.p_goals_r10, f.p_key_passes_r5,
-    p.full_name, th.name AS team_name,
+    p.full_name, th.name AS team_name, s.label AS season,
     CASE WHEN f.team_id = m.home_team_id THEN ta.name ELSE th2.name END AS opponent,
     m.kickoff_utc,
     pms.goals AS goals_actual
@@ -57,23 +58,19 @@ def main():
 
     df[FEATURES] = df[FEATURES].apply(pd.to_numeric, errors="coerce")
     df = df.dropna(subset=FEATURES + ["goals_actual"])
-    print(f"\n{len(df)} player-match rows (players with >=45 min played, "
-          f"complete rolling features)\n")
+    print(f"\n{len(df)} player-match rows across {df['season'].nunique()} seasons "
+          f"(players with >=45 min, complete rolling features)\n")
 
-    if len(df) < 100:
-        print("Too few rows for a meaningful split yet. Exiting.")
-        return
-
-    split = int(len(df) * 0.8)
-    train, test = df.iloc[:split], df.iloc[split:]
-    print(f"Train: {len(train)} rows (earlier matches)")
-    print(f"Test:  {len(test)} rows (most recent matches, held out)\n")
+    train = df[df.season != HOLDOUT_SEASON]
+    test = df[df.season == HOLDOUT_SEASON]
+    print(f"Train: {len(train)} rows (seasons {sorted(train.season.unique())})")
+    print(f"Test:  {len(test)} rows (held-out season {HOLDOUT_SEASON})\n")
 
     X_train, y_train = train[FEATURES], train["goals_actual"]
     X_test, y_test = test[FEATURES], test["goals_actual"]
 
-    model = lgb.LGBMRegressor(objective="poisson", n_estimators=200, learning_rate=0.03,
-                              num_leaves=15, min_child_samples=20, verbose=-1)
+    model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
+                              num_leaves=20, min_child_samples=30, verbose=-1)
     model.fit(X_train, y_train)
     pred_mu = np.clip(model.predict(X_test), 0.02, None)
     baseline_mu = y_train.mean()
@@ -86,7 +83,7 @@ def main():
     baseline_ll = poisson_log_loss(y_test, np.full(len(y_test), baseline_mu))
     improvement = (baseline_ll - model_ll) / baseline_ll * 100
 
-    print("--- Held-out evaluation (Poisson log-loss, lower=better) ---")
+    print("--- Held-out season evaluation (Poisson log-loss, lower=better) ---")
     print(f"Baseline ({baseline_mu:.3f} goals/appearance): log-loss {baseline_ll:.3f}")
     print(f"Model:                                  log-loss {model_ll:.3f}")
     verdict = "BEATS baseline" if model_ll < baseline_ll else "does NOT beat baseline"
@@ -99,7 +96,7 @@ def main():
         print(f"Over {line} goals: avg stated {raw_p.mean():.1%}, "
               f"realized {actual.mean():.1%} (n={len(actual)})")
 
-    print("\n--- Sample predictions (held-out matches) ---\n")
+    print("\n--- Sample predictions (held-out season) ---\n")
     test = test.copy()
     test["predicted_goals"] = pred_mu
     shown = test[test["predicted_goals"] > 0.3].head(8)
