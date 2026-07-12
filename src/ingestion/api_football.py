@@ -29,6 +29,7 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 LEAGUE_SEARCH = {
     "EPL": ("Premier League", "England"),
     "SERIE_A": ("Serie A", "Italy"),
+    "MLS": ("Major League Soccer", "USA"),
 }
 
 NAME_ALIASES = {
@@ -88,6 +89,9 @@ def resolve_league_id(session: requests.Session, league_code: str) -> int:
     name, country = LEAGUE_SEARCH[league_code]
     results = _get(session, "leagues", {"name": name, "country": country})
     if not results:
+        log.info("no match for %r/%r, retrying name-only search", name, country)
+        results = _get(session, "leagues", {"search": name})
+    if not results:
         raise RuntimeError(f"No league found for {name} / {country}")
     league_id = results[0]["league"]["id"]
 
@@ -126,6 +130,135 @@ def find_match_id(cur, home_team_id: int, away_team_id: int, date: str) -> int |
         (home_team_id, away_team_id, date))
     row = cur.fetchone()
     return row[0] if row else None
+
+
+def resolve_or_create_team_id(cur, api_team_id: int, api_team_name: str) -> int:
+    """Like resolve_team_id, but creates a new team row if none exists —
+    needed for MLS, where there's no prior Understat-sourced team list
+    to match against. Relies on the teams.name UNIQUE constraint."""
+    cur.execute("SELECT team_id FROM futbol.teams WHERE api_football_id = %s",
+               (api_team_id,))
+    row = cur.fetchone()
+    if row:
+        return row[0]
+
+    lookup_name = NAME_ALIASES.get(api_team_name, api_team_name)
+    cur.execute(
+        """INSERT INTO futbol.teams (name, api_football_id) VALUES (%s, %s)
+           ON CONFLICT (name) DO UPDATE SET api_football_id = EXCLUDED.api_football_id
+           RETURNING team_id""",
+        (lookup_name, api_team_id))
+    return cur.fetchone()[0]
+
+
+def upsert_league_season(cur, league_code: str, league_name: str, season_label: str):
+    cur.execute(
+        """INSERT INTO futbol.leagues (code, name) VALUES (%s, %s)
+           ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+           RETURNING league_id""", (league_code, league_name))
+    league_id = cur.fetchone()[0]
+    cur.execute(
+        """INSERT INTO futbol.seasons (league_id, label) VALUES (%s, %s)
+           ON CONFLICT (league_id, label) DO UPDATE SET label = EXCLUDED.label
+           RETURNING season_id""", (league_id, season_label))
+    return cur.fetchone()[0]
+
+
+def backfill_primary(league_code: str, season_start_year: int):
+    """
+    Full primary-source backfill for leagues with no Understat/FBref
+    coverage (MLS). API-Football supplies schedule, results, AND stats
+    in one pass — creates match rows directly rather than matching
+    onto pre-existing ones. No xG (not available on this tier); the
+    Dixon-Coles match model doesn't need it, only goals.
+    """
+    session = _session()
+    league_id_api = resolve_league_id(session, league_code)
+    league_name, _ = LEAGUE_SEARCH[league_code]
+    season_label = f"{season_start_year}"
+
+    conn = psycopg2.connect(DSN)
+    fixtures = _get(session, "fixtures",
+                    {"league": league_id_api, "season": season_start_year})
+    log.info("%d total fixtures (all statuses) from API-Football", len(fixtures))
+
+    created, updated_stats = 0, 0
+    with conn.cursor() as cur:
+        season_id = upsert_league_season(cur, league_code, league_name, season_label)
+        conn.commit()
+
+        for fx in fixtures:
+            fixture_id = fx["fixture"]["id"]
+            kickoff = fx["fixture"]["date"]
+            short_status = fx["fixture"]["status"]["short"]
+            home_api_id = fx["teams"]["home"]["id"]
+            away_api_id = fx["teams"]["away"]["id"]
+            hg = fx["goals"]["home"]
+            ag = fx["goals"]["away"]
+
+            home_id = resolve_or_create_team_id(cur, home_api_id, fx["teams"]["home"]["name"])
+            away_id = resolve_or_create_team_id(cur, away_api_id, fx["teams"]["away"]["name"])
+
+            status = "final" if short_status == "FT" else (
+                "scheduled" if short_status in ("NS", "TBD") else short_status.lower())
+
+            cur.execute(
+                """INSERT INTO futbol.matches
+                     (season_id, home_team_id, away_team_id, kickoff_utc,
+                      home_goals, away_goals, status, external_ref)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
+                   DO UPDATE SET home_goals = EXCLUDED.home_goals,
+                                 away_goals = EXCLUDED.away_goals,
+                                 status     = EXCLUDED.status
+                   RETURNING match_id""",
+                (season_id, home_id, away_id, kickoff, hg, ag, status,
+                 f"api-football:{fixture_id}"))
+            match_id = cur.fetchone()[0]
+            created += 1
+
+            if status == "final":
+                for tid, is_home in ((home_id, True), (away_id, False)):
+                    cur.execute(
+                        """INSERT INTO futbol.team_match_stats (match_id, team_id, is_home)
+                           VALUES (%s,%s,%s)
+                           ON CONFLICT (match_id, team_id) DO NOTHING""",
+                        (match_id, tid, is_home))
+
+                stats = _get(session, "fixtures/statistics", {"fixture": fixture_id})
+                for team_stats in stats:
+                    api_tid = team_stats["team"]["id"]
+                    tid = home_id if api_tid == home_api_id else away_id
+                    vals = {s["type"]: s["value"] for s in team_stats["statistics"]}
+
+                    def num(key):
+                        v = vals.get(key)
+                        if v is None:
+                            return None
+                        if isinstance(v, str) and v.endswith("%"):
+                            return float(v.rstrip("%"))
+                        return v
+
+                    cur.execute(
+                        """UPDATE futbol.team_match_stats SET
+                             corners = %s, fouls = %s, yellows = %s, reds = %s,
+                             saves = %s, shots_on_target = %s, shots = %s,
+                             possession_pct = %s
+                           WHERE match_id = %s AND team_id = %s""",
+                        (num("Corner Kicks"), num("Fouls"), num("Yellow Cards"),
+                         num("Red Cards"), num("Goalkeeper Saves"),
+                         num("Shots on Goal"), num("Total Shots"),
+                         num("Ball Possession"), match_id, tid))
+                updated_stats += 1
+
+            if created % 20 == 0:
+                conn.commit()
+                log.info("progress: %d/%d fixtures processed", created, len(fixtures))
+
+        conn.commit()
+    conn.close()
+    log.info("done: %d matches created/updated, %d had stats filled",
+             created, updated_stats)
 
 
 def backfill(league_code: str, season_start_year: int):
@@ -198,7 +331,10 @@ def main():
     ap.add_argument("--season", required=True, type=int,
                     help="Season START year, e.g. 2025 for the 2025-26 season")
     args = ap.parse_args()
-    backfill(args.league, args.season)
+    if args.league == "MLS":
+        backfill_primary(args.league, args.season)
+    else:
+        backfill(args.league, args.season)
 
 
 if __name__ == "__main__":
