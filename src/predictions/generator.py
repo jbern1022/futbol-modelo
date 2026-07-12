@@ -51,13 +51,26 @@ def build_slate(candidates: list[Inference],
     specs.sort(key=lambda c: -c.edge)
 
     slate = in_band[: size - 5] + anchors[:3] + specs[:2]
-    # de-dup by (market, subject, line, side)
     seen, final = set(), []
     for c in slate:
         key = (c.market, c.subject_team_id, c.subject_player_id, c.line, c.side)
         if key not in seen:
             seen.add(key)
             final.append(c)
+
+    if len(final) < size:
+        leftovers = [c for c in candidates
+                    if (c.market, c.subject_team_id, c.subject_player_id,
+                        c.line, c.side) not in seen]
+        leftovers.sort(key=lambda c: -c.edge)
+        for c in leftovers:
+            key = (c.market, c.subject_team_id, c.subject_player_id, c.line, c.side)
+            if key not in seen:
+                seen.add(key)
+                final.append(c)
+            if len(final) >= size:
+                break
+
     return final[:size]
 
 
