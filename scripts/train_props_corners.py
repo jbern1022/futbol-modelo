@@ -1,13 +1,10 @@
 """
 Phase F, real attempt: corners props model with proper multi-season
-holdout (train on 2021-22 through 2024-25, test on 2025-26 — the same
-season Dixon-Coles was backtested against). Uses real corner data from
-API-Football across all 5 seasons, not the single-season snapshot from
-the earlier prototype.
+holdout (train on 2021-22 through 2024-25, test on 2025-26). Includes
+isotonic calibration fit on 5-fold out-of-fold predictions, since the
+raw model was found overconfident at high probabilities.
 
     python scripts/train_props_corners.py --league SERIE_A
-    python scripts/train_props_corners.py --league EPL
-    python scripts/train_props_corners.py --league BOTH   (cross-league)
 """
 import argparse
 import os
@@ -19,6 +16,8 @@ import numpy as np
 import pandas as pd
 import psycopg2
 from scipy.stats import poisson
+from sklearn.isotonic import IsotonicRegression
+from sklearn.model_selection import KFold
 
 try:
     import lightgbm as lgb
@@ -110,18 +109,41 @@ def main():
     improvement = (baseline_ll - model_ll) / baseline_ll * 100
     print(f"  -> Model {verdict} ({improvement:+.1f}% log-loss)\n")
 
-    print("--- Calibration by line (stated probability vs realized rate) ---\n")
+    print("--- Calibration: raw vs isotonic-corrected (5-fold out-of-fold fit) ---\n")
+
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    oof_mu = np.full(len(train), np.nan)
+    X_train_arr, y_train_arr = X_train.reset_index(drop=True), y_train.reset_index(drop=True)
+    for tr_idx, val_idx in kf.split(X_train_arr):
+        fold_model = lgb.LGBMRegressor(
+            objective="poisson", n_estimators=300, learning_rate=0.03,
+            num_leaves=20, min_child_samples=30, subsample=0.8,
+            colsample_bytree=0.8, verbose=-1)
+        fold_model.fit(X_train_arr.iloc[tr_idx], y_train_arr.iloc[tr_idx])
+        oof_mu[val_idx] = fold_model.predict(X_train_arr.iloc[val_idx])
+    oof_mu = np.clip(oof_mu, 0.05, None)
+
     for line in LINES:
-        raw_p = 1 - poisson.cdf(np.floor(line), pred_mu)
-        actual_over = (y_test.values > line).astype(int)
-        buckets = pd.qcut(raw_p, q=4, duplicates="drop")
-        calib = pd.DataFrame({"bucket": buckets, "stated": raw_p, "actual": actual_over})
-        summary = calib.groupby("bucket", observed=True).agg(
-            n=("actual", "size"), stated=("stated", "mean"), realized=("actual", "mean"))
+        raw_p_train = 1 - poisson.cdf(np.floor(line), oof_mu)
+        actual_train = (y_train_arr.values > line).astype(int)
+        calibrator = IsotonicRegression(out_of_bounds="clip", y_min=0.01, y_max=0.99)
+        calibrator.fit(raw_p_train, actual_train)
+
+        raw_p_test = 1 - poisson.cdf(np.floor(line), pred_mu)
+        calibrated_p_test = calibrator.predict(raw_p_test)
+        actual_test = (y_test.values > line).astype(int)
+
         print(f"Over {line} corners:")
-        for _, row in summary.iterrows():
-            print(f"  stated {row['stated']:.1%} -> realized {row['realized']:.1%} "
-                  f"(n={int(row['n'])})")
+        for label, probs in [("raw", raw_p_test), ("calibrated", calibrated_p_test)]:
+            buckets = pd.qcut(probs, q=4, duplicates="drop")
+            calib = pd.DataFrame({"bucket": buckets, "stated": probs, "actual": actual_test})
+            summary = calib.groupby("bucket", observed=True).agg(
+                n=("actual", "size"), stated=("stated", "mean"), realized=("actual", "mean"))
+            gaps = (summary["realized"] - summary["stated"]).abs().mean()
+            print(f"  [{label:>10}] avg |stated-realized| gap: {gaps:.1%}")
+            for _, row in summary.iterrows():
+                print(f"      stated {row['stated']:.1%} -> realized {row['realized']:.1%} "
+                      f"(n={int(row['n'])})")
         print()
 
     print("--- Sample predictions (held-out season) ---\n")
