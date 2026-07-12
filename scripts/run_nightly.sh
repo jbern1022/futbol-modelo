@@ -14,5 +14,6 @@ source .venv/bin/activate
 
 echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) nightly run start ==="
 python -m ingestion.api_football backfill --league MLS --season 2026
+python scripts/auto_slate.py --league MLS --days 10
 python scripts/auto_grade.py
 echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) nightly run end ==="

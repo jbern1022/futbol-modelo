@@ -1,12 +1,13 @@
 """
 The real Phase G slate generator. Finds an upcoming fixture, fits the
 validated models (Dixon-Coles always; corners/SOT only for leagues with
-team_match_stats coverage — currently EPL/SERIE_A, not WC), computes
-live "current form" for both teams, and writes a genuine pre-kickoff
-slate through the immutable ledger.
+team_match_stats coverage), computes live "current form" for both teams,
+and writes a genuine pre-kickoff slate through the immutable ledger.
 
-    python scripts/generate_slate.py --league WC --home France --away Spain
-    python scripts/generate_slate.py --league EPL --home Arsenal --away Chelsea
+    python scripts/generate_slate.py --league MLS --home Arsenal --away Chelsea
+
+The core logic (generate_for_fixture) is also imported by auto_slate.py
+for batch generation across every upcoming fixture missing a slate.
 """
 import argparse
 import json
@@ -153,6 +154,62 @@ def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
     return out
 
 
+def generate_for_fixture(conn, cur, league: str, home: str, away: str,
+                         match_id: int, kickoff, home_id: int, away_id: int,
+                         verbose: bool = True) -> int | None:
+    now = datetime.now(timezone.utc)
+    kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
+    if now >= kickoff_aware:
+        if verbose:
+            print(f"  SKIP {home} vs {away}: kickoff already passed")
+        return None
+
+    dc = fit_dixon_coles(cur, league)
+    if home not in dc.teams or away not in dc.teams:
+        if verbose:
+            print(f"  SKIP {home} vs {away}: team(s) not in fitted list")
+        return None
+    mk = derive_markets(dc.predict(home, away))
+
+    candidates = [
+        Inference("1X2", f"{home} win", None, "home", mk["home_win"], home_id),
+        Inference("1X2", "Draw (90 min)", None, "draw", mk["draw"]),
+        Inference("1X2", f"{away} win", None, "away", mk["away_win"], away_id),
+        Inference("TOTAL_GOALS", "Over 2.5 goals", 2.5, "over", mk["over_2.5"]),
+        Inference("BTTS", "Both teams to score", None, "yes", mk["btts_yes"]),
+    ]
+
+    if league in PROPS_LEAGUES and lgb is not None:
+        home_form = current_form(cur, home_id, kickoff)
+        away_form = current_form(cur, away_id, kickoff)
+        if home_form and away_form:
+            for market in PROPS_MARKETS:
+                model, _ = fit_props_model(cur, market)
+                candidates += build_props_inferences(model, home_form, True, home_id, market)
+                candidates += build_props_inferences(model, away_form, False, away_id, market)
+
+    slate = build_slate(candidates, size=20)
+
+    cur.execute(
+        """INSERT INTO futbol.model_versions
+             (model_name, version_tag, training_window, params, train_metrics)
+           VALUES (%s,%s,%s,%s,%s)
+           ON CONFLICT (model_name, version_tag) DO UPDATE
+             SET train_metrics = EXCLUDED.train_metrics
+           RETURNING model_version_id""",
+        (f"slate_generator_{league.lower()}",
+         f"{home}_v_{away}_{datetime.now().date()}",
+         "live_fit", json.dumps({"league": league}),
+         json.dumps({"n_candidates": len(candidates), "n_slate": len(slate)})))
+    mvid = cur.fetchone()[0]
+
+    n = persist_slate(conn, match_id, mvid, slate)
+    if verbose:
+        print(f"  OK {home} vs {away}: {n} predictions written "
+              f"(match_id={match_id}, model_version_id={mvid})")
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--league", required=True)
@@ -167,67 +224,10 @@ def main():
             print(f"ERROR: no fixture found for {args.home} vs {args.away} in {args.league}")
             return
         match_id, kickoff, status, home_id, away_id = fixture
-        now = datetime.now(timezone.utc)
-        kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
         print(f"Fixture: {args.home} vs {args.away} ({args.league})")
-        print(f"Status: {status}, kickoff: {kickoff}, now: {now}")
-        if now >= kickoff_aware:
-            print("Kickoff has already passed — cannot generate a genuine "
-                  "pre-kickoff slate. (Trigger will also reject this.)")
-            return
-
-        print("\nFitting Dixon-Coles...")
-        dc = fit_dixon_coles(cur, args.league)
-        if args.home not in dc.teams or args.away not in dc.teams:
-            print(f"ERROR: {args.home} or {args.away} not in fitted team list.")
-            return
-        mk = derive_markets(dc.predict(args.home, args.away))
-
-        candidates = [
-            Inference("1X2", f"{args.home} win", None, "home", mk["home_win"], home_id),
-            Inference("1X2", "Draw (90 min)", None, "draw", mk["draw"]),
-            Inference("1X2", f"{args.away} win", None, "away", mk["away_win"], away_id),
-            Inference("TOTAL_GOALS", "Over 2.5 goals", 2.5, "over", mk["over_2.5"]),
-            Inference("BTTS", "Both teams to score", None, "yes", mk["btts_yes"]),
-        ]
-
-        if args.league in PROPS_LEAGUES and lgb is not None:
-            print("Fitting corners + SOT props models (cross-league)...")
-            home_form = current_form(cur, home_id, kickoff)
-            away_form = current_form(cur, away_id, kickoff)
-            if home_form and away_form:
-                for market in PROPS_MARKETS:
-                    model, _ = fit_props_model(cur, market)
-                    candidates += build_props_inferences(model, home_form, True, home_id, market)
-                    candidates += build_props_inferences(model, away_form, False, away_id, market)
-            else:
-                print("  (insufficient match history for props — skipping)")
-        else:
-            print(f"Skipping props models — {args.league} has no team_match_stats coverage.")
-
-        print(f"\n{len(candidates)} candidate inferences generated:")
-        for c in candidates:
-            print(f"  {c.statement}: {c.probability:.1%}")
-
-        slate = build_slate(candidates, size=20)
-
-        cur.execute(
-            """INSERT INTO futbol.model_versions
-                 (model_name, version_tag, training_window, params, train_metrics)
-               VALUES (%s,%s,%s,%s,%s)
-               ON CONFLICT (model_name, version_tag) DO UPDATE
-                 SET train_metrics = EXCLUDED.train_metrics
-               RETURNING model_version_id""",
-            (f"slate_generator_{args.league.lower()}",
-             f"{args.home}_v_{args.away}_{datetime.now().date()}",
-             "live_fit", json.dumps({"league": args.league}),
-             json.dumps({"n_candidates": len(candidates), "n_slate": len(slate)})))
-        mvid = cur.fetchone()[0]
-
-        n = persist_slate(conn, match_id, mvid, slate)
-        print(f"\n{n} predictions written to the immutable ledger "
-              f"(match_id={match_id}, model_version_id={mvid}).")
-
+        print(f"Status: {status}, kickoff: {kickoff}")
+        generate_for_fixture(conn, cur, args.league, args.home, args.away,
+                             match_id, kickoff, home_id, away_id)
     conn.close()
 
 
