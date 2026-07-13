@@ -76,8 +76,14 @@ def build_slate(candidates: list[Inference],
 
 def persist_slate(conn, match_id: int, model_version_id: int,
                   slate: list[Inference]) -> int:
-    """Insert into futbol.predictions. Trigger enforces pre-kickoff lock."""
+    """
+    Insert into futbol.predictions. Trigger enforces pre-kickoff lock.
+    Uses ON CONFLICT DO NOTHING so re-running generation against an
+    already-slated match inserts only genuinely new rows instead of
+    aborting the whole batch on the first pre-existing one.
+    """
     now = datetime.now(timezone.utc)
+    inserted = 0
     with conn.cursor() as cur:
         for inf in slate:
             cur.execute(
@@ -87,10 +93,14 @@ def persist_slate(conn, match_id: int, model_version_id: int,
                      subject_player_id, statement, line, side, probability,
                      created_at, locked_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (match_id, model_version_id, market,
+                             subject_team_id, subject_player_id, side, line)
+                DO NOTHING
                 """,
                 (match_id, model_version_id, inf.market, inf.subject_team_id,
                  inf.subject_player_id, inf.statement, inf.line, inf.side,
                  round(inf.probability, 5), now, now),
             )
+            inserted += cur.rowcount
     conn.commit()
-    return len(slate)
+    return inserted
