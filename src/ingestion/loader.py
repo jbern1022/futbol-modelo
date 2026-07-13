@@ -239,11 +239,14 @@ def load_world_cup(conn, seasons: list[str]):
                       status, external_ref)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
-                   DO UPDATE SET home_goals = EXCLUDED.home_goals,
-                                 away_goals = EXCLUDED.away_goals,
-                                 status     = EXCLUDED.status,
-                                 went_to_et = EXCLUDED.went_to_et,
-                                 went_to_pens = EXCLUDED.went_to_pens
+                   DO UPDATE SET
+                     home_goals = COALESCE(EXCLUDED.home_goals, futbol.matches.home_goals),
+                     away_goals = COALESCE(EXCLUDED.away_goals, futbol.matches.away_goals),
+                     status = CASE WHEN EXCLUDED.status = 'final'
+                                    OR futbol.matches.status <> 'final'
+                                   THEN EXCLUDED.status ELSE futbol.matches.status END,
+                     went_to_et = COALESCE(EXCLUDED.went_to_et, futbol.matches.went_to_et),
+                     went_to_pens = COALESCE(EXCLUDED.went_to_pens, futbol.matches.went_to_pens)
                    RETURNING match_id""",
                 (season_id, hid, aid, r["date"], stage, hg, ag,
                  went_et, went_pens, status, f"fbref-wc:{r.get('game_id','')}"))
