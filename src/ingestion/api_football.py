@@ -123,11 +123,14 @@ def resolve_team_id(cur, api_team_id: int, api_team_name: str) -> int | None:
 
 
 def find_match_id(cur, home_team_id: int, away_team_id: int, date: str) -> int | None:
+    """+/-1 day tolerance: sources occasionally disagree on which
+    calendar day a match falls on across a UTC boundary."""
     cur.execute(
         """SELECT match_id FROM futbol.matches
            WHERE home_team_id = %s AND away_team_id = %s
-             AND DATE(kickoff_utc) = %s""",
-        (home_team_id, away_team_id, date))
+             AND DATE(kickoff_utc) BETWEEN %s::date - 1 AND %s::date + 1
+           ORDER BY ABS(DATE(kickoff_utc) - %s::date) LIMIT 1""",
+        (home_team_id, away_team_id, date, date, date))
     row = cur.fetchone()
     return row[0] if row else None
 
