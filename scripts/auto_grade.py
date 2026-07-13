@@ -19,7 +19,8 @@ from grading.grader import grade_prediction, GRADER_VERSION
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
 UNGRADED_SQL = """
-SELECT p.prediction_id, p.match_id, p.market, p.side, p.line, p.subject_team_id,
+SELECT p.prediction_id, p.match_id, p.market, p.side, p.line,
+       p.subject_team_id, p.subject_player_id,
        m.status, m.home_goals, m.away_goals
 FROM futbol.predictions p
 JOIN futbol.matches m USING (match_id)
@@ -27,17 +28,25 @@ LEFT JOIN futbol.prediction_grades g USING (prediction_id)
 WHERE g.prediction_id IS NULL AND m.status = 'final';
 """
 
-STAT_COLUMN = {"CORNERS": "corners", "SOT": "shots_on_target"}
+TEAM_STAT_COLUMN = {"CORNERS": "corners", "SOT": "shots_on_target"}
+PLAYER_STAT_COLUMN = {"PLAYER_GOALS": "goals", "PLAYER_SAVES": "saves"}
 
 
-def fetch_observed(cur, market: str, match_id: int, subject_team_id: int | None):
-    col = STAT_COLUMN.get(market)
-    if not col or subject_team_id is None:
+def fetch_observed(cur, market: str, match_id: int, subject_team_id, subject_player_id):
+    if market in TEAM_STAT_COLUMN and subject_team_id is not None:
+        col = TEAM_STAT_COLUMN[market]
+        cur.execute(
+            f"SELECT {col} FROM futbol.team_match_stats "
+            f"WHERE match_id = %s AND team_id = %s",
+            (match_id, subject_team_id))
+    elif market in PLAYER_STAT_COLUMN and subject_player_id is not None:
+        col = PLAYER_STAT_COLUMN[market]
+        cur.execute(
+            f"SELECT {col} FROM futbol.player_match_stats "
+            f"WHERE match_id = %s AND player_id = %s",
+            (match_id, subject_player_id))
+    else:
         return {}
-    cur.execute(
-        f"SELECT {col} FROM futbol.team_match_stats "
-        f"WHERE match_id = %s AND team_id = %s",
-        (match_id, subject_team_id))
     row = cur.fetchone()
     if row is None or row[0] is None:
         return {}
@@ -57,9 +66,10 @@ def main():
                      "away_goals": row["away_goals"]}
             pred = {"market": row["market"], "side": row["side"], "line": row["line"]}
 
-            if row["market"] in STAT_COLUMN:
+            needs_stats = row["market"] in TEAM_STAT_COLUMN or row["market"] in PLAYER_STAT_COLUMN
+            if needs_stats:
                 stats = fetch_observed(cur, row["market"], row["match_id"],
-                                       row["subject_team_id"])
+                                       row["subject_team_id"], row["subject_player_id"])
                 if not stats:
                     skipped += 1
                     continue

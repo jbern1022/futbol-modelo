@@ -1,13 +1,13 @@
 """
 The real Phase G slate generator. Finds an upcoming fixture, fits the
-validated models (Dixon-Coles always; corners/SOT only for leagues with
-team_match_stats coverage), computes live "current form" for both teams,
-and writes a genuine pre-kickoff slate through the immutable ledger.
+validated models (Dixon-Coles always; corners/SOT/player-props for
+leagues with data coverage), computes live "current form", and writes
+a genuine pre-kickoff slate through the immutable ledger.
 
     python scripts/generate_slate.py --league MLS --home Arsenal --away Chelsea
 
-The core logic (generate_for_fixture) is also imported by auto_slate.py
-for batch generation across every upcoming fixture missing a slate.
+Player-level markets (goals, saves) are MLS-only for now — the only
+league with player_match_stats populated so far.
 """
 import argparse
 import json
@@ -154,9 +154,125 @@ def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
     return out
 
 
+def player_goals_form(cur, player_id: int) -> dict:
+    cur.execute(
+        """SELECT pms.shots, pms.minutes, pms.goals, pms.key_passes
+           FROM futbol.player_match_stats pms
+           JOIN futbol.matches m ON m.match_id = pms.match_id
+           WHERE pms.player_id = %s AND m.status = 'final' AND pms.minutes >= 30
+           ORDER BY m.kickoff_utc DESC LIMIT 10""", (player_id,))
+    rows = cur.fetchall()
+    if len(rows) < 3:
+        return {}
+    df = pd.DataFrame(rows, columns=["shots", "minutes", "goals", "key_passes"])
+    df = df.apply(pd.to_numeric, errors="coerce")
+    return {
+        "p_shots_r5": df["shots"].head(5).mean(),
+        "p_minutes_r5": df["minutes"].head(5).mean(),
+        "p_goals_r10": df["goals"].mean(),
+        "p_key_passes_r5": df["key_passes"].head(5).mean(),
+    }
+
+
+def top_goal_threats(cur, team_id: int, n: int = 2) -> list:
+    cur.execute(
+        """SELECT p.player_id, p.full_name, AVG(pms.shots) AS avg_shots
+           FROM futbol.player_match_stats pms
+           JOIN futbol.matches m ON m.match_id = pms.match_id
+           JOIN futbol.players p ON p.player_id = pms.player_id
+           WHERE pms.team_id = %s AND m.status = 'final' AND pms.minutes >= 45
+             AND p.position IN ('F', 'M') AND m.kickoff_utc > now() - interval '90 days'
+           GROUP BY p.player_id, p.full_name
+           HAVING COUNT(*) >= 3
+           ORDER BY avg_shots DESC LIMIT %s""", (team_id, n))
+    return [(pid, name) for pid, name, _ in cur.fetchall()]
+
+
+def likely_goalkeeper(cur, team_id: int):
+    cur.execute(
+        """SELECT p.player_id, p.full_name, MAX(m.kickoff_utc) AS last_played
+           FROM futbol.player_match_stats pms
+           JOIN futbol.matches m ON m.match_id = pms.match_id
+           JOIN futbol.players p ON p.player_id = pms.player_id
+           WHERE pms.team_id = %s AND m.status = 'final' AND p.position = 'G'
+             AND pms.minutes >= 45
+           GROUP BY p.player_id, p.full_name
+           ORDER BY last_played DESC LIMIT 1""", (team_id,))
+    row = cur.fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def fit_player_goals_model(cur):
+    features = ["p_shots_r5", "p_minutes_r5", "p_goals_r10", "p_key_passes_r5"]
+    cur.execute(
+        """SELECT f.p_shots_r5, f.p_minutes_r5, f.p_goals_r10, f.p_key_passes_r5,
+                  pms.goals
+           FROM futbol.player_match_features f
+           JOIN futbol.matches m ON m.match_id = f.match_id
+           JOIN futbol.player_match_stats pms
+             ON pms.match_id = f.match_id AND pms.player_id = f.player_id
+           JOIN futbol.seasons s ON s.season_id = m.season_id
+           JOIN futbol.leagues l ON l.league_id = s.league_id
+           WHERE l.code = 'MLS' AND pms.minutes >= 45""")
+    rows = cur.fetchall()
+    df = pd.DataFrame(rows, columns=features + ["goals"])
+    df = df.apply(pd.to_numeric, errors="coerce").dropna()
+    model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
+                              num_leaves=20, min_child_samples=30, verbose=-1)
+    model.fit(df[features], df["goals"])
+    return model, features
+
+
+def fit_player_saves_model(cur):
+    features = ["p_saves_r5", "p_minutes_r5", "shots_against_r5", "corners_against_r5"]
+    cur.execute(
+        """SELECT pf.p_saves_r5, pf.p_minutes_r5, tf.shots_against_r5, tf.corners_against_r5,
+                  pms.saves
+           FROM futbol.player_match_features pf
+           JOIN futbol.matches m ON m.match_id = pf.match_id
+           JOIN futbol.players p ON p.player_id = pf.player_id
+           JOIN futbol.player_match_stats pms
+             ON pms.match_id = pf.match_id AND pms.player_id = pf.player_id
+           JOIN futbol.team_match_features tf
+             ON tf.match_id = pf.match_id AND tf.team_id = pf.team_id
+           JOIN futbol.seasons s ON s.season_id = m.season_id
+           JOIN futbol.leagues l ON l.league_id = s.league_id
+           WHERE l.code = 'MLS' AND p.position = 'G' AND pms.minutes >= 45
+             AND pms.saves IS NOT NULL""")
+    rows = cur.fetchall()
+    df = pd.DataFrame(rows, columns=features + ["saves"])
+    df = df.apply(pd.to_numeric, errors="coerce").dropna()
+    model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
+                              num_leaves=20, min_child_samples=25, verbose=-1)
+    model.fit(df[features], df["saves"])
+    return model, features
+
+
+def build_player_goal_inference(model, features_list, form, player_id, player_name):
+    row = pd.DataFrame([form])
+    mu = max(model.predict(row[features_list])[0], 0.02)
+    p = float(1 - poisson.cdf(0, mu))
+    if not (0.15 <= p <= 0.60):
+        return None
+    return Inference(market="PLAYER_GOALS", statement=f"{player_name} to score",
+                     line=0.5, side="over", probability=round(p, 5),
+                     subject_player_id=player_id)
+
+
+def build_player_saves_inference(model, features_list, form, player_id, player_name, line=3.5):
+    row = pd.DataFrame([form])
+    mu = max(model.predict(row[features_list])[0], 0.1)
+    p = float(1 - poisson.cdf(np.floor(line), mu))
+    if not (0.20 <= p <= 0.80):
+        return None
+    return Inference(market="PLAYER_SAVES", statement=f"{player_name} over {line} saves",
+                     line=line, side="over", probability=round(p, 5),
+                     subject_player_id=player_id)
+
+
 def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                          match_id: int, kickoff, home_id: int, away_id: int,
-                         verbose: bool = True) -> int | None:
+                         verbose: bool = True):
     now = datetime.now(timezone.utc)
     kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
     if now >= kickoff_aware:
@@ -187,6 +303,51 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                 model, _ = fit_props_model(cur, market)
                 candidates += build_props_inferences(model, home_form, True, home_id, market)
                 candidates += build_props_inferences(model, away_form, False, away_id, market)
+
+        if league == "MLS":
+            try:
+                goals_model, goals_feats = fit_player_goals_model(cur)
+                saves_model, saves_feats = fit_player_saves_model(cur)
+
+                for tid in (home_id, away_id):
+                    for pid, pname in top_goal_threats(cur, tid, n=2):
+                        form = player_goals_form(cur, pid)
+                        if form:
+                            inf = build_player_goal_inference(
+                                goals_model, goals_feats, form, pid, pname)
+                            if inf:
+                                candidates.append(inf)
+
+                    gk = likely_goalkeeper(cur, tid)
+                    if gk:
+                        pid, pname = gk
+                        cur.execute(
+                            """SELECT pms.saves, pms.minutes
+                               FROM futbol.player_match_stats pms
+                               JOIN futbol.matches m ON m.match_id = pms.match_id
+                               WHERE pms.player_id = %s AND m.status='final'
+                                 AND pms.minutes >= 45
+                               ORDER BY m.kickoff_utc DESC LIMIT 5""", (pid,))
+                        srows = cur.fetchall()
+                        if len(srows) >= 3:
+                            sdf = pd.DataFrame(srows, columns=["saves", "minutes"])
+                            sdf = sdf.apply(pd.to_numeric, errors="coerce")
+                            team_form = current_form(cur, tid, kickoff)
+                            if team_form:
+                                save_form = {
+                                    "p_saves_r5": sdf["saves"].mean(),
+                                    "p_minutes_r5": sdf["minutes"].mean(),
+                                    "shots_against_r5": team_form["shots_against_r5"],
+                                    "corners_against_r5": team_form.get("corners_against_r5"),
+                                }
+                                if save_form["corners_against_r5"] is not None:
+                                    inf = build_player_saves_inference(
+                                        saves_model, saves_feats, save_form, pid, pname)
+                                    if inf:
+                                        candidates.append(inf)
+            except Exception as e:
+                if verbose:
+                    print(f"  (player props skipped: {e})")
 
     slate = build_slate(candidates, size=20)
 
