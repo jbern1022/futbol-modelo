@@ -46,6 +46,8 @@ TEAM_SEED: dict[str, dict[str, str]] = {
     "Sheffield United":   {"fbref": "Sheffield United", "understat": "Sheffield United"},
     "Ipswich Town":       {"fbref": "Ipswich Town", "understat": "Ipswich"},
     "Southampton":        {"fbref": "Southampton", "understat": "Southampton"},
+    "Hull City":          {"fbref": "Hull City", "understat": "Hull"},
+    "Coventry City":      {"fbref": "Coventry City", "understat": "Coventry City"},
     # promoted sides vary by season — add per-season during backfill
     # ---- Serie A ----
     "Atalanta":           {"fbref": "Atalanta", "understat": "Atalanta"},

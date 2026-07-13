@@ -385,8 +385,10 @@ def main():
     ap.add_argument("--league", required=True, choices=list(LEAGUE_SEARCH))
     ap.add_argument("--season", required=True, type=int,
                     help="Season START year, e.g. 2025 for the 2025-26 season")
+    ap.add_argument("--primary", action="store_true",
+                    help="Use API-Football as the sole source for future/unplayed seasons")
     args = ap.parse_args()
-    if args.league == "MLS":
+    if args.league == "MLS" or args.primary:
         backfill_primary(args.league, args.season)
     else:
         backfill(args.league, args.season)
