@@ -5,6 +5,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ src/
 COPY scripts/ scripts/
 COPY sql/ sql/
+COPY api/ api/
 ENV PYTHONPATH=/app/src
-# default is overridden per CronJob
-CMD ["python", "-m", "ingestion.loader", "matchday", "--league", "EPL"]
+# default is overridden per Job/CronJob/Deployment spec
+CMD ["python", "scripts/auto_grade.py"]
