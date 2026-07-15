@@ -1,0 +1,134 @@
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+interface Prediction {
+  prediction_id: number;
+  market: string;
+  statement: string;
+  side: string;
+  line: number | null;
+  probability: number;
+  locked_at: string;
+  subject_team: string | null;
+  subject_player: string | null;
+  outcome: string | null;
+  actual_value: number | null;
+}
+
+interface SlateResponse {
+  fixture: {
+    match_id: number;
+    league: string;
+    home: string;
+    away: string;
+    kickoff_utc: string;
+    status: string;
+  };
+  predictions: Prediction[];
+}
+
+async function getSlate(matchId: string): Promise<SlateResponse | null> {
+  try {
+    const res = await fetch(`${API_URL}/fixtures/${matchId}/slate`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+function outcomeBadge(outcome: string | null) {
+  if (!outcome) return null;
+  const styles: Record<string, string> = {
+    hit: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
+    miss: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+    void: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+  };
+  return (
+    <span
+      className={`ml-2 rounded px-2 py-0.5 text-xs font-medium uppercase ${styles[outcome] || styles.void}`}
+    >
+      {outcome}
+    </span>
+  );
+}
+
+export default async function FixturePage({
+  params,
+}: {
+  params: Promise<{ matchId: string }>;
+}) {
+  const { matchId } = await params;
+  const data = await getSlate(matchId);
+
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-black">
+        <main className="mx-auto max-w-3xl px-6 py-16">
+          <a href="/" className="text-sm text-zinc-500 hover:underline">
+            &larr; Back to fixtures
+          </a>
+          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+            Fixture not found, or the API is unreachable.
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const { fixture, predictions } = data;
+
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-black">
+      <main className="mx-auto max-w-3xl px-6 py-16">
+        <a href="/" className="text-sm text-zinc-500 hover:underline">
+          &larr; Back to fixtures
+        </a>
+
+        <div className="mt-6">
+          <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            {fixture.league} &middot; {fixture.status}
+          </span>
+          <h1 className="mt-1 text-2xl font-semibold text-black dark:text-zinc-50">
+            {fixture.home} vs {fixture.away}
+          </h1>
+          <p className="mt-1 text-zinc-500">
+            {new Date(fixture.kickoff_utc).toLocaleString(undefined, {
+              dateStyle: "full",
+              timeStyle: "short",
+            })}
+          </p>
+        </div>
+
+        <div className="mt-8 space-y-2">
+          {predictions.length === 0 && (
+            <p className="text-zinc-500">No predictions logged yet.</p>
+          )}
+          {predictions
+            .slice()
+            .sort((a, b) => b.probability - a.probability)
+            .map((p) => (
+              <div
+                key={p.prediction_id}
+                className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"
+              >
+                <div>
+                  <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    {p.market}
+                  </span>
+                  <div className="text-black dark:text-zinc-50">
+                    {p.statement}
+                    {outcomeBadge(p.outcome)}
+                  </div>
+                </div>
+                <div className="text-lg font-semibold text-black dark:text-zinc-50">
+                  {(p.probability * 100).toFixed(1)}%
+                </div>
+              </div>
+            ))}
+        </div>
+      </main>
+    </div>
+  );
+}

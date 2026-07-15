@@ -1,0 +1,98 @@
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+interface Fixture {
+  match_id: number;
+  league: string;
+  season: string;
+  home: string;
+  away: string;
+  kickoff_utc: string;
+  status: string;
+  home_goals: number | null;
+  away_goals: number | null;
+  n_predictions: number;
+}
+
+interface FixturesResponse {
+  count: number;
+  fixtures: Fixture[];
+}
+
+async function getFixtures(): Promise<FixturesResponse | null> {
+  try {
+    const res = await fetch(`${API_URL}/fixtures?days=21`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export default async function Home() {
+  const data = await getFixtures();
+
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-black">
+      <main className="mx-auto max-w-4xl px-6 py-16">
+        <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
+          futbol-modelo
+        </h1>
+        <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+          Upcoming fixtures with live prediction slates.
+        </p>
+
+        {!data && (
+          <div className="mt-10 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+            Could not reach the API at{" "}
+            <code className="font-mono">{API_URL}</code>. Make sure the
+            FastAPI backend is running.
+          </div>
+        )}
+
+        {data && data.fixtures.length === 0 && (
+          <div className="mt-10 text-zinc-500">
+            No upcoming fixtures in the next 21 days.
+          </div>
+        )}
+
+        {data && data.fixtures.length > 0 && (
+          <div className="mt-10 space-y-3">
+            {data.fixtures.map((f) => (
+              <a
+                key={f.match_id}
+                href={`/fixtures/${f.match_id}`}
+                className="block rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                      {f.league}
+                    </span>
+                    <div className="mt-1 text-lg font-medium text-black dark:text-zinc-50">
+                      {f.home} vs {f.away}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-zinc-500">
+                      {new Date(f.kickoff_utc).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-400">
+                      {f.n_predictions} predictions
+                    </div>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
