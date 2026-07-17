@@ -33,6 +33,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 LEAGUES = {
     "EPL":     {"soccerdata": "ENG-Premier League", "code": "EPL",     "name": "Premier League"},
     "SERIE_A": {"soccerdata": "ITA-Serie A",        "code": "SERIE_A", "name": "Serie A"},
+    "LA_LIGA": {"soccerdata": "ESP-La Liga",        "code": "LA_LIGA", "name": "La Liga"},
     "WC":      {"soccerdata": "INT-World Cup",      "code": "WC",      "name": "World Cup",
                 "is_international": True},
 }
@@ -151,6 +152,7 @@ def load_understat(conn, league_key: str, seasons: list[str]):
 
 def load_fbref(conn, league_key: str, seasons: list[str]):
     import soccerdata as sd
+    import pandas as pd
     fb = sd.FBref(leagues=[league_key], seasons=seasons)
 
     with conn.cursor() as cur:
@@ -164,7 +166,16 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
         ):
             if stat_type == "schedule":
                 continue
-            df = fb.read_team_match_stats(stat_type=stat_type).reset_index()
+            try:
+                df = fb.read_team_match_stats(stat_type=stat_type).reset_index()
+            except ValueError as e:
+                if "Invalid argument: stat_type" in str(e):
+                    log.warning("FBref %s not available for %s — skipping (%s)",
+                               stat_type, league_key, e)
+                    continue
+                raise
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [c[-1] if c[-1] else c[0] for c in df.columns]
             log.info("FBref %s: %d rows", stat_type, len(df))
             for _, r in df.iterrows():
                 team = entities.resolve_team("fbref", r["team"])
@@ -182,6 +193,8 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
 
         # player match-level stats (summary covers shots/goals/minutes)
         df = fb.read_player_match_stats(stat_type="summary").reset_index()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [c[-1] if c[-1] else c[0] for c in df.columns]
         log.info("FBref player summary: %d rows", len(df))
         for _, r in df.iterrows():
             team = entities.resolve_team("fbref", r["team"])

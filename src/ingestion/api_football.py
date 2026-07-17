@@ -30,6 +30,7 @@ LEAGUE_SEARCH = {
     "EPL": ("Premier League", "England"),
     "SERIE_A": ("Serie A", "Italy"),
     "MLS": ("Major League Soccer", "USA"),
+    "LA_LIGA": ("La Liga", "Spain"),
 }
 
 NAME_ALIASES = {
@@ -48,6 +49,7 @@ NAME_ALIASES = {
     "Luton": "Luton Town",
     "Sheffield Utd": "Sheffield United",
     "Ipswich": "Ipswich Town",
+    "Oviedo": "Real Oviedo",
 }
 
 CACHE_FILE = Path.home() / ".api_football_cache.json"
