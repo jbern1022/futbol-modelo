@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"\;
 
 interface Prediction {
   prediction_id: number;
@@ -24,6 +24,27 @@ interface SlateResponse {
     status: string;
   };
   predictions: Prediction[];
+}
+
+const MARKET_LABELS: Record<string, string> = {
+  "1X2": "Match Result",
+  BTTS: "Both Teams to Score",
+  TOTAL_GOALS: "Total Goals",
+  CORNERS: "Corners",
+  SOT: "Shots on Target",
+  PLAYER_GOALS: "Anytime Goalscorer",
+  PLAYER_SAVES: "Goalkeeper Saves",
+};
+
+function marketLabel(market: string): string {
+  return MARKET_LABELS[market] || market;
+}
+
+function cleanStatement(statement: string, market: string): string {
+  return statement
+    .replace(/^Sot\b/i, "Shots on target")
+    .replace(/^Corners\b/i, "Corners")
+    .replace(/\bover\b/i, "over");
 }
 
 async function getSlate(matchId: string): Promise<SlateResponse | null> {
@@ -79,6 +100,16 @@ export default async function FixturePage({
 
   const { fixture, predictions } = data;
 
+  const grouped = predictions.reduce<Record<string, Prediction[]>>((acc, p) => {
+    (acc[p.market] ??= []).push(p);
+    return acc;
+  }, {});
+  const marketOrder = ["1X2", "BTTS", "TOTAL_GOALS", "CORNERS", "SOT",
+                       "PLAYER_GOALS", "PLAYER_SAVES"];
+  const orderedMarkets = Object.keys(grouped).sort(
+    (a, b) => marketOrder.indexOf(a) - marketOrder.indexOf(b)
+  );
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
       <main className="mx-auto max-w-3xl px-6 py-16">
@@ -101,32 +132,36 @@ export default async function FixturePage({
           </p>
         </div>
 
-        <div className="mt-8 space-y-2">
+        <div className="mt-8 space-y-6">
           {predictions.length === 0 && (
             <p className="text-zinc-500">No predictions logged yet.</p>
           )}
-          {predictions
-            .slice()
-            .sort((a, b) => b.probability - a.probability)
-            .map((p) => (
-              <div
-                key={p.prediction_id}
-                className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"
-              >
-                <div>
-                  <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    {p.market}
-                  </span>
-                  <div className="text-black dark:text-zinc-50">
-                    {p.statement}
-                    {outcomeBadge(p.outcome)}
-                  </div>
-                </div>
-                <div className="text-lg font-semibold text-black dark:text-zinc-50">
-                  {(p.probability * 100).toFixed(1)}%
-                </div>
+          {orderedMarkets.map((market) => (
+            <div key={market}>
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                {marketLabel(market)}
+              </h2>
+              <div className="space-y-2">
+                {grouped[market]
+                  .slice()
+                  .sort((a, b) => b.probability - a.probability)
+                  .map((p) => (
+                    <div
+                      key={p.prediction_id}
+                      className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="text-black dark:text-zinc-50">
+                        {cleanStatement(p.statement, p.market)}
+                        {outcomeBadge(p.outcome)}
+                      </div>
+                      <div className="text-lg font-semibold text-black dark:text-zinc-50">
+                        {(p.probability * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                  ))}
               </div>
-            ))}
+            </div>
+          ))}
         </div>
       </main>
     </div>

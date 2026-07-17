@@ -40,7 +40,7 @@ export default async function Home() {
           futbol-modelo
         </h1>
         <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-          Upcoming fixtures with live prediction slates.
+          Calibrated soccer predictions across MLS, the Premier League, Serie A, and La Liga — generated and graded automatically, with every prediction locked before kickoff.
         </p>
 
         {!data && (
