@@ -42,9 +42,7 @@ function marketLabel(market: string): string {
 
 function cleanStatement(statement: string, market: string): string {
   return statement
-    .replace(/^Sot\b/i, "Shots on target")
-    .replace(/^Corners\b/i, "Corners")
-    .replace(/\bover\b/i, "over");
+    .replace(/^Sot\b/i, "Shots on target");
 }
 
 async function getSlate(matchId: string): Promise<SlateResponse | null> {

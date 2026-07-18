@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "futbol-modelo",
+  title: "Futbol Modelo",
   description: "Calibrated soccer prediction system — live fixtures and prediction slates.",
 };
 
