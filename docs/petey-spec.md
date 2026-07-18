@@ -78,16 +78,24 @@ smarter from actual usage, not guesswork.
 | Testing (valid / invalid / ambiguous / empty-result cases) | 1.5 |
 | **Total** | **~9.5 hours (3-4 sessions)** |
 
+## Confirmed infrastructure
+
+- **Ollama is live and reachable** at `192.168.4.48:11434` (the GPU
+  workstation, flat network, no VLAN segmentation currently in place).
+  Verified via `curl http://192.168.4.48:11434/api/tags`.
+- **Model: `llama3.2:latest` (3.2B params, Q4_K_M quantization)** — already
+  the right size for this task per ADR-005 (small, fast, structured-output
+  focused, not a large general-purpose model). Its capability list
+  explicitly includes `tools`, meaning native support for structured
+  JSON/function-calling output.
+
 ## Open questions for next session
-- Confirm Ollama is actually running and reachable in the homelab
-  (`docker ps | grep ollama`, `docker exec ollama ollama list`) — never
-  actually verified this
-- Which model to use for intent classification — needs to be fast and
-  reliable at structured output, not necessarily large/general-purpose
 - Where does the chat UI live — its own page (`/petey`), or a
   widget/drawer on existing pages?
 - Rate limiting / abuse handling for the public-facing custom question input,
   since this is genuinely a public site now
+- `FUTBOL_OLLAMA_URL` env var / secret needs to be added for the API to
+  reach `192.168.4.48:11434` — same pattern as `FUTBOL_RO_DSN`
 
 ## Resolved design decisions
 
