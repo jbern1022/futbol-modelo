@@ -1,7 +1,8 @@
 """
 futbol-modelo portal API — read-only FastAPI backend serving fixtures,
 slates, and the season scorecard from Postgres. Uses the futbol_ro role
-(SELECT-only), never the main futbol user.
+(SELECT-only), never the main futbol user — this API can't write to the
+ledger even in the event of a bug.
 
 Run locally:
     uvicorn api.main:app --reload --port 8000
@@ -11,19 +12,26 @@ Endpoints:
     GET /fixtures/{match_id}/slate
     GET /scorecard?league=MLS
     GET /calibration?league=MLS
+    POST /ask  {"market": "CORNERS", "league": "MLS"}
 """
 import os
+import time
 from typing import Optional
 
 import psycopg2
 import psycopg2.extras
+import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 RO_DSN = os.environ.get(
     "FUTBOL_RO_DSN",
     "host=futbol-db dbname=futbol user=futbol_ro password=CHANGE_ME",
 )
+OLLAMA_URL = os.environ.get("FUTBOL_OLLAMA_URL", "http://192.168.4.48:11434")
+OLLAMA_MODEL = "llama3.2:latest"
+OLLAMA_TIMEOUT_SECONDS = 20  # ADR-005 hard cutoff
 
 app = FastAPI(
     title="futbol-modelo API",
@@ -35,7 +43,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -48,7 +56,7 @@ def get_conn():
 def root():
     return {"service": "futbol-modelo API", "status": "ok",
             "endpoints": ["/fixtures", "/fixtures/{match_id}/slate",
-                         "/scorecard", "/calibration"]}
+                         "/scorecard", "/calibration", "/ask"]}
 
 
 @app.get("/fixtures")
@@ -159,3 +167,87 @@ def calibration(league: Optional[str] = Query(None)):
         return {"count": len(rows), "calibration": rows}
     finally:
         conn.close()
+
+
+class AskRequest(BaseModel):
+    market: str
+    league: str
+
+
+@app.post("/ask")
+def ask_petey(req: AskRequest):
+    """
+    Petey v1 — first real slice. Per ADR-002/ADR-008: Ollama never sees
+    raw rows or writes any query. This endpoint looks up one real,
+    pre-computed aggregate and asks Ollama only to phrase that exact
+    number as a sentence. Per ADR-007, flags small samples (n < 5).
+    Per ADR-005, hard 20s timeout with a graceful, still-honest fallback.
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT * FROM futbol.v_season_scorecard
+                   WHERE market = %s AND league = %s""",
+                (req.market, req.league))
+            row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return {
+            "answer": f"I don't have any graded predictions yet for "
+                      f"{req.market} in {req.league}.",
+            "n_predictions": 0,
+            "small_sample": True,
+        }
+
+    n = row["n_predictions"]
+    small_sample = n < 5
+    hit_rate = float(row["hit_rate"])
+    avg_confidence = float(row["avg_confidence"])
+
+    summary = (
+        f"Market: {row['market']}, League: {row['league']}, "
+        f"Predictions graded: {n}, "
+        f"Stated confidence: {avg_confidence * 100:.1f}%, "
+        f"Realized hit rate: {hit_rate * 100:.1f}%."
+    )
+    prompt = (
+        "You are Petey, a straightforward sports-analytics assistant. "
+        "Turn the following stat summary into ONE short, plain-English "
+        "sentence describing prediction accuracy for this market. "
+        "'Hit rate' means the percentage of past predictions that turned "
+        "out correct — it is NOT a literal count of goals, corners, or "
+        "events. Do not add any numbers, teams, or facts not present "
+        "in the summary below. Do not speculate.\n\n" + summary
+    )
+
+    try:
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            timeout=OLLAMA_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        answer = resp.json().get("response", "").strip()
+        if not answer:
+            raise ValueError("empty response")
+    except Exception:
+        answer = (
+            f"{row['market']} predictions in {row['league']} have hit "
+            f"{hit_rate * 100:.1f}% of the time across {n} graded "
+            f"predictions."
+        )
+
+    result = {
+        "answer": answer,
+        "n_predictions": n,
+        "hit_rate": hit_rate,
+        "avg_confidence": avg_confidence,
+        "small_sample": small_sample,
+    }
+    if small_sample:
+        noun = "prediction" if n == 1 else "predictions"
+        result["disclaimer"] = f"Based on only {n} {noun} — treat this cautiously."
+    return result
