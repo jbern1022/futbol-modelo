@@ -40,12 +40,14 @@ export default async function Home() {
           <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
             Futbol Modelo
           </h1>
-          <a
-            href="/track-record"
-            className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
-          >
-            Track Record
-          </a>
+          <div className="flex gap-2">
+            <a href="/how-it-works" className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
+              How It Works
+            </a>
+            <a href="/track-record" className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
+              Track Record
+            </a>
+          </div>
         </div>
         <p className="mt-2 text-zinc-600 dark:text-zinc-400">
           Calibrated soccer predictions across MLS, the Premier League, Serie A, and La Liga — generated and graded automatically, with every prediction locked before kickoff.
@@ -68,11 +70,7 @@ export default async function Home() {
         {data && data.fixtures.length > 0 && (
           <div className="mt-10 space-y-3">
             {data.fixtures.map((f) => (
-              <a
-                key={f.match_id}
-                href={`/fixtures/${f.match_id}`}
-                className="block rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
-              >
+              <a key={f.match_id} href={`/fixtures/${f.match_id}`} className="block rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
