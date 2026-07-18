@@ -82,9 +82,16 @@ smarter from actual usage, not guesswork.
 - Confirm Ollama is actually running and reachable in the homelab
   (`docker ps | grep ollama`, `docker exec ollama ollama list`) — never
   actually verified this
-- Which model to use for intent classification — doesn't need to be large,
-  this is a narrow structured-output task, not open conversation
+- Which model to use for intent classification — needs to be fast and
+  reliable at structured output, not necessarily large/general-purpose
 - Where does the chat UI live — its own page (`/petey`), or a
   widget/drawer on existing pages?
 - Rate limiting / abuse handling for the public-facing custom question input,
   since this is genuinely a public site now
+
+## Resolved design decisions
+
+See docs/adr/petey-decisions.md for the full set of architectural
+decision records (ADR-001 through ADR-011), covering the query-builder
+approach, timeouts, honesty thresholds, and every other locked-in design
+choice with full context and rationale.
