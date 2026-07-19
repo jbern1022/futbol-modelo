@@ -115,6 +115,17 @@ smarter from actual usage, not guesswork.
 - Multi-turn conversation (ADR-009) — v1 is deliberately stateless
 - True free-text natural-language input, translated into the same
   validated JSON shape (ADR-003) — v1 is UI-driven only, by design
+- **Petey as an agent** — autonomous multi-step tool chaining (e.g.
+  "compare Seattle's and Portland's corners form, then tell me which the
+  model's been more accurate on" — a single question requiring several
+  underlying lookups combined, not one fixed shape). Deliberately shelved,
+  not scoped yet. Worth flagging explicitly: this is a genuinely larger
+  step than v1's single-shot Q&A, not just "v1 plus more question types."
+  Multi-step tool chaining is a materially different risk surface than
+  ADR-002/003's single-shot pattern — needs its own safety design (call
+  limits, loop prevention, validating every step of a chain rather than
+  one fixed lookup) before being built, not an assumption that the
+  existing allowlist/validator approach extends automatically.
 
 ## Resolved design decisions
 
