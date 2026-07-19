@@ -90,12 +90,31 @@ smarter from actual usage, not guesswork.
   JSON/function-calling output.
 
 ## Open questions for next session
-- Where does the chat UI live — its own page (`/petey`), or a
-  widget/drawer on existing pages?
 - Rate limiting / abuse handling for the public-facing custom question input,
   since this is genuinely a public site now
-- `FUTBOL_OLLAMA_URL` env var / secret needs to be added for the API to
-  reach `192.168.4.48:11434` — same pattern as `FUTBOL_RO_DSN`
+
+## v1 shipped — real status
+
+- `/ask` and `/ask/team-form` endpoints live, tested against real Ollama
+  output, with 3 real bugs found and fixed through live testing (see git
+  history for `api/main.py`)
+- `/petey` page live with both modes (Prediction Accuracy, Team Recent Form)
+- **Not yet deployed to production** — only tested locally so far.
+  `requirements-api.txt` needs `requests`/`pydantic` added, and
+  `FUTBOL_OLLAMA_URL` needs to be added to the k3s secret, before the
+  next production rebuild/redeploy.
+
+## v2 ideas (deliberately deferred, not open questions)
+
+- **Floating "Ask Petey" button + side drawer**, available from any page
+  (not just `/petey`) — same functionality as the current full page, but
+  accessible as a persistent widget rather than requiring navigation away
+  from what the user is looking at. The full `/petey` page can stay as-is;
+  this would be an additional, more discoverable entry point layered on
+  top of the same backend.
+- Multi-turn conversation (ADR-009) — v1 is deliberately stateless
+- True free-text natural-language input, translated into the same
+  validated JSON shape (ADR-003) — v1 is UI-driven only, by design
 
 ## Resolved design decisions
 
