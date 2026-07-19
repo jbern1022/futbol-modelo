@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 const LEAGUES = ["MLS", "EPL", "SERIE_A", "LA_LIGA", "WC"];
 const MARKETS = [
   { value: "1X2", label: "Match Result" },
@@ -50,7 +48,7 @@ export default function PeteyPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/teams?league=${formLeague}`)
+    fetch(`/api/teams?league=${formLeague}`)
       .then((r) => r.json())
       .then((d) => setTeams(d.teams || []))
       .catch(() => setTeams([]));
@@ -62,7 +60,7 @@ export default function PeteyPage() {
     setError(null);
     setResponse(null);
     try {
-      const url = mode === "accuracy" ? `${API_URL}/ask` : `${API_URL}/ask/team-form`;
+      const url = mode === "accuracy" ? "/api/ask" : "/api/ask/team-form";
       const body = mode === "accuracy"
         ? { market, league }
         : { team, stat, games };
