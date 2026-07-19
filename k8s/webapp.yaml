@@ -27,6 +27,11 @@ spec:
             secretKeyRef:
               name: futbol-secrets
               key: FUTBOL_RO_DSN
+        - name: FUTBOL_OLLAMA_URL
+          valueFrom:
+            secretKeyRef:
+              name: futbol-secrets
+              key: FUTBOL_OLLAMA_URL
         readinessProbe:
           httpGet:
             path: /
