@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 
 const LEAGUES = ["MLS", "EPL", "SERIE_A", "LA_LIGA", "WC"];
 const MARKETS = [
@@ -31,15 +32,21 @@ interface AskResponse {
   disclaimer?: string;
 }
 
-export default function PeteyPage() {
-  const [mode, setMode] = useState<"accuracy" | "form">("accuracy");
+function PeteyPageInner() {
+  const searchParams = useSearchParams();
+  const initialTeam = searchParams.get("team") || "";
+  const initialLeague = searchParams.get("league") || "MLS";
+  const initialMode: "accuracy" | "form" =
+    searchParams.get("mode") === "form" || initialTeam ? "form" : "accuracy";
+
+  const [mode, setMode] = useState<"accuracy" | "form">(initialMode);
 
   const [league, setLeague] = useState("MLS");
   const [market, setMarket] = useState("CORNERS");
 
   const [teams, setTeams] = useState<string[]>([]);
-  const [formLeague, setFormLeague] = useState("MLS");
-  const [team, setTeam] = useState("");
+  const [formLeague, setFormLeague] = useState(initialLeague);
+  const [team, setTeam] = useState(initialTeam);
   const [stat, setStat] = useState("corners");
   const [games, setGames] = useState(10);
 
@@ -47,12 +54,18 @@ export default function PeteyPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isFirstTeamsFetch = useRef(true);
+
   useEffect(() => {
     fetch(`/api/teams?league=${formLeague}`)
       .then((r) => r.json())
       .then((d) => setTeams(d.teams || []))
       .catch(() => setTeams([]));
-    setTeam("");
+    if (isFirstTeamsFetch.current) {
+      isFirstTeamsFetch.current = false;
+    } else {
+      setTeam("");
+    }
   }, [formLeague]);
 
   async function handleAsk() {
@@ -212,5 +225,13 @@ export default function PeteyPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function PeteyPage() {
+  return (
+    <Suspense fallback={null}>
+      <PeteyPageInner />
+    </Suspense>
   );
 }

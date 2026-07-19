@@ -65,9 +65,7 @@ function outcomeBadge(outcome: string | null) {
     void: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
   };
   return (
-    <span
-      className={`ml-2 rounded px-2 py-0.5 text-xs font-medium uppercase ${styles[outcome] || styles.void}`}
-    >
+    <span className={`ml-2 rounded px-2 py-0.5 text-xs font-medium uppercase ${styles[outcome] || styles.void}`}>
       {outcome}
     </span>
   );
@@ -115,19 +113,24 @@ export default async function FixturePage({
           &larr; Back to fixtures
         </a>
 
-        <div className="mt-6">
-          <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-            {fixture.league} &middot; {fixture.status}
-          </span>
-          <h1 className="mt-1 text-2xl font-semibold text-black dark:text-zinc-50">
-            {fixture.home} vs {fixture.away}
-          </h1>
-          <p className="mt-1 text-zinc-500">
-            {new Date(fixture.kickoff_utc).toLocaleString(undefined, {
-              dateStyle: "full",
-              timeStyle: "short",
-            })}
-          </p>
+        <div className="mt-6 flex items-start justify-between">
+          <div>
+            <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              {fixture.league} &middot; {fixture.status}
+            </span>
+            <h1 className="mt-1 text-2xl font-semibold text-black dark:text-zinc-50">
+              {fixture.home} vs {fixture.away}
+            </h1>
+            <p className="mt-1 text-zinc-500">
+              {new Date(fixture.kickoff_utc).toLocaleString(undefined, {
+                dateStyle: "full",
+                timeStyle: "short",
+              })}
+            </p>
+          </div>
+          <a href={`/petey?mode=form&league=${encodeURIComponent(fixture.league)}&team=${encodeURIComponent(fixture.home)}`} className="whitespace-nowrap rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
+            Ask Petey
+          </a>
         </div>
 
         <div className="mt-8 space-y-6">
@@ -144,10 +147,7 @@ export default async function FixturePage({
                   .slice()
                   .sort((a, b) => b.probability - a.probability)
                   .map((p) => (
-                    <div
-                      key={p.prediction_id}
-                      className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"
-                    >
+                    <div key={p.prediction_id} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
                       <div className="text-black dark:text-zinc-50">
                         {cleanStatement(p.statement, p.market)}
                         {outcomeBadge(p.outcome)}
