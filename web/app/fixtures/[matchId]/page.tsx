@@ -36,6 +36,23 @@ const MARKET_LABELS: Record<string, string> = {
   PLAYER_SAVES: "Goalkeeper Saves",
 };
 
+const LEAGUE_COLORS: Record<string, string> = {
+  MLS: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
+  EPL: "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300",
+  SERIE_A: "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300",
+  LA_LIGA: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  WC: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+};
+
+function leagueBadge(league: string) {
+  const style = LEAGUE_COLORS[league] || "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  return (
+    <span className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${style}`}>
+      {league}
+    </span>
+  );
+}
+
 function marketLabel(market: string): string {
   return MARKET_LABELS[market] || market;
 }
@@ -115,8 +132,11 @@ export default async function FixturePage({
 
         <div className="mt-6 flex items-start justify-between">
           <div>
-            <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-              {fixture.league} &middot; {fixture.status}
+            <span className="flex items-center gap-2">
+              {leagueBadge(fixture.league)}
+              <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                {fixture.status}
+              </span>
             </span>
             <h1 className="mt-1 text-2xl font-semibold text-black dark:text-zinc-50">
               {fixture.home} vs {fixture.away}

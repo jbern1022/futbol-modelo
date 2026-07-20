@@ -30,6 +30,23 @@ async function getFixtures(): Promise<FixturesResponse | null> {
   }
 }
 
+const LEAGUE_COLORS: Record<string, string> = {
+  MLS: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
+  EPL: "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300",
+  SERIE_A: "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300",
+  LA_LIGA: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  WC: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+};
+
+function leagueBadge(league: string) {
+  const style = LEAGUE_COLORS[league] || "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  return (
+    <span className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${style}`}>
+      {league}
+    </span>
+  );
+}
+
 export default async function Home() {
   const data = await getFixtures();
 
@@ -41,6 +58,9 @@ export default async function Home() {
             Futbol Modelo
           </h1>
           <div className="flex gap-2">
+            <a href="/petey" className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
+              Ask Petey
+            </a>
             <a href="/how-it-works" className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
               How It Works
             </a>
@@ -73,9 +93,7 @@ export default async function Home() {
               <a key={f.match_id} href={`/fixtures/${f.match_id}`} className="block rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                      {f.league}
-                    </span>
+                    {leagueBadge(f.league)}
                     <div className="mt-1 text-lg font-medium text-black dark:text-zinc-50">
                       {f.home} vs {f.away}
                     </div>
