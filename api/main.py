@@ -18,12 +18,13 @@ Endpoints:
 """
 import os
 import time
+from collections import defaultdict
 from typing import Optional
 
 import psycopg2
 import psycopg2.extras
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -33,6 +34,36 @@ RO_DSN = os.environ.get(
 )
 OLLAMA_URL = os.environ.get("FUTBOL_OLLAMA_URL", "http://192.168.4.48:11434")
 OLLAMA_MODEL = "llama3.2:latest"
+
+# Simple in-memory sliding-window rate limit for the public Petey
+# endpoints. Appropriately scoped for a single-pod portfolio site --
+# not meant to survive a pod restart or scale across replicas, just to
+# stop casual abuse of a public, LLM-backed endpoint.
+RATE_LIMIT_MAX_REQUESTS = 20
+RATE_LIMIT_WINDOW_SECONDS = 60
+_request_log: dict[str, list[float]] = defaultdict(list)
+
+
+def _client_ip(request: Request) -> str:
+    # Real client IP travels through Cloudflare -> NPM -> k3s as
+    # X-Forwarded-For; the raw connection IP would just be NPM's pod.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _enforce_rate_limit(request: Request):
+    ip = _client_ip(request)
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW_SECONDS
+    recent = [t for t in _request_log[ip] if t > window_start]
+    if len(recent) >= RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests -- please wait a moment before asking Petey again.")
+    recent.append(now)
+    _request_log[ip] = recent
 OLLAMA_TIMEOUT_SECONDS = 20  # ADR-005 hard cutoff
 
 app = FastAPI(
@@ -178,7 +209,7 @@ class AskRequest(BaseModel):
 
 
 @app.post("/ask")
-def ask_petey(req: AskRequest):
+def ask_petey(req: AskRequest, request: Request):
     """
     Petey v1 — first real slice. Per ADR-002/ADR-008: Ollama never sees
     raw rows or writes any query. This endpoint looks up one real,
@@ -186,6 +217,7 @@ def ask_petey(req: AskRequest):
     number as a sentence. Per ADR-007, flags small samples (n < 5).
     Per ADR-005, hard 20s timeout with a graceful, still-honest fallback.
     """
+    _enforce_rate_limit(request)
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -313,7 +345,7 @@ class TeamFormRequest(BaseModel):
 
 
 @app.post("/ask/team-form")
-def ask_team_form(req: TeamFormRequest):
+def ask_team_form(req: TeamFormRequest, request: Request):
     """
     Team recent-form question. Per ADR-006, backward-looking questions
     use a row limit (last N games), not a date window. This is a
@@ -324,6 +356,7 @@ def ask_team_form(req: TeamFormRequest):
     Ollama only ever sees the final computed average, never raw rows
     (ADR-002/003/008).
     """
+    _enforce_rate_limit(request)
     if req.stat not in TEAM_FORM_STATS:
         raise HTTPException(
             status_code=400,
