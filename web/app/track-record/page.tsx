@@ -121,6 +121,11 @@ export default async function TrackRecordPage() {
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-500">
                         {row.n_predictions}
+                        {row.n_predictions < 5 && (
+                          <span title="Small sample -- treat this cautiously" className="ml-1 text-amber-600 dark:text-amber-400">
+                            &#9888;
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-2 text-right text-black dark:text-zinc-50">
                         {(row.avg_confidence * 100).toFixed(1)}%
@@ -133,6 +138,11 @@ export default async function TrackRecordPage() {
                 </tbody>
               </table>
             </div>
+            <p className="mt-2 text-xs text-zinc-400">
+              <span className="text-amber-600 dark:text-amber-400">&#9888;</span>{" "}
+              marks a market with fewer than 5 graded predictions -- treat
+              those numbers cautiously.
+            </p>
 
             {calibration.length > 0 && (
               <>
