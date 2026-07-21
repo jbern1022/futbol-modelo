@@ -1,0 +1,369 @@
+[07/10/26 11:27:35] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 11:27:35] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+[07/10/26 11:27:37] INFO     Understat schedule: 380 rows                                 loader.py:99
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 372, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 337, in main
+    load_understat(conn, lg, args.seasons)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 103, in load_understat
+    away = entities.resolve_team("understat", r["away_team"])
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/entities.py", line 153, in resolve_team
+    raise UnknownTeamError(
+    ...<2 lines>...
+    )
+ingestion.entities.UnknownTeamError: Unmapped team 'Southampton' from 'understat'. Add it to TEAM_SEED — do not guess.
+[07/10/26 11:27:37] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 11:27:37] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+[07/10/26 11:27:39] INFO     Understat schedule: 380 rows                                 loader.py:99
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 372, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 337, in main
+    load_understat(conn, lg, args.seasons)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 103, in load_understat
+    away = entities.resolve_team("understat", r["away_team"])
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/entities.py", line 153, in resolve_team
+    raise UnknownTeamError(
+    ...<2 lines>...
+    )
+ingestion.entities.UnknownTeamError: Unmapped team 'Southampton' from 'understat'. Add it to TEAM_SEED — do not guess.
+[07/10/26 11:27:40] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 11:27:40] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+[07/10/26 11:27:42] INFO     Understat schedule: 380 rows                                 loader.py:99
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 372, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 337, in main
+    load_understat(conn, lg, args.seasons)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 103, in load_understat
+    away = entities.resolve_team("understat", r["away_team"])
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/entities.py", line 153, in resolve_team
+    raise UnknownTeamError(
+    ...<2 lines>...
+    )
+ingestion.entities.UnknownTeamError: Unmapped team 'Luton' from 'understat'. Add it to TEAM_SEED — do not guess.
+[07/10/26 11:27:43] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 11:27:43] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+[07/10/26 11:27:45] INFO     Understat schedule: 380 rows                                 loader.py:99
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 372, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 337, in main
+    load_understat(conn, lg, args.seasons)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 102, in load_understat
+    home = entities.resolve_team("understat", r["home_team"])
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/entities.py", line 153, in resolve_team
+    raise UnknownTeamError(
+    ...<2 lines>...
+    )
+ingestion.entities.UnknownTeamError: Unmapped team 'Ipswich' from 'understat'. Add it to TEAM_SEED — do not guess.
+[07/10/26 11:27:45] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 11:27:45] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+[07/10/26 11:27:46] INFO     Understat schedule: 380 rows                                 loader.py:99
+[07/10/26 11:28:14] INFO     Understat shots: 9524 rows                                  loader.py:122
+[07/10/26 11:35:27] INFO     skipping FBref stage                                        loader.py:343
+                    INFO     done: backfill EPL ['2526']                                 loader.py:346
+[07/10/26 11:43:12] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 11:43:12] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+                    INFO     Understat schedule: 380 rows                                 loader.py:99
+[07/10/26 11:48:57] INFO     Understat shots: 9775 rows                                  loader.py:122
+[07/10/26 11:56:59] INFO     skipping FBref stage                                        loader.py:343
+                    INFO     done: backfill EPL ['2122']                                 loader.py:346
+[07/10/26 11:57:00] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 11:57:00] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+                    INFO     Understat schedule: 380 rows                                 loader.py:99
+[07/10/26 14:25:15] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 14:25:15] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+[07/10/26 14:25:16] INFO     Understat schedule: 380 rows                                 loader.py:99
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 372, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 330, in main
+    conn = psycopg2.connect(DSN)
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/psycopg2/__init__.py", line 122, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "192.168.4.210", port 5432 failed: FATAL:  password authentication failed for user "futbol"
+connection to server at "192.168.4.210", port 5432 failed: FATAL:  password authentication failed for user "futbol"
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 372, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 330, in main
+    conn = psycopg2.connect(DSN)
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/psycopg2/__init__.py", line 122, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "192.168.4.210", port 5432 failed: FATAL:  password authentication failed for user "futbol"
+connection to server at "192.168.4.210", port 5432 failed: FATAL:  password authentication failed for user "futbol"
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 372, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 330, in main
+    conn = psycopg2.connect(DSN)
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/psycopg2/__init__.py", line 122, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "192.168.4.210", port 5432 failed: FATAL:  password authentication failed for user "futbol"
+connection to server at "192.168.4.210", port 5432 failed: FATAL:  password authentication failed for user "futbol"
+
+[07/10/26 14:29:28] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 14:29:28] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+[07/10/26 14:29:29] INFO     Understat schedule: 380 rows                                 loader.py:99
+[07/10/26 14:29:39] INFO     Understat shots: 10524 rows                                 loader.py:122
+[07/10/26 14:33:49] INFO     Understat shots: 9644 rows                                  loader.py:122
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 372, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 337, in main
+    load_understat(conn, lg, args.seasons)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 132, in load_understat
+    pid = entities.link_player(cur, "understat", str(s["player_id"]),
+                               s["player"], team)
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/entities.py", line 213, in link_player
+    cur.execute(
+    ~~~~~~~~~~~^
+        f"""INSERT INTO futbol.players (full_name, position, {id_col})
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            VALUES (%s, %s, %s) RETURNING player_id""",
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        (full_name, position, source_id))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.DeadlockDetected: deadlock detected
+DETAIL:  Process 9013 waits for ShareLock on transaction 938; blocked by process 9038.
+Process 9038 waits for ShareLock on transaction 934; blocked by process 9013.
+HINT:  See server log for query details.
+CONTEXT:  while inserting index tuple (13,24) in relation "players_understat_id_key"
+
+[07/10/26 14:35:50] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 14:35:50] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+                    INFO     Understat schedule: 380 rows                                 loader.py:99
+[07/10/26 14:40:16] INFO     Understat shots: 9878 rows                                  loader.py:122
+[07/10/26 14:43:49] INFO     skipping FBref stage                                        loader.py:343
+                    INFO     done: backfill EPL ['2223']                                 loader.py:346
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 372, in <module>
+    main()
+    ~~~~^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 337, in main
+    load_understat(conn, lg, args.seasons)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/loader.py", line 132, in load_understat
+    pid = entities.link_player(cur, "understat", str(s["player_id"]),
+                               s["player"], team)
+  File "/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src/ingestion/entities.py", line 213, in link_player
+    cur.execute(
+    ~~~~~~~~~~~^
+        f"""INSERT INTO futbol.players (full_name, position, {id_col})
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            VALUES (%s, %s, %s) RETURNING player_id""",
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        (full_name, position, source_id))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint "players_understat_id_key"
+DETAIL:  Key (understat_id)=(2199) already exists.
+
+[07/10/26 14:43:50] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+[07/10/26 14:43:50] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 14:43:50] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+[2026-07-10 14:43:50] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+[07/10/26 14:43:51] INFO     Understat schedule: 380 rows                                 loader.py:99
+[07/10/26 14:44:22] INFO     Understat shots: 9524 rows                                  loader.py:122
+[07/10/26 14:44:23] INFO     Understat schedule: 380 rows                                 loader.py:99
+[07/10/26 14:44:56] INFO     Understat shots: 10524 rows                                 loader.py:122
+[07/10/26 14:52:41] INFO     skipping FBref stage                                        loader.py:343
+                    INFO     done: backfill EPL ['2526']                                 loader.py:346
+[07/10/26 14:54:06] INFO     skipping FBref stage                                        loader.py:343
+                    INFO     done: backfill EPL ['2324']                                 loader.py:346
+[07/10/26 14:54:06] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/Understat                               
+[2026-07-10 14:54:06] INFO     TLSLibrary:_load_library:397 - Successfully loaded TLS library: /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/.venv/lib/python3.14/site-packages/tls_requests/bin/tls-client-darwin-arm64-1.13.1.dylib
+                    INFO     Successfully loaded TLS library:                         libraries.py:397
+                             /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol                 
+                             -modelo/.venv/lib/python3.14/site-packages/tls_requests/                 
+                             bin/tls-client-darwin-arm64-1.13.1.dylib                                 
+[07/10/26 14:54:07] INFO     Understat schedule: 380 rows                                 loader.py:99
+[07/10/26 14:54:39] INFO     Understat shots: 9878 rows                                  loader.py:122
+[07/10/26 15:03:09] INFO     skipping FBref stage                                        loader.py:343
+                    INFO     done: backfill EPL ['2425']                                 loader.py:346

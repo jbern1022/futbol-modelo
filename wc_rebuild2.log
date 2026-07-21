@@ -1,0 +1,12 @@
+[07/10/26 17:47:33] INFO     No custom team name replacements found. You can configure   _config.py:92
+                             these in                                                                 
+                             /Users/joebernal/soccerdata/config/teamname_replacements.js              
+                             on.                                                                      
+                    INFO     No custom league dict found. You can configure additional  _config.py:190
+                             leagues in                                                               
+                             /Users/joebernal/soccerdata/config/league_dict.json.                     
+                    INFO     Saving cached data to                                      _common.py:250
+                             /Users/joebernal/soccerdata/data/FBref                                   
+[07/10/26 17:47:35] INFO     World Cup schedule: 100 rows                                loader.py:223
+[07/10/26 17:47:41] INFO     World Cup load complete                                     loader.py:251
+                    INFO     done: backfill WC ['2026']                                  loader.py:346

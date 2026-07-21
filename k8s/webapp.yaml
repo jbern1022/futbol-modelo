@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: futbol-api
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: futbol-api
+  template:
+    metadata:
+      labels:
+        app: futbol-api
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k3s-control-plane
+      containers:
+      - name: futbol-api
+        image: gitea.josephbernal.com/joe/futbol-api:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+        env:
+        - name: FUTBOL_RO_DSN
+          valueFrom:
+            secretKeyRef:
+              name: futbol-secrets
+              key: FUTBOL_RO_DSN
+        - name: FUTBOL_OLLAMA_URL
+          valueFrom:
+            secretKeyRef:
+              name: futbol-secrets
+              key: FUTBOL_OLLAMA_URL
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 3
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: futbol-api-svc
+  namespace: default
+spec:
+  selector:
+    app: futbol-api
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: futbol-web
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: futbol-web
+  template:
+    metadata:
+      labels:
+        app: futbol-web
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k3s-control-plane
+      containers:
+      - name: futbol-web
+        image: gitea.josephbernal.com/joe/futbol-web:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://futbol-api-svc:8000"
+        - name: HOSTNAME
+          value: "0.0.0.0"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: futbol-web-svc
+  namespace: default
+spec:
+  selector:
+    app: futbol-web
+  ports:
+  - port: 3000
+    targetPort: 3000

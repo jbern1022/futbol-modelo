@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: ingest-nightly, namespace: futbol }
+spec:
+  schedule: "0 2 * * *"          # 02:00 daily
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: ingest
+            image: gitea.lab/bernal-labs/futbol-modelo:latest
+            command: ["/bin/sh","-c"]
+            args:
+              - python -m ingestion.loader matchday --league EPL &&
+                python -m ingestion.loader matchday --league SERIE_A
+            env:
+            - name: FUTBOL_DSN
+              valueFrom: { secretKeyRef: { name: futbol-db, key: dsn } }
+            volumeMounts:
+            - { name: sd-cache, mountPath: /root/soccerdata }
+          volumes:
+          - name: sd-cache
+            persistentVolumeClaim: { claimName: soccerdata-cache }
