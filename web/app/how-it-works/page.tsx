@@ -59,9 +59,23 @@ export default function HowItWorksPage() {
           intervention required to keep it going.
         </p>
 
-        <a href="/track-record" className="mt-8 inline-block rounded-md border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
-          See the live track record &rarr;
-        </a>
+        <p className="mt-6 text-zinc-600 dark:text-zinc-400">
+          Alongside the pipeline, <strong className="text-black dark:text-zinc-50">Petey</strong>{" "}
+          answers real questions about the data — how a market has performed,
+          how a team has been playing lately. Petey never writes its own
+          database queries or sees raw rows: it only ever phrases a
+          pre-computed, validated answer as a sentence, and it says so
+          plainly when a sample is too small to trust.
+        </p>
+
+        <div className="mt-8 flex flex-wrap gap-3">
+          <a href="/track-record" className="inline-block rounded-md border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
+            See the live track record &rarr;
+          </a>
+          <a href="/petey" className="inline-block rounded-md border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
+            Ask Petey &rarr;
+          </a>
+        </div>
       </main>
     </div>
   );
