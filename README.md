@@ -1,87 +1,71 @@
-# futbol-modelo — Bernal Labs
+# Futbol Modelo
 
-Calibrated soccer prediction system. Premier League + Serie A at launch,
-international module (World Cup) layered on later. Every prediction is
-logged immutably before kickoff and graded after — the season-end
-scorecard is the product.
+A calibrated soccer prediction system — real predictions, locked before
+kickoff, graded automatically, published honestly (misses included).
+
+**Live site:** [futbol.josephbernal.com](https://futbol.josephbernal.com)
+**How it works:** [futbol.josephbernal.com/how-it-works](https://futbol.josephbernal.com/how-it-works)
+**Track record:** [futbol.josephbernal.com/track-record](https://futbol.josephbernal.com/track-record)
+
+## What this is
+
+A full-stack ML system covering four leagues (MLS, Premier League, Serie A,
+La Liga):
+
+- **Dixon-Coles** statistical model for match outcomes (win/draw/loss,
+  total goals, both-teams-to-score)
+- **LightGBM** gradient-boosted models for props markets (corners, shots
+  on target, anytime goalscorer, goalkeeper saves) — each required to
+  beat a naive baseline on held-out data before being allowed to ship
+- An **immutable prediction ledger** — once a prediction is written, it
+  cannot be edited or deleted, even by the system itself
+- Fully automated daily pipeline (refresh data → generate predictions →
+  grade finished matches), running unattended on a self-managed
+  Kubernetes cluster
+
+## Petey
+
+A conversational layer on top of the real data — not a general chatbot,
+a narrow tool that answers specific questions using real, pre-validated
+queries. The LLM (a small local Ollama model) never writes SQL and never
+sees raw database rows; it only ever phrases a pre-computed, validated
+answer as a sentence. Full reasoning in
+[`docs/petey-spec.md`](docs/petey-spec.md) and the architectural decision
+records in [`docs/adr/petey-decisions.md`](docs/adr/petey-decisions.md).
 
 ## Architecture
+Ingestion (API-Football, Understat, FBref)
+│
+▼
+PostgreSQL  ──────────────►  FastAPI (read-only role)
+│                              │
+▼                              ▼
+Model training              Next.js frontend
+(Dixon-Coles, LightGBM)      (fixtures, slates, Track Record, Petey)
+│
+▼
+Kubernetes CronJobs (daily refresh / predict / grade)
+- `src/` — ingestion pipeline, entity resolution, feature engineering,
+  models (Dixon-Coles, LightGBM props)
+- `scripts/` — slate generation, grading, automation entry points
+- `api/` — FastAPI backend (read-only DB role, Ollama integration for Petey)
+- `web/` — Next.js frontend
+- `sql/` — schema, views (calibration, season scorecard)
+- `k8s/` — Kubernetes manifests
+- `docs/` — design specs and architectural decision records
 
-```
-                    ┌─────────────────────────────────────────┐
-                    │  k3s (Pi cluster)                        │
-  FBref ──scrape──► │  CronJob: ingest-nightly (02:00)         │
-  Understat ──────► │  CronJob: ingest-matchday (hourly, Sa/Su)│
-  football-data ──► │  CronJob: grade-nightly (04:00)          │
-                    │  CronJob: predict-prematch (T-6h)        │
-                    │  Deployment: portal-api (FastAPI)        │
-                    └──────────────┬──────────────────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │  Postgres (Proxmox / Omen)   │
-                    │  schema: futbol              │
-                    │  · dims, facts, shots        │
-                    │  · predictions (immutable)   │
-                    │  · prediction_grades         │
-                    │  · model_registry            │
-                    └──────────────┬──────────────┘
-                                   │
-              ┌────────────────────┼────────────────────┐
-              │                    │                     │
-   ┌──────────▼─────────┐  ┌──────▼───────┐  ┌──────────▼─────────┐
-   │ Training (WoL 5070)│  │ Grafana      │  │ Portal frontend    │
-   │ · Dixon-Coles      │  │ · calibration│  │ · match slates     │
-   │ · LightGBM props   │  │ · pipeline   │  │ · track record     │
-   │ · (v3: neural tier)│  │   health     │  │ · Ollama previews  │
-   └────────────────────┘  └──────────────┘  └────────────────────┘
-```
+## A few real engineering notes
 
-## The two models
+This project has a real, sometimes messy build history — including
+production bugs found and fixed live: a database constraint that never
+actually enforced uniqueness because of how SQL treats `NULL`, an LLM
+that misread a stated confidence percentage as a literal event count,
+and a Next.js client component trying to reach a Kubernetes-internal
+service name that no browser could ever resolve. The `docs/` folder and
+git history reflect that honestly — the interesting parts of building
+something real aren't usually the parts that worked on the first try.
 
-**High-level (match) model — `src/models/dixon_coles.py`**
-Time-decayed Dixon-Coles Poisson, fit per league. One scoreline
-distribution per fixture → 1X2, totals, BTTS, clean sheets, exact
-scores. `knockout_extension()` handles ET/pens for cup/World Cup play.
+## Stack
 
-**Secondary market model — `src/models/props.py`**
-One LightGBM (Poisson objective) per market: team corners, team shots,
-shots on target, player shots, GK saves. Rolling as-of features with
-opponent mirrors; league as a categorical so EPL + Serie A train
-jointly. Isotonic calibration fit on out-of-fold predictions only —
-this is what makes stated probabilities honest.
-
-## The ledger discipline (non-negotiable)
-
-- `predictions` is INSERT-only; UPDATE/DELETE raise via trigger.
-- A trigger rejects any prediction locked at/after kickoff.
-- Grades live in `prediction_grades`, append-only, separate table.
-- `v_season_scorecard` and `v_calibration` views feed Grafana and the
-  season report — hit rate, Brier, log loss, calibration by decile,
-  segmented by market and league.
-- Headline metric: does the 60–75% confidence band realize 60–75%?
-
-## Build order
-
-1. **Now → Italy (Aug 6):** stand up schema, ingest 3–5 seasons EPL +
-   Serie A from FBref/Understat, fit Dixon-Coles, backtest.
-2. **Late Aug (season start):** predict-prematch CronJob live, ledger
-   accumulating, grade-nightly running. v1 shipped.
-3. **Autumn:** props models per market, calibration dashboards, portal.
-4. **Winter+:** neural tier on the 5070 (player embeddings, sequence
-   models), custom xG from `shots`, Ollama match previews.
-
-## Repo layout
-
-```
-sql/schema.sql                 # full schema incl. ledger triggers + views
-src/models/dixon_coles.py      # match model (working implementation)
-src/models/props.py            # props models + calibration layer
-src/predictions/generator.py   # slate builder + ledger writer
-src/grading/grader.py          # nightly grading + season report
-src/ingestion/                 # scrapers (next step)
-k8s/                           # CronJob manifests (next step)
-```
-
-## Deps
-
-`pip install pandas numpy scipy scikit-learn lightgbm psycopg2-binary`
+Python, PostgreSQL, LightGBM, scikit-learn, FastAPI, Next.js, TypeScript,
+Tailwind, Kubernetes, Ollama.
