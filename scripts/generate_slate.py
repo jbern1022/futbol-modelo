@@ -21,6 +21,8 @@ import numpy as np
 import pandas as pd
 import psycopg2
 from scipy.stats import poisson
+from sklearn.isotonic import IsotonicRegression
+from sklearn.model_selection import KFold
 
 from models.dixon_coles import DixonColes, derive_markets, knockout_extension
 from predictions.generator import Inference, build_slate, persist_slate
@@ -125,15 +127,42 @@ def fit_props_model(cur, market: str):
     df = df.apply(pd.to_numeric, errors="coerce")
     df = df.dropna()
     df["is_home"] = df["is_home"].astype(int)
+
+    # Out-of-fold isotonic calibration (5-fold), matching the standalone
+    # validation in scripts/train_props_corners.py that confirmed
+    # overconfidence at the high-probability tail. The live pipeline
+    # trains fresh every run (no saved model file), so calibration must
+    # also be refit fresh every run using the same OOF approach -- a
+    # calibrator fit on in-sample predictions would just relearn the
+    # model's own overconfidence rather than correct it.
+    calibrators = {}
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    oof_mu = np.zeros(len(df))
+    for train_idx, val_idx in kf.split(df):
+        fold_model = lgb.LGBMRegressor(objective="poisson", n_estimators=300,
+                                       learning_rate=0.03, num_leaves=20,
+                                       min_child_samples=30, subsample=0.8,
+                                       colsample_bytree=0.8, verbose=-1)
+        fold_model.fit(df[features].iloc[train_idx], df["y"].iloc[train_idx])
+        oof_mu[val_idx] = np.maximum(
+            fold_model.predict(df[features].iloc[val_idx]), 0.05)
+
+    for line in spec["lines"]:
+        raw_p = 1 - poisson.cdf(np.floor(line), oof_mu)
+        actual = (df["y"].values > line).astype(int)
+        iso = IsotonicRegression(out_of_bounds="clip", y_min=0.01, y_max=0.99)
+        iso.fit(raw_p, actual)
+        calibrators[line] = iso
+
     model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
                               num_leaves=20, min_child_samples=30, subsample=0.8,
                               colsample_bytree=0.8, verbose=-1)
     model.fit(df[features], df["y"])
-    return model, features
+    return model, features, calibrators
 
 
 def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
-                           market: str) -> list:
+                           market: str, team_name: str, calibrators: dict) -> list:
     spec = PROPS_MARKETS[market]
     row = pd.DataFrame([{**features, "is_home": int(is_home)}])
     feat_cols = ["corners_for_r5", "corners_against_r5", "shots_for_r5",
@@ -143,12 +172,15 @@ def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
                 "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"]
     mu = max(model.predict(row[feat_cols])[0], 0.05)
     out = []
+    market_label = "Corners" if market == "CORNERS" else "Shots on Target"
     for line in spec["lines"]:
-        p = float(1 - poisson.cdf(np.floor(line), mu))
+        raw_p = float(1 - poisson.cdf(np.floor(line), mu))
+        calibrator = calibrators.get(line)
+        p = float(calibrator.predict([raw_p])[0]) if calibrator is not None else raw_p
         if not (0.55 <= p <= 0.80 or 0.20 <= p <= 0.45):
             continue
         out.append(Inference(
-            market=market, statement=f"{market.title()} over {line}",
+            market=market, statement=f"{team_name} — {market_label} over {line}",
             line=line, side="over", probability=round(p, 5),
             subject_team_id=team_id))
     return out
@@ -300,9 +332,9 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
         away_form = current_form(cur, away_id, kickoff)
         if home_form and away_form:
             for market in PROPS_MARKETS:
-                model, _ = fit_props_model(cur, market)
-                candidates += build_props_inferences(model, home_form, True, home_id, market)
-                candidates += build_props_inferences(model, away_form, False, away_id, market)
+                model, _, calibrators = fit_props_model(cur, market)
+                candidates += build_props_inferences(model, home_form, True, home_id, market, home, calibrators)
+                candidates += build_props_inferences(model, away_form, False, away_id, market, away, calibrators)
 
         if league == "MLS":
             try:
