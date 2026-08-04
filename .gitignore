@@ -1,1 +1,23 @@
+# Secrets — never commit real credentials
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Model artifacts / data dumps
 *.tar
+*.pkl
+*.joblib
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
