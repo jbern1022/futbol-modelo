@@ -57,9 +57,46 @@ function marketLabel(market: string): string {
   return MARKET_LABELS[market] || market;
 }
 
-function cleanStatement(statement: string, market: string): string {
-  return statement
-    .replace(/^Sot\b/i, "Shots on target");
+// Legacy statements were written as "Corners over 4.5" / "Sot over 3.5" — no
+// team, and an abbreviation. Statements are immutable, so historical rows can
+// never be rewritten; they are repaired for display only. New rows are written
+// with the subject baked in (see scripts/generate_slate.py).
+function cleanStatement(statement: string): string {
+  return statement.replace(/^Sot\b/i, "Shots on target");
+}
+
+// Without this, the two sides of a corners market render identically: the
+// ledger row says "Corners over 4.5" for both home and away.
+function displayStatement(p: Prediction): string {
+  const base = cleanStatement(p.statement);
+  const subject = p.subject_team ?? p.subject_player;
+  if (!subject) return base;
+  if (base.toLowerCase().includes(subject.toLowerCase())) return base;
+  return `${subject} — ${base}`;
+}
+
+// How far ahead of kickoff the prediction was locked. Returns null when it
+// cannot be computed, in which case the caller shows the raw timestamp.
+function lockLead(lockedAt: string, kickoff: string): string | null {
+  const ms = new Date(kickoff).getTime() - new Date(lockedAt).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const minutes = Math.floor(ms / 60000);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3 w-3 shrink-0"
+         fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="4" y="10" width="16" height="10" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
 }
 
 async function getSlate(matchId: string): Promise<SlateResponse | null> {
@@ -153,6 +190,14 @@ export default async function FixturePage({
           </a>
         </div>
 
+        {predictions.length > 0 && (
+          <p className="mt-6 flex items-center gap-1.5 text-xs text-zinc-500">
+            <LockIcon />
+            Every prediction below was written to an append-only ledger before
+            kickoff. Once written, none of them can be edited or deleted.
+          </p>
+        )}
+
         <div className="mt-8 space-y-6">
           {predictions.length === 0 && (
             <p className="text-zinc-500">No predictions logged yet.</p>
@@ -166,17 +211,34 @@ export default async function FixturePage({
                 {grouped[market]
                   .slice()
                   .sort((a, b) => b.probability - a.probability)
-                  .map((p) => (
-                    <div key={p.prediction_id} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-                      <div className="text-black dark:text-zinc-50">
-                        {cleanStatement(p.statement, p.market)}
-                        {outcomeBadge(p.outcome)}
+                  .map((p) => {
+                    const lead = lockLead(p.locked_at, fixture.kickoff_utc);
+                    return (
+                      <div key={p.prediction_id} className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+                        <div className="min-w-0">
+                          <div className="text-black dark:text-zinc-50">
+                            {displayStatement(p)}
+                            {outcomeBadge(p.outcome)}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400 dark:text-zinc-500">
+                            <span className="inline-flex items-center gap-1"
+                                  title={`Locked at ${new Date(p.locked_at).toISOString()}`}>
+                              <LockIcon />
+                              {lead
+                                ? `Locked ${lead} before kickoff`
+                                : `Locked ${new Date(p.locked_at).toLocaleString()}`}
+                            </span>
+                            {p.actual_value !== null && (
+                              <span>&middot; actual: {p.actual_value}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-lg font-semibold text-black dark:text-zinc-50">
+                          {(p.probability * 100).toFixed(1)}%
+                        </div>
                       </div>
-                      <div className="text-lg font-semibold text-black dark:text-zinc-50">
-                        {(p.probability * 100).toFixed(1)}%
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
           ))}

@@ -33,10 +33,17 @@ except ImportError:
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
 PROPS_MARKETS = {
+    # `noun` completes the human-readable statement written to the ledger:
+    # "Inter over 4.5 corners". Statements are immutable once written, so the
+    # subject team has to be baked in at write time — a statement of the form
+    # "Corners over 4.5" is indistinguishable between the home and away side
+    # and can never be corrected afterwards.
     "CORNERS": {"target_col": "corners", "lines": [3.5, 4.5, 5.5, 6.5],
-                "for_col": "corners_for_r5", "against_col": "corners_against_r5"},
+                "for_col": "corners_for_r5", "against_col": "corners_against_r5",
+                "noun": "corners"},
     "SOT": {"target_col": "shots_on_target", "lines": [2.5, 3.5, 4.5, 5.5],
-            "for_col": "sot_for_r5", "against_col": "sot_against_r5"},
+            "for_col": "sot_for_r5", "against_col": "sot_against_r5",
+            "noun": "shots on target"},
 }
 PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS"}
 
@@ -133,7 +140,7 @@ def fit_props_model(cur, market: str):
 
 
 def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
-                           market: str) -> list:
+                           market: str, team_name: str) -> list:
     spec = PROPS_MARKETS[market]
     row = pd.DataFrame([{**features, "is_home": int(is_home)}])
     feat_cols = ["corners_for_r5", "corners_against_r5", "shots_for_r5",
@@ -148,7 +155,7 @@ def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
         if not (0.55 <= p <= 0.80 or 0.20 <= p <= 0.45):
             continue
         out.append(Inference(
-            market=market, statement=f"{market.title()} over {line}",
+            market=market, statement=f"{team_name} over {line} {spec['noun']}",
             line=line, side="over", probability=round(p, 5),
             subject_team_id=team_id))
     return out
@@ -301,8 +308,10 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
         if home_form and away_form:
             for market in PROPS_MARKETS:
                 model, _ = fit_props_model(cur, market)
-                candidates += build_props_inferences(model, home_form, True, home_id, market)
-                candidates += build_props_inferences(model, away_form, False, away_id, market)
+                candidates += build_props_inferences(
+                    model, home_form, True, home_id, market, home)
+                candidates += build_props_inferences(
+                    model, away_form, False, away_id, market, away)
 
         if league == "MLS":
             try:
