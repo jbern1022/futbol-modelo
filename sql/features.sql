@@ -1,11 +1,27 @@
 -- =============================================================
 -- Phase D: feature materialization (rolling as-of, leakage-safe)
--- Re-runnable: drops and rebuilds. Run after every ingestion batch.
+-- Re-runnable. Run after every ingestion batch.
+--
+--   psql "$FUTBOL_DSN" -f sql/features.sql
+--
+-- Builds into temporary names and swaps them in inside a single transaction.
+-- The previous version did DROP TABLE followed by CREATE TABLE outside any
+-- transaction, so for the duration of the rebuild the feature tables did not
+-- exist at all — any concurrent slate generation or model training would fail
+-- with "relation team_match_features does not exist". Readers now see either
+-- the old tables or the new ones, never a gap.
+--
+-- Note the rebuild is still a full recompute rather than incremental. That is
+-- fine at current volumes and keeps the window-function definitions honest;
+-- revisit if it stops finishing quickly.
 -- =============================================================
-SET search_path TO futbol;
+BEGIN;
 
-DROP TABLE IF EXISTS team_match_features;
-CREATE TABLE team_match_features AS
+SET search_path TO futbol;
+SET LOCAL lock_timeout = '30s';
+
+DROP TABLE IF EXISTS team_match_features_new;
+CREATE TABLE team_match_features_new AS
 WITH base AS (
     SELECT
         s.match_id, s.team_id, s.is_home,
@@ -63,10 +79,10 @@ SELECT r.*,
        EXTRACT(EPOCH FROM (r.kickoff_utc - r.prev_kickoff))/86400.0 AS rest_days
 FROM rolled r;
 
-CREATE INDEX idx_tmf ON team_match_features (match_id, team_id);
+CREATE INDEX idx_tmf_new ON team_match_features_new (match_id, team_id);
 
-DROP TABLE IF EXISTS player_match_features;
-CREATE TABLE player_match_features AS
+DROP TABLE IF EXISTS player_match_features_new;
+CREATE TABLE player_match_features_new AS
 SELECT
     p.match_id, p.player_id, p.team_id,
     m.kickoff_utc,
@@ -87,4 +103,34 @@ WINDOW
     w10 AS (PARTITION BY p.player_id ORDER BY m.kickoff_utc
             ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING);
 
-CREATE INDEX idx_pmf ON player_match_features (match_id, player_id);
+CREATE INDEX idx_pmf_new ON player_match_features_new (match_id, player_id);
+
+-- Atomic swap. Everything above built under _new names; these renames are the
+-- only moment readers are affected, and they are over instantly.
+DROP TABLE IF EXISTS team_match_features;
+ALTER TABLE team_match_features_new RENAME TO team_match_features;
+ALTER INDEX idx_tmf_new RENAME TO idx_tmf;
+
+DROP TABLE IF EXISTS player_match_features;
+ALTER TABLE player_match_features_new RENAME TO player_match_features;
+ALTER INDEX idx_pmf_new RENAME TO idx_pmf;
+
+-- Refuse to commit an empty rebuild. A source outage or a botched ingest that
+-- leaves zero rows should abort here, keeping the previous tables, rather than
+-- silently replacing good features with nothing and letting the next training
+-- run fail its baseline gate for reasons nobody can trace.
+DO $$
+DECLARE
+    n_team INT;
+    n_player INT;
+BEGIN
+    SELECT COUNT(*) INTO n_team   FROM team_match_features;
+    SELECT COUNT(*) INTO n_player FROM player_match_features;
+    IF n_team = 0 THEN
+        RAISE EXCEPTION 'refusing to commit: team_match_features rebuilt to 0 rows';
+    END IF;
+    RAISE NOTICE 'team_match_features: % rows, player_match_features: % rows',
+                 n_team, n_player;
+END $$;
+
+COMMIT;
