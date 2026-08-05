@@ -23,6 +23,7 @@ import psycopg2
 from scipy.stats import poisson
 
 from models.dixon_coles import DixonColes, derive_markets
+from models.props import MARKETS, PropsModel, artifact_path
 from predictions.generator import Inference, build_slate, persist_slate
 
 try:
@@ -32,39 +33,31 @@ except ImportError:
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
-# `noun` completes the human-readable statement written to the ledger:
-# "Inter over 4.5 corners". Statements are immutable once written, so the
-# subject team has to be baked in at write time — a statement of the form
-# "Corners over 4.5" is indistinguishable between the home and away side and
-# can never be corrected afterwards.
-#
-# `features` deliberately excludes xg_for_r5 / xg_against_r5 and includes
-# league_id. team_match_stats.xg is ~99% populated for EPL/SERIE_A (Understat)
-# and 0% for MLS (API-Football's tier does not supply it), so selecting xG and
-# then calling dropna() silently discarded every MLS row — MLS props were being
-# produced by a model trained only on English and Italian football and scored
-# with xG as NaN. Measured by scripts/compare_props_features.py: that model was
-# WORSE THAN A NAIVE BASELINE on MLS for both markets. Dropping xG costs
-# ~0.002 logloss on European holdout rows (noise) and adding league_id, so the
-# model can learn per-league scoring rates rather than averaging across them,
-# improves every league/market cell tested. Revisit once Phase 3's FBref
-# migration gives MLS real xG, by re-running that script.
-PROPS_MARKETS = {
-    "CORNERS": {"target_col": "corners", "lines": [3.5, 4.5, 5.5, 6.5],
-                "for_col": "corners_for_r5", "against_col": "corners_against_r5",
-                "noun": "corners",
-                "features": ["corners_for_r5", "corners_against_r5",
-                             "shots_for_r5", "shots_against_r5",
-                             "rest_days", "is_home", "league_id"]},
-    "SOT": {"target_col": "shots_on_target", "lines": [2.5, 3.5, 4.5, 5.5],
-            "for_col": "sot_for_r5", "against_col": "sot_against_r5",
-            "noun": "shots on target",
-            "features": ["sot_for_r5", "sot_against_r5",
-                         "shots_for_r5", "shots_against_r5",
-                         "rest_days", "is_home", "league_id"]},
-}
-CATEGORICAL_FEATURES = ["league_id"]
+MODEL_DIR = os.environ.get("FUTBOL_MODEL_DIR", "models")
 PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS"}
+
+
+def load_props_models() -> dict:
+    """
+    Load the artifacts written by scripts/train_props_models.py.
+
+    Props models are no longer fitted here. Fitting per fixture made
+    predictions unreproducible, wrote a meaningless model_versions row per
+    fixture, and left nowhere for a calibrator to live, so uncalibrated
+    Poisson probabilities went into the ledger. A missing artifact means props
+    are skipped for this run rather than silently falling back to an untrained
+    or uncalibrated path — an absent market is obvious, a quietly wrong
+    probability is not.
+    """
+    models = {}
+    for market in MARKETS:
+        path = artifact_path(MODEL_DIR, market)
+        if not path.exists():
+            print(f"  (no artifact at {path} — skipping {market}. "
+                  f"Run scripts/train_props_models.py)")
+            continue
+        models[market] = PropsModel.load(path)
+    return models
 
 
 def find_fixture(cur, league: str, home: str, away: str):
@@ -129,47 +122,24 @@ def current_form(cur, team_id: int, kickoff) -> dict:
     }
 
 
-def fit_props_model(cur, market: str):
-    spec = PROPS_MARKETS[market]
-    features = spec["features"]
-    cur.execute(
-        f"""SELECT {', '.join('f.'+c for c in features)}, tms.{spec['target_col']} AS y
-            FROM futbol.team_match_features f
-            JOIN futbol.matches m ON m.match_id = f.match_id
-            JOIN futbol.seasons s ON s.season_id = m.season_id
-            JOIN futbol.leagues l ON l.league_id = s.league_id
-            JOIN futbol.team_match_stats tms
-              ON tms.match_id = f.match_id AND tms.team_id = f.team_id
-            WHERE l.code = ANY(%s) AND tms.{spec['target_col']} IS NOT NULL""",
-        (list(PROPS_LEAGUES),))
-    rows = cur.fetchall()
-    df = pd.DataFrame(rows, columns=features + ["y"])
-    df = df.apply(pd.to_numeric, errors="coerce")
-    df = df.dropna()
-    df["is_home"] = df["is_home"].astype(int)
-    df["league_id"] = df["league_id"].astype(int)
-    model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
-                              num_leaves=20, min_child_samples=30, subsample=0.8,
-                              colsample_bytree=0.8, verbose=-1)
-    model.fit(df[features], df["y"], categorical_feature=CATEGORICAL_FEATURES)
-    return model, features
-
-
-def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
-                           market: str, team_name: str, league_id: int) -> list:
-    spec = PROPS_MARKETS[market]
+def build_props_inferences(props_model, features: dict, is_home: bool,
+                           team_id: int, market: str, team_name: str,
+                           league_id: int) -> list:
+    """Calibrated P(over line) from a trained artifact. The probability written
+    to the ledger is the calibrator's output, not the raw Poisson tail."""
+    spec = MARKETS[market]
     row = pd.DataFrame([{**features, "is_home": int(is_home),
                          "league_id": int(league_id)}])
-    mu = max(model.predict(row[spec["features"]])[0], 0.05)
     out = []
     for line in spec["lines"]:
-        p = float(1 - poisson.cdf(np.floor(line), mu))
+        p = props_model.predict_over(row, line)
         if not (0.55 <= p <= 0.80 or 0.20 <= p <= 0.45):
             continue
         out.append(Inference(
             market=market, statement=f"{team_name} over {line} {spec['noun']}",
             line=line, side="over", probability=round(p, 5),
-            subject_team_id=team_id))
+            subject_team_id=team_id,
+            model_version_id=props_model.metadata.get("model_version_id")))
     return out
 
 
@@ -291,7 +261,12 @@ def build_player_saves_inference(model, features_list, form, player_id, player_n
 
 def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                          match_id: int, kickoff, home_id: int, away_id: int,
-                         verbose: bool = True):
+                         verbose: bool = True, props_models: dict | None = None):
+    """`props_models` is loaded once by the caller and reused across fixtures —
+    loading it per fixture would reintroduce the per-fixture cost that
+    refitting used to have."""
+    if props_models is None:
+        props_models = load_props_models()
     now = datetime.now(timezone.utc)
     kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
     if now >= kickoff_aware:
@@ -325,12 +300,11 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
         home_form = current_form(cur, home_id, kickoff)
         away_form = current_form(cur, away_id, kickoff)
         if home_form and away_form and league_id is not None:
-            for market in PROPS_MARKETS:
-                model, _ = fit_props_model(cur, market)
+            for market, props_model in (props_models or {}).items():
                 candidates += build_props_inferences(
-                    model, home_form, True, home_id, market, home, league_id)
+                    props_model, home_form, True, home_id, market, home, league_id)
                 candidates += build_props_inferences(
-                    model, away_form, False, away_id, market, away, league_id)
+                    props_model, away_form, False, away_id, market, away, league_id)
 
         if league == "MLS":
             try:

@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import psycopg2
 
-from generate_slate import generate_for_fixture
+from generate_slate import generate_for_fixture, load_props_models
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -50,10 +50,13 @@ def main():
         print(f"[{args.league}] {len(fixtures)} upcoming fixture(s) without a slate "
               f"(next {args.days} days)")
 
+        # Loaded once and reused for every fixture in the batch.
+        props_models = load_props_models()
         written = 0
         for match_id, kickoff, home, away, home_id, away_id in fixtures:
             n = generate_for_fixture(conn, cur, args.league, home, away,
-                                     match_id, kickoff, home_id, away_id)
+                                     match_id, kickoff, home_id, away_id,
+                                     props_models=props_models)
             if n:
                 written += n
 

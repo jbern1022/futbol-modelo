@@ -32,6 +32,11 @@ class Inference:
     subject_team_id: int | None = None
     subject_player_id: int | None = None
     base_rate: float | None = None      # historical frequency of this claim
+    # The model that produced this claim. A slate mixes models — Dixon-Coles
+    # for match markets, a props artifact for counts — and the ledger records
+    # one model_version_id per prediction, so it should be the right one.
+    # None falls back to the slate-level default in persist_slate.
+    model_version_id: int | None = None
 
     @property
     def edge(self) -> float:
@@ -104,7 +109,8 @@ def persist_slate(conn, match_id: int, model_version_id: int,
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT DO NOTHING
                 """,
-                (match_id, model_version_id, inf.market, inf.subject_team_id,
+                (match_id, inf.model_version_id or model_version_id,
+                 inf.market, inf.subject_team_id,
                  inf.subject_player_id, inf.statement, inf.line, inf.side,
                  round(inf.probability, 5), now, now),
             )
