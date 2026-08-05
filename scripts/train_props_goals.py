@@ -98,7 +98,7 @@ def main():
     print("--- Held-out test set evaluation ---")
     print(f"Naive baseline (league avg {baseline_mu:.2f} goals/match):")
     print(f"  MAE: {mae_baseline:.3f}   Poisson log-loss: {baseline_ll:.3f}")
-    print(f"Model:")
+    print("Model:")
     print(f"  MAE: {mae_model:.3f}   Poisson log-loss: {model_ll:.3f}")
     verdict = "BEATS baseline" if model_ll < baseline_ll else "does NOT beat baseline"
     print(f"  -> Model {verdict}\n")

@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    name: Lint & test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: futbol_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        # Pyflakes rules only for now: real errors (undefined names, unused
+        # imports) with no style noise. Widen the rule set deliberately later.
+        run: ruff check --select=F .
+
+      - name: Test
+        # Unit tests run anywhere; the ledger-integrity tests need the service
+        # container above and verify the immutability and pre-kickoff triggers
+        # against a schema built from sql/schema.sql.
+        env:
+          FUTBOL_TEST_DSN: "host=localhost port=5432 dbname=futbol_test user=postgres password=postgres"
+        run: pytest -v
+
+      - name: Check shell scripts parse
+        run: bash -n scripts/run_nightly.sh
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pipeline image
+        run: docker build -f Dockerfile -t futbol-modelo:ci .
+      - name: Build API image
+        run: docker build -f Dockerfile.api -t futbol-api:ci .

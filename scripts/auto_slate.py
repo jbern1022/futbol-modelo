@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import psycopg2
 
-from generate_slate import generate_for_fixture, PROPS_LEAGUES
+from generate_slate import generate_for_fixture
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 

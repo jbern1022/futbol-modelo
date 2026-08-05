@@ -155,6 +155,22 @@ CREATE TABLE predictions (
 CREATE INDEX idx_predictions_match ON predictions (match_id);
 CREATE INDEX idx_predictions_market ON predictions (market);
 
+-- Natural key backing persist_slate()'s ON CONFLICT clause.
+--
+-- This constraint exists in production but was applied by hand and never
+-- committed here until now, so this file disagreed with the live database.
+--
+-- KNOWN DEFECT: it does not currently prevent anything. Postgres UNIQUE
+-- defaults to NULLS DISTINCT, so a row with a NULL in any key column never
+-- conflicts — and every prediction shape has at least one: 1X2 and BTTS have
+-- no line and no subject, TOTAL_GOALS has no subject, team markets have no
+-- subject_player_id, player markets have no subject_team_id. Same class of bug
+-- as the teams.name constraint. Fix is NULLS NOT DISTINCT (PG15+) or a unique
+-- index over COALESCE'd columns; see tests/test_ledger_integrity.py.
+ALTER TABLE predictions ADD CONSTRAINT predictions_natural_key
+    UNIQUE (match_id, model_version_id, market, subject_team_id,
+            subject_player_id, side, line);
+
 -- Immutability + pre-kickoff enforcement
 CREATE OR REPLACE FUNCTION forbid_prediction_mutation() RETURNS trigger AS $$
 BEGIN

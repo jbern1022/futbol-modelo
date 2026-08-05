@@ -103,7 +103,7 @@ def main():
     print("--- Held-out season evaluation (Poisson log-loss, lower=better) ---")
     print(f"Naive baseline (train-set avg {baseline_mu:.2f} corners/match):")
     print(f"  MAE: {mae_baseline:.3f}   Log-loss: {baseline_ll:.3f}")
-    print(f"Model:")
+    print("Model:")
     print(f"  MAE: {mae_model:.3f}   Log-loss: {model_ll:.3f}")
     verdict = "BEATS baseline" if model_ll < baseline_ll else "does NOT beat baseline"
     improvement = (baseline_ll - model_ll) / baseline_ll * 100

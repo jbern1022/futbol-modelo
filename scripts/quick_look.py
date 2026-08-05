@@ -13,7 +13,6 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import numpy as np
 import pandas as pd
 import psycopg2
 
@@ -59,7 +58,7 @@ def main():
     for team, a, d in ratings:
         print(f"{team:<22} {a:>8.3f} {d:>8.3f}")
 
-    print(f"\n--- Example predictions (current form, no holdout) ---\n")
+    print("\n--- Example predictions (current form, no holdout) ---\n")
     top3 = [t for t, _, _ in ratings[:3]]
     bottom3 = [t for t, _, _ in ratings[-3:]]
     examples = [(top3[0], bottom3[0]), (top3[0], top3[1]), (bottom3[-1], bottom3[-2])]

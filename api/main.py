@@ -17,7 +17,6 @@ Endpoints:
     POST /ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
 """
 import os
-import time
 from typing import Optional
 
 import psycopg2

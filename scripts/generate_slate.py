@@ -22,7 +22,7 @@ import pandas as pd
 import psycopg2
 from scipy.stats import poisson
 
-from models.dixon_coles import DixonColes, derive_markets, knockout_extension
+from models.dixon_coles import DixonColes, derive_markets
 from predictions.generator import Inference, build_slate, persist_slate
 
 try:
