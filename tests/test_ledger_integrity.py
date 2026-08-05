@@ -52,6 +52,22 @@ def test_prediction_can_be_written_before_kickoff(db, fixture_row):
     assert _insert(db, fixture_row) > 0
 
 
+def test_triggers_do_not_depend_on_the_callers_search_path(db, fixture_row):
+    """
+    Regression test. enforce_pre_kickoff() used to read an unqualified
+    `matches`; PL/pgSQL resolves that at execution time against the caller's
+    search_path, so every client connecting with the default failed with
+    'relation "matches" does not exist' on any prediction insert.
+    """
+    with db.cursor() as cur:
+        cur.execute("SHOW search_path")
+        assert "futbol" not in cur.fetchone()[0], (
+            "test connection must not have futbol on its search_path, "
+            "or this test cannot detect the defect it exists to catch"
+        )
+    assert _insert(db, fixture_row) > 0
+
+
 def test_predictions_cannot_be_updated(db, fixture_row):
     pid = _insert(db, fixture_row)
     with pytest.raises(Exception, match="immutable"):
@@ -111,27 +127,93 @@ def test_probability_must_be_strictly_between_zero_and_one(db, fixture_row, bad)
 
 # ---------- natural key ----------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="predictions_natural_key is inert: Postgres UNIQUE defaults to NULLS "
-           "DISTINCT and subject_player_id is NULL here, so the duplicate inserts "
-           "cleanly. Same bug class as the teams.name constraint. Flip to passing "
-           "with NULLS NOT DISTINCT (PG15+) or a COALESCE-based unique index.",
-)
 def test_duplicate_prediction_is_rejected_by_natural_key(db, fixture_row):
+    """
+    Regression test for the NULLS DISTINCT defect. This row has a NULL
+    subject_player_id and a NULL line, which under the original plain UNIQUE
+    constraint meant it could never conflict with anything.
+    """
     _insert(db, fixture_row)
     with pytest.raises(Exception):
         _insert(db, fixture_row)
 
 
 def test_duplicate_with_no_nulls_in_key_is_rejected(db, fixture_row):
-    """
-    Control for the xfail above: when every key column is non-NULL the
-    constraint does work, which isolates NULL handling as the cause.
-    """
     kwargs = dict(market="CORNERS", side="over", line=4.5,
                   subject_team_id=fixture_row["home_team_id"],
                   subject_player_id=fixture_row["player_id"])
     _insert(db, fixture_row, **kwargs)
     with pytest.raises(Exception):
         _insert(db, fixture_row, **kwargs)
+
+
+@pytest.mark.parametrize("shape", [
+    dict(market="BTTS", side="yes", line=None,
+         subject_team_id=None, subject_player_id=None),
+    dict(market="TOTAL_GOALS", side="over", line=2.5,
+         subject_team_id=None, subject_player_id=None),
+    dict(market="PLAYER_GOALS", side="over", line=0.5, subject_team_id=None),
+])
+def test_every_null_bearing_prediction_shape_is_deduplicated(db, fixture_row, shape):
+    """
+    The original constraint failed for all of these. Cover each real shape
+    rather than trusting that one example generalises.
+    """
+    if shape.get("subject_player_id", "unset") == "unset" and shape["market"].startswith("PLAYER"):
+        shape = {**shape, "subject_player_id": fixture_row["player_id"]}
+    _insert(db, fixture_row, **shape)
+    with pytest.raises(Exception):
+        _insert(db, fixture_row, **shape)
+
+
+def test_distinct_predictions_are_still_allowed(db, fixture_row):
+    """The key must not over-collapse: differing side, line, or subject are
+    genuinely different claims and all must persist."""
+    _insert(db, fixture_row, market="TOTAL_GOALS", side="over", line=2.5,
+            subject_team_id=None)
+    _insert(db, fixture_row, market="TOTAL_GOALS", side="under", line=2.5,
+            subject_team_id=None)
+    _insert(db, fixture_row, market="TOTAL_GOALS", side="over", line=3.5,
+            subject_team_id=None)
+    _insert(db, fixture_row, market="CORNERS", side="over", line=4.5,
+            subject_team_id=fixture_row["home_team_id"])
+    _insert(db, fixture_row, market="CORNERS", side="over", line=4.5,
+            subject_team_id=fixture_row["away_team_id"])
+    with db.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM futbol.predictions")
+        assert cur.fetchone()[0] == 5
+
+
+def test_null_subject_does_not_collide_with_a_real_subject(db, fixture_row):
+    """The COALESCE sentinel must not make NULL equal to a real id."""
+    _insert(db, fixture_row, market="CORNERS", side="over", line=4.5,
+            subject_team_id=None)
+    _insert(db, fixture_row, market="CORNERS", side="over", line=4.5,
+            subject_team_id=fixture_row["home_team_id"])
+    with db.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM futbol.predictions")
+        assert cur.fetchone()[0] == 2
+
+
+def test_persist_slate_is_idempotent(db, fixture_row):
+    """
+    Exercises the real writer, not just the index: persist_slate's docstring
+    claims a re-run inserts only genuinely new rows.
+    """
+    from predictions.generator import Inference, persist_slate
+
+    slate = [
+        Inference(market="1X2", statement="Test Home FC win", line=None,
+                  side="home", probability=0.61,
+                  subject_team_id=fixture_row["home_team_id"]),
+        Inference(market="BTTS", statement="Both teams to score", line=None,
+                  side="yes", probability=0.55),
+        Inference(market="TOTAL_GOALS", statement="Over 2.5 goals", line=2.5,
+                  side="over", probability=0.52),
+    ]
+    first = persist_slate(db, fixture_row["match_id"],
+                          fixture_row["model_version_id"], slate)
+    second = persist_slate(db, fixture_row["match_id"],
+                           fixture_row["model_version_id"], slate)
+    assert first == 3
+    assert second == 0

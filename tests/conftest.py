@@ -28,6 +28,11 @@ def db():
     with conn.cursor() as cur:
         cur.execute("DROP SCHEMA IF EXISTS futbol CASCADE;")
         cur.execute(SCHEMA_SQL.read_text())
+        # schema.sql opens with `SET search_path TO futbol`, which would
+        # otherwise persist for this whole session and mask any object that
+        # depends on the caller's search_path. Application code connects with
+        # the default and fully qualifies its tables, so tests must too.
+        cur.execute("RESET search_path;")
     yield conn
     conn.close()
 

@@ -78,9 +78,18 @@ def persist_slate(conn, match_id: int, model_version_id: int,
                   slate: list[Inference]) -> int:
     """
     Insert into futbol.predictions. Trigger enforces pre-kickoff lock.
-    Uses ON CONFLICT DO NOTHING so re-running generation against an
-    already-slated match inserts only genuinely new rows instead of
-    aborting the whole batch on the first pre-existing one.
+
+    Uses a bare ON CONFLICT DO NOTHING — no inference clause. The natural key
+    is a unique index over COALESCE'd columns (NULL subject/line are normal),
+    and an inference clause would have to restate those expressions exactly,
+    which silently stops matching the moment the index changes. The bare form
+    honours whatever unique indexes exist. prediction_id is a BIGSERIAL, so
+    the primary key cannot spuriously absorb a row here.
+
+    Re-running generation against an already-slated match therefore inserts
+    only genuinely new rows. Note this holds within a model version: while
+    model_versions.version_tag embeds the run date, a re-run on a later day
+    mints a new model_version_id and legitimately writes a fresh slate.
     """
     now = datetime.now(timezone.utc)
     inserted = 0
@@ -93,9 +102,7 @@ def persist_slate(conn, match_id: int, model_version_id: int,
                      subject_player_id, statement, line, side, probability,
                      created_at, locked_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (match_id, model_version_id, market,
-                             subject_team_id, subject_player_id, side, line)
-                DO NOTHING
+                ON CONFLICT DO NOTHING
                 """,
                 (match_id, model_version_id, inf.market, inf.subject_team_id,
                  inf.subject_player_id, inf.statement, inf.line, inf.side,

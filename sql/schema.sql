@@ -155,21 +155,28 @@ CREATE TABLE predictions (
 CREATE INDEX idx_predictions_match ON predictions (match_id);
 CREATE INDEX idx_predictions_market ON predictions (market);
 
--- Natural key backing persist_slate()'s ON CONFLICT clause.
+-- Natural key backing persist_slate()'s ON CONFLICT DO NOTHING.
 --
--- This constraint exists in production but was applied by hand and never
--- committed here until now, so this file disagreed with the live database.
+-- COALESCE'd rather than a plain UNIQUE constraint on purpose. A plain
+-- UNIQUE defaults to NULLS DISTINCT, which means a row with a NULL in any
+-- key column never conflicts — and every prediction shape has at least one
+-- NULL here (1X2 and BTTS carry no line or subject, TOTAL_GOALS no subject,
+-- team markets no subject_player_id, player markets no subject_team_id).
+-- That form was live in production and silently suppressed nothing; see
+-- sql/migrations/001_predictions_natural_key_nulls.sql for the history and
+-- tests/test_ledger_integrity.py for the tests that pin the behaviour.
 --
--- KNOWN DEFECT: it does not currently prevent anything. Postgres UNIQUE
--- defaults to NULLS DISTINCT, so a row with a NULL in any key column never
--- conflicts — and every prediction shape has at least one: 1X2 and BTTS have
--- no line and no subject, TOTAL_GOALS has no subject, team markets have no
--- subject_player_id, player markets have no subject_team_id. Same class of bug
--- as the teams.name constraint. Fix is NULLS NOT DISTINCT (PG15+) or a unique
--- index over COALESCE'd columns; see tests/test_ledger_integrity.py.
-ALTER TABLE predictions ADD CONSTRAINT predictions_natural_key
-    UNIQUE (match_id, model_version_id, market, subject_team_id,
-            subject_player_id, side, line);
+-- Sentinels are safe: team_id/player_id are SERIAL and always positive, and
+-- no market uses a negative line.
+CREATE UNIQUE INDEX predictions_natural_key ON predictions (
+    match_id,
+    model_version_id,
+    market,
+    COALESCE(subject_team_id, -1),
+    COALESCE(subject_player_id, -1),
+    COALESCE(side, ''),
+    COALESCE(line, -9999)
+);
 
 -- Immutability + pre-kickoff enforcement
 CREATE OR REPLACE FUNCTION forbid_prediction_mutation() RETURNS trigger AS $$
@@ -181,15 +188,24 @@ CREATE TRIGGER trg_predictions_no_update
     BEFORE UPDATE OR DELETE ON predictions
     FOR EACH ROW EXECUTE FUNCTION forbid_prediction_mutation();
 
+-- NOTE: the table reference must be schema-qualified and search_path pinned.
+-- PL/pgSQL resolves names at execution time using the CALLER's search_path,
+-- not the one in effect when the function was created. The `SET search_path`
+-- at the top of this file applies only to the session running it, so an
+-- unqualified `matches` here raised 'relation "matches" does not exist' for
+-- every client connecting with the default search_path — which is every
+-- psycopg2 client, since the application code fully qualifies its own tables
+-- rather than setting a search_path.
 CREATE OR REPLACE FUNCTION enforce_pre_kickoff() RETURNS trigger AS $$
 DECLARE ko TIMESTAMPTZ;
 BEGIN
-    SELECT kickoff_utc INTO ko FROM matches WHERE match_id = NEW.match_id;
+    SELECT kickoff_utc INTO ko FROM futbol.matches WHERE match_id = NEW.match_id;
     IF NEW.locked_at >= ko THEN
         RAISE EXCEPTION 'prediction locked after kickoff (% >= %)', NEW.locked_at, ko;
     END IF;
     RETURN NEW;
-END $$ LANGUAGE plpgsql;
+END $$ LANGUAGE plpgsql
+SET search_path = futbol, pg_temp;
 
 CREATE TRIGGER trg_predictions_pre_kickoff
     BEFORE INSERT ON predictions
