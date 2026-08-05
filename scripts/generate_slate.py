@@ -32,19 +32,38 @@ except ImportError:
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
+# `noun` completes the human-readable statement written to the ledger:
+# "Inter over 4.5 corners". Statements are immutable once written, so the
+# subject team has to be baked in at write time — a statement of the form
+# "Corners over 4.5" is indistinguishable between the home and away side and
+# can never be corrected afterwards.
+#
+# `features` deliberately excludes xg_for_r5 / xg_against_r5 and includes
+# league_id. team_match_stats.xg is ~99% populated for EPL/SERIE_A (Understat)
+# and 0% for MLS (API-Football's tier does not supply it), so selecting xG and
+# then calling dropna() silently discarded every MLS row — MLS props were being
+# produced by a model trained only on English and Italian football and scored
+# with xG as NaN. Measured by scripts/compare_props_features.py: that model was
+# WORSE THAN A NAIVE BASELINE on MLS for both markets. Dropping xG costs
+# ~0.002 logloss on European holdout rows (noise) and adding league_id, so the
+# model can learn per-league scoring rates rather than averaging across them,
+# improves every league/market cell tested. Revisit once Phase 3's FBref
+# migration gives MLS real xG, by re-running that script.
 PROPS_MARKETS = {
-    # `noun` completes the human-readable statement written to the ledger:
-    # "Inter over 4.5 corners". Statements are immutable once written, so the
-    # subject team has to be baked in at write time — a statement of the form
-    # "Corners over 4.5" is indistinguishable between the home and away side
-    # and can never be corrected afterwards.
     "CORNERS": {"target_col": "corners", "lines": [3.5, 4.5, 5.5, 6.5],
                 "for_col": "corners_for_r5", "against_col": "corners_against_r5",
-                "noun": "corners"},
+                "noun": "corners",
+                "features": ["corners_for_r5", "corners_against_r5",
+                             "shots_for_r5", "shots_against_r5",
+                             "rest_days", "is_home", "league_id"]},
     "SOT": {"target_col": "shots_on_target", "lines": [2.5, 3.5, 4.5, 5.5],
             "for_col": "sot_for_r5", "against_col": "sot_against_r5",
-            "noun": "shots on target"},
+            "noun": "shots on target",
+            "features": ["sot_for_r5", "sot_against_r5",
+                         "shots_for_r5", "shots_against_r5",
+                         "rest_days", "is_home", "league_id"]},
 }
+CATEGORICAL_FEATURES = ["league_id"]
 PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS"}
 
 
@@ -112,11 +131,7 @@ def current_form(cur, team_id: int, kickoff) -> dict:
 
 def fit_props_model(cur, market: str):
     spec = PROPS_MARKETS[market]
-    features = ["corners_for_r5", "corners_against_r5", "shots_for_r5",
-               "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"] \
-               if market == "CORNERS" else \
-               ["sot_for_r5", "sot_against_r5", "shots_for_r5",
-               "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"]
+    features = spec["features"]
     cur.execute(
         f"""SELECT {', '.join('f.'+c for c in features)}, tms.{spec['target_col']} AS y
             FROM futbol.team_match_features f
@@ -132,23 +147,20 @@ def fit_props_model(cur, market: str):
     df = df.apply(pd.to_numeric, errors="coerce")
     df = df.dropna()
     df["is_home"] = df["is_home"].astype(int)
+    df["league_id"] = df["league_id"].astype(int)
     model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
                               num_leaves=20, min_child_samples=30, subsample=0.8,
                               colsample_bytree=0.8, verbose=-1)
-    model.fit(df[features], df["y"])
+    model.fit(df[features], df["y"], categorical_feature=CATEGORICAL_FEATURES)
     return model, features
 
 
 def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
-                           market: str, team_name: str) -> list:
+                           market: str, team_name: str, league_id: int) -> list:
     spec = PROPS_MARKETS[market]
-    row = pd.DataFrame([{**features, "is_home": int(is_home)}])
-    feat_cols = ["corners_for_r5", "corners_against_r5", "shots_for_r5",
-                "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"] \
-                if market == "CORNERS" else \
-                ["sot_for_r5", "sot_against_r5", "shots_for_r5",
-                "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"]
-    mu = max(model.predict(row[feat_cols])[0], 0.05)
+    row = pd.DataFrame([{**features, "is_home": int(is_home),
+                         "league_id": int(league_id)}])
+    mu = max(model.predict(row[spec["features"]])[0], 0.05)
     out = []
     for line in spec["lines"]:
         p = float(1 - poisson.cdf(np.floor(line), mu))
@@ -303,15 +315,22 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     ]
 
     if league in PROPS_LEAGUES and lgb is not None:
+        # league_id is a model feature, so it must be the same value the model
+        # was trained on — read it from the leagues table rather than deriving
+        # any separate encoding.
+        cur.execute("SELECT league_id FROM futbol.leagues WHERE code = %s", (league,))
+        league_row = cur.fetchone()
+        league_id = league_row[0] if league_row else None
+
         home_form = current_form(cur, home_id, kickoff)
         away_form = current_form(cur, away_id, kickoff)
-        if home_form and away_form:
+        if home_form and away_form and league_id is not None:
             for market in PROPS_MARKETS:
                 model, _ = fit_props_model(cur, market)
                 candidates += build_props_inferences(
-                    model, home_form, True, home_id, market, home)
+                    model, home_form, True, home_id, market, home, league_id)
                 candidates += build_props_inferences(
-                    model, away_form, False, away_id, market, away)
+                    model, away_form, False, away_id, market, away, league_id)
 
         if league == "MLS":
             try:
