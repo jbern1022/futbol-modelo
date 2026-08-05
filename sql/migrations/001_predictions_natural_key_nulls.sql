@@ -74,7 +74,7 @@ END $$;
 
 ALTER TABLE predictions DROP CONSTRAINT IF EXISTS predictions_natural_key;
 
-CREATE UNIQUE INDEX predictions_natural_key ON predictions (
+CREATE UNIQUE INDEX IF NOT EXISTS predictions_natural_key ON predictions (
     match_id,
     model_version_id,
     market,
@@ -83,5 +83,26 @@ CREATE UNIQUE INDEX predictions_natural_key ON predictions (
     COALESCE(side, ''),
     COALESCE(line, -9999)
 );
+
+-- IF NOT EXISTS makes a re-run a no-op, but it would also silently accept an
+-- index of the same name with a different definition. Assert the shape we
+-- actually need, so a half-applied or hand-edited state fails loudly here
+-- rather than surfacing later as duplicate predictions.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE schemaname = 'futbol'
+          AND tablename  = 'predictions'
+          AND indexname  = 'predictions_natural_key'
+          AND indexdef LIKE '%UNIQUE%'
+          AND indexdef LIKE '%COALESCE%'
+    ) THEN
+        RAISE EXCEPTION
+            'predictions_natural_key is missing or is not the expected '
+            'COALESCE-based unique index. Inspect with: SELECT indexdef FROM '
+            'pg_indexes WHERE indexname = ''predictions_natural_key'';';
+    END IF;
+END $$;
 
 COMMIT;
