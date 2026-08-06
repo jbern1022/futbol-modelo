@@ -20,6 +20,12 @@ const TEAM_STATS = [
   { value: "yellows", label: "Yellow Cards" },
 ];
 
+interface ScorecardRow {
+  league: string;
+  market: string;
+  n_predictions: number;
+}
+
 interface AskResponse {
   answer: string;
   n_predictions?: number;
@@ -64,6 +70,35 @@ export default function PeteyWidget({
 
   const isFirstTeamsFetch = useRef(true);
 
+  // (league, market) pairs that actually have graded predictions -- avoids
+  // offering combinations that always answer "no data yet" (e.g. player
+  // props outside MLS). Falls back to showing every option if this fetch
+  // fails, rather than hiding the whole form.
+  const [availablePairs, setAvailablePairs] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/scorecard")
+      .then((r) => r.json())
+      .then((d) => {
+        const rows: ScorecardRow[] = d.scorecard || [];
+        const pairs = new Set(
+          rows.filter((r) => r.n_predictions > 0).map((r) => `${r.league}:${r.market}`)
+        );
+        setAvailablePairs(pairs);
+      })
+      .catch(() => setAvailablePairs(null));
+  }, []);
+
+  const availableMarkets = availablePairs
+    ? MARKETS.filter((m) => availablePairs.has(`${league}:${m.value}`))
+    : MARKETS;
+  // Derived rather than synced via effect: if the previously-picked market
+  // isn't offered for this league, fall back to the first available one
+  // without an extra render round-trip.
+  const effectiveMarket = availableMarkets.some((m) => m.value === market)
+    ? market
+    : (availableMarkets[0]?.value ?? market);
+
   useEffect(() => {
     fetch(`/api/teams?league=${formLeague}`)
       .then((r) => r.json())
@@ -83,7 +118,7 @@ export default function PeteyWidget({
     try {
       const url = mode === "accuracy" ? "/api/ask" : "/api/ask/team-form";
       const body = mode === "accuracy"
-        ? { market, league }
+        ? { market: effectiveMarket, league }
         : { team, stat, games };
       const res = await fetch(url, {
         method: "POST",
@@ -100,7 +135,9 @@ export default function PeteyWidget({
     }
   }
 
-  const canAsk = mode === "accuracy" || (mode === "form" && team.trim().length > 0);
+  const canAsk =
+    (mode === "accuracy" && availableMarkets.length > 0) ||
+    (mode === "form" && team.trim().length > 0);
   const datalistId = compact ? "petey-teams-compact" : "petey-teams";
 
   return (
@@ -131,11 +168,14 @@ export default function PeteyWidget({
             <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
               Market
             </label>
-            <select value={market} onChange={(e) => setMarket(e.target.value)} className="mt-1 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50">
-              {MARKETS.map((m) => (
+            <select value={effectiveMarket} onChange={(e) => setMarket(e.target.value)} className="mt-1 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50">
+              {availableMarkets.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
+            {availablePairs && availableMarkets.length === 0 && (
+              <p className="mt-1 text-xs text-zinc-500">No graded predictions yet for {league}.</p>
+            )}
           </div>
         </div>
       )}
@@ -178,9 +218,16 @@ export default function PeteyWidget({
 
           <div>
             <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Last N games
+              Last {games} games
             </label>
-            <input type="number" min={1} max={20} value={games} onChange={(e) => setGames(Number(e.target.value))} className="mt-1 w-20 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50" />
+            <input
+              type="range"
+              min={1}
+              max={20}
+              value={games}
+              onChange={(e) => setGames(Number(e.target.value))}
+              className="mt-3 w-40 accent-black dark:accent-zinc-50"
+            />
           </div>
         </div>
       )}

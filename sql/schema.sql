@@ -141,8 +141,9 @@ CREATE TABLE predictions (
     prediction_id   BIGSERIAL PRIMARY KEY,
     match_id        INT NOT NULL REFERENCES matches(match_id),
     model_version_id INT NOT NULL REFERENCES model_versions(model_version_id),
-    market          TEXT NOT NULL,   -- '1X2','TOTAL_GOALS','BTTS','TEAM_CORNERS',
-                                     -- 'TEAM_SHOTS','PLAYER_SHOTS','PLAYER_SAVES','PLAYER_GOAL'
+    market          TEXT NOT NULL CHECK (market IN (
+                        '1X2', 'BTTS', 'TOTAL_GOALS', 'CORNERS', 'SOT',
+                        'PLAYER_GOALS', 'PLAYER_SAVES')),
     subject_team_id INT REFERENCES teams(team_id),
     subject_player_id INT REFERENCES players(player_id),
     statement       TEXT NOT NULL,   -- human-readable: 'Inter over 5.5 corners'
@@ -239,3 +240,15 @@ CREATE TABLE IF NOT EXISTS ingest_review (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     resolved    BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+-- Pipeline run log (backing store for a freshness indicator / status page)
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    run_id        BIGSERIAL PRIMARY KEY,
+    job_name      TEXT NOT NULL,       -- 'ingest-nightly','grade-nightly','predict-prematch'
+    started_at    TIMESTAMPTZ NOT NULL,
+    finished_at   TIMESTAMPTZ,
+    status        TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running','success','failed')),
+    rows_written  INT,
+    detail        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_job ON pipeline_runs (job_name, started_at DESC);
