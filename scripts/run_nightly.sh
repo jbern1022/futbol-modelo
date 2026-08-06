@@ -1,12 +1,14 @@
 #!/bin/bash
-# Cron-safe nightly runner — explicit env vars since cron does NOT source
-# .zshrc/.bash_profile. Refreshes MLS (idempotent) then grades anything
-# newly-final.
+# Cron-safe nightly runner — cron does NOT source .zshrc/.bash_profile, so
+# FUTBOL_DSN and API_FOOTBALL_KEY must be exported before this script runs
+# (e.g. from a gitignored env file sourced by the crontab entry itself).
+# Never hardcode real values here — this script is checked into a public
+# repo. Refreshes MLS (idempotent) then grades anything newly-final.
 
 set -e
 
-export FUTBOL_DSN="host=192.168.4.210 dbname=futbol user=futbol password=Futbol2026Lab"
-export API_FOOTBALL_KEY="3fc3baf718194dbddaea28de4a5ff578"
+: "${FUTBOL_DSN:?FUTBOL_DSN must be set in the environment before running}"
+: "${API_FOOTBALL_KEY:?API_FOOTBALL_KEY must be set in the environment before running}"
 export PYTHONPATH="/Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo/src"
 
 cd /Users/joebernal/Documents/Projects/Futbol-Modelo/futbol-modelo

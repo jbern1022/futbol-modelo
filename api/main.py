@@ -93,6 +93,20 @@ def root():
                          "/ask/team-form"]}
 
 
+@app.get("/health")
+def health():
+    try:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+        finally:
+            conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"database unreachable: {e}")
+    return {"status": "ok"}
+
+
 @app.get("/fixtures")
 def list_fixtures(
     league: Optional[str] = Query(None, description="EPL, SERIE_A, MLS, or WC"),

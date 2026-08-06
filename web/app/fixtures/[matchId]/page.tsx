@@ -1,4 +1,5 @@
 import { marketLabel } from "@/lib/markets";
+import { plainOdds } from "@/lib/format";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -111,8 +112,23 @@ export default async function FixturePage({
     (a, b) => marketOrder.indexOf(a) - marketOrder.indexOf(b)
   );
 
+  const schemaOrgEvent = {
+    "@context": "https://schema.org",
+    "@type": "SportsEvent",
+    name: `${fixture.home} vs ${fixture.away}`,
+    startDate: fixture.kickoff_utc,
+    eventStatus: "https://schema.org/EventScheduled",
+    competitor: [{ "@type": "SportsTeam", name: fixture.home }, { "@type": "SportsTeam", name: fixture.away }],
+    homeTeam: { "@type": "SportsTeam", name: fixture.home },
+    awayTeam: { "@type": "SportsTeam", name: fixture.away },
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaOrgEvent) }}
+      />
       <main className="mx-auto max-w-3xl px-6 py-16">
         <a href="/" className="text-sm text-zinc-500 hover:underline">
           &larr; Back to fixtures
@@ -133,7 +149,8 @@ export default async function FixturePage({
               {new Date(fixture.kickoff_utc).toLocaleString(undefined, {
                 dateStyle: "full",
                 timeStyle: "short",
-              })}
+              })}{" "}
+              <span className="text-xs">(your local time)</span>
             </p>
           </div>
           <a href={`/petey?mode=form&league=${encodeURIComponent(fixture.league)}&team=${encodeURIComponent(fixture.home)}`} className="whitespace-nowrap rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
@@ -160,8 +177,11 @@ export default async function FixturePage({
                         {cleanStatement(p.statement, p.market)}
                         {outcomeBadge(p.outcome)}
                       </div>
-                      <div className="text-lg font-semibold text-black dark:text-zinc-50">
-                        {(p.probability * 100).toFixed(1)}%
+                      <div className="text-right">
+                        <div className="text-lg font-semibold text-black dark:text-zinc-50">
+                          {(p.probability * 100).toFixed(1)}%
+                        </div>
+                        <div className="text-xs text-zinc-500">{plainOdds(p.probability)}</div>
                       </div>
                     </div>
                   ))}

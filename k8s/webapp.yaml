@@ -34,7 +34,7 @@ spec:
               key: FUTBOL_OLLAMA_URL
         readinessProbe:
           httpGet:
-            path: /
+            path: /health
             port: 8000
           initialDelaySeconds: 3
           periodSeconds: 10
