@@ -4,9 +4,25 @@ import ThemeToggle from "./theme-toggle";
 import AskPeteyDrawer from "./ask-petey-drawer";
 import Footer from "./footer";
 
+const SITE_URL = "https://futbol.josephbernal.com";
+const DESCRIPTION = "Calibrated soccer prediction system — live fixtures and prediction slates.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Futbol Modelo",
-  description: "Calibrated soccer prediction system — live fixtures and prediction slates.",
+  description: DESCRIPTION,
+  openGraph: {
+    title: "Futbol Modelo",
+    description: DESCRIPTION,
+    url: SITE_URL,
+    siteName: "Futbol Modelo",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Futbol Modelo",
+    description: DESCRIPTION,
+  },
 };
 
 const THEME_INIT_SCRIPT = `

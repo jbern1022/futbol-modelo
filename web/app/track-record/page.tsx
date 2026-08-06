@@ -1,4 +1,5 @@
 import { marketLabel } from "@/lib/markets";
+import CalibrationSection from "./calibration-section";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -137,65 +138,7 @@ export default async function TrackRecordPage() {
                 <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">
                   Calibration
                 </h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  A well-calibrated model's stated confidence should roughly match
-                  how often it's actually right. Each market is broken into
-                  confidence bands (e.g. predictions stated around 60% vs. around
-                  80%) — the closer the stated and realized bars are within each
-                  band, the more trustworthy the probabilities.
-                </p>
-                <div className="mt-4 space-y-6">
-                  {Object.entries(
-                    calibration.reduce<Record<string, CalibrationRow[]>>((acc, row) => {
-                      const key = `${row.league}::${row.market}`;
-                      (acc[key] ??= []).push(row);
-                      return acc;
-                    }, {})
-                  ).map(([key, rows]) => {
-                    const [league, market] = key.split("::");
-                    const sorted = rows
-                      .slice()
-                      .sort((a, b) => a.avg_stated_prob - b.avg_stated_prob);
-                    return (
-                      <div key={key} className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                        <div className="text-sm font-medium text-black dark:text-zinc-50">
-                          {marketLabel(market)}{" "}
-                          <span className="font-normal text-zinc-500">({league})</span>
-                        </div>
-                        <div className="mt-3 space-y-3">
-                          {sorted.map((row, i) => (
-                            <div key={i}>
-                              <div className="text-xs text-zinc-400">
-                                Confidence band ~{(row.avg_stated_prob * 100).toFixed(0)}%
-                                <span className="ml-1 text-zinc-500">(n={row.n})</span>
-                              </div>
-                              <div className="mt-1 space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-16 text-xs text-zinc-500">Stated</span>
-                                  <div className="h-2 flex-1 rounded-full bg-zinc-100 dark:bg-zinc-800">
-                                    <div className="h-2 rounded-full bg-zinc-400" style={{ width: `${row.avg_stated_prob * 100}%` }} />
-                                  </div>
-                                  <span className="w-12 text-right text-xs text-zinc-500">
-                                    {(row.avg_stated_prob * 100).toFixed(0)}%
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="w-16 text-xs text-zinc-500">Realized</span>
-                                  <div className="h-2 flex-1 rounded-full bg-zinc-100 dark:bg-zinc-800">
-                                    <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${row.realized_rate * 100}%` }} />
-                                  </div>
-                                  <span className="w-12 text-right text-xs text-zinc-500">
-                                    {(row.realized_rate * 100).toFixed(0)}%
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <CalibrationSection calibration={calibration} />
               </>
             )}
           </>
