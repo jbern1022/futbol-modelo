@@ -182,3 +182,29 @@ def test_a_reason_cannot_be_attached_to_a_hit(db, fixture_row):
                      (prediction_id, outcome, grader_version, void_reason)
                    VALUES (%s,'hit','t',%s)""",
                 (pid, auto_grade.VOID_STAT_UNAVAILABLE))
+
+
+# ---------- voids are excluded from the rates but stay visible ----------
+
+def test_voids_are_excluded_from_the_scorecard_but_counted_in_the_summary(db, fixture_row):
+    """
+    The whole point of publishing voids: they must not drag a hit rate down,
+    and they must not vanish without trace either.
+    """
+    hit_match = make_final_match(db, fixture_row, days_ago=1)
+    add_prediction(db, fixture_row, hit_match, "1X2", "home")
+
+    void_match = make_final_match(db, fixture_row, days_ago=20)
+    add_prediction(db, fixture_row, void_match, "CORNERS", "over", 4.5)
+
+    auto_grade.run(db, verbose=False)
+
+    with db.cursor() as cur:
+        cur.execute("SELECT market, n_predictions FROM futbol.v_season_scorecard")
+        scorecard = {r[0]: r[1] for r in cur.fetchall()}
+        cur.execute("SELECT void_reason, n FROM futbol.v_void_summary")
+        voids = {r[0]: r[1] for r in cur.fetchall()}
+
+    assert scorecard.get("1X2") == 1, "the graded prediction should be in the rates"
+    assert "CORNERS" not in scorecard, "a void must not appear as a graded result"
+    assert voids.get(auto_grade.VOID_STAT_UNAVAILABLE) == 1, "the void must still be visible"

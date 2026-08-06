@@ -271,6 +271,27 @@ WHERE g.outcome <> 'void'
 GROUP BY l.code, s.label, p.market
 ORDER BY l.code, s.label, p.market;
 
+-- Voided predictions, published alongside the rates rather than silently
+-- excluded from them. v_season_scorecard and v_calibration both filter voids
+-- out, which is right — a void is not a miss — but that would otherwise make
+-- them disappear with nothing to say they existed.
+CREATE OR REPLACE VIEW v_void_summary AS
+SELECT
+    l.code                                 AS league,
+    s.label                                AS season,
+    p.market,
+    COALESCE(g.void_reason, 'unspecified') AS void_reason,
+    COUNT(*)                               AS n,
+    MIN(m.kickoff_utc)                     AS earliest,
+    MAX(m.kickoff_utc)                     AS latest
+FROM predictions p
+JOIN prediction_grades g USING (prediction_id)
+JOIN matches m USING (match_id)
+JOIN seasons s USING (season_id)
+JOIN leagues l USING (league_id)
+WHERE g.outcome = 'void'
+GROUP BY l.code, s.label, p.market, COALESCE(g.void_reason, 'unspecified');
+
 -- Ingest review queue (entity-resolution items needing human eyes)
 CREATE TABLE IF NOT EXISTS ingest_review (
     review_id   SERIAL PRIMARY KEY,

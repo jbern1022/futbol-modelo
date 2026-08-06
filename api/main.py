@@ -14,6 +14,7 @@ Endpoints:
     GET /fixtures/{match_id}/slate
     GET /scorecard?league=MLS
     GET /calibration?league=MLS
+    GET /voids?league=MLS
     GET /teams?league=MLS
     POST /ask  {"market": "CORNERS", "league": "MLS"}
     POST /ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
@@ -60,7 +61,7 @@ def get_conn():
 def root():
     return {"service": "futbol-modelo API", "status": "ok",
             "endpoints": ["/fixtures", "/fixtures/{match_id}/slate",
-                         "/leagues", "/scorecard", "/calibration", "/teams", "/ask",
+                         "/leagues", "/scorecard", "/calibration", "/voids", "/teams", "/ask",
                          "/ask/team-form"]}
 
 
@@ -231,6 +232,34 @@ def scorecard(league: Optional[str] = Query(None)):
             cur.execute(query, params)
             rows = cur.fetchall()
         return {"count": len(rows), "scorecard": rows}
+    finally:
+        conn.close()
+
+
+@app.get("/voids")
+def voids(league: Optional[str] = Query(None)):
+    """
+    Predictions that were voided, and why.
+
+    The scorecard and calibration views exclude voids, correctly — a void is
+    not a miss. This endpoint exists so they are still visible: voiding is the
+    only operation that can drop a prediction out of the published rates, so
+    the counts and reasons are published next to those rates rather than left
+    to be inferred from a gap.
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            query = "SELECT * FROM futbol.v_void_summary"
+            params = []
+            if league:
+                query += " WHERE league = %s"
+                params.append(league)
+            query += " ORDER BY league, market, void_reason"
+            cur.execute(query, params)
+            rows = cur.fetchall()
+        return {"count": len(rows), "voids": rows,
+                "total": sum(int(r["n"]) for r in rows)}
     finally:
         conn.close()
 

@@ -13,6 +13,20 @@ interface ScorecardRow {
   log_loss: number;
 }
 
+interface VoidRow {
+  league: string;
+  market: string;
+  void_reason: string;
+  n: number;
+}
+
+const VOID_REASON_LABELS: Record<string, string> = {
+  player_absent: "player did not feature",
+  stat_unavailable: "the statistic was never published",
+  subject_missing: "prediction had no subject recorded",
+  unspecified: "voided before reasons were recorded",
+};
+
 interface League {
   code: string;
   name: string;
@@ -40,6 +54,16 @@ const MARKET_LABELS: Record<string, string> = {
 
 function marketLabel(market: string): string {
   return MARKET_LABELS[market] || market;
+}
+
+async function getVoids(): Promise<VoidRow[]> {
+  try {
+    const res = await fetch(`${API_URL}/voids`, { cache: "no-store" });
+    if (!res.ok) return [];
+    return (await res.json()).voids || [];
+  } catch {
+    return [];
+  }
 }
 
 async function getLeagues(): Promise<League[]> {
@@ -89,11 +113,17 @@ async function getCalibration(): Promise<CalibrationRow[]> {
 }
 
 export default async function TrackRecordPage() {
-  const [scorecard, calibration, leagues] = await Promise.all([
+  const [scorecard, calibration, leagues, voids] = await Promise.all([
     getScorecard(),
     getCalibration(),
     getLeagues(),
+    getVoids(),
   ]);
+  const voidsByReason = voids.reduce<Record<string, number>>((acc, v) => {
+    acc[v.void_reason] = (acc[v.void_reason] || 0) + Number(v.n);
+    return acc;
+  }, {});
+  const totalVoided = Object.values(voidsByReason).reduce((a, b) => a + b, 0);
   const concluded = new Set(
     leagues.filter((l) => l.concluded).map((l) => l.code)
   );
@@ -242,6 +272,45 @@ export default async function TrackRecordPage() {
                 </div>
               </>
             )}
+          </>
+        )}
+
+        {totalVoided > 0 && (
+          <>
+            <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">
+              Voided predictions
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-zinc-500">
+              {totalVoided.toLocaleString()} prediction
+              {totalVoided === 1 ? " has" : "s have"} been voided and excluded
+              from the rates above. A void is not a miss — it means the outcome
+              could not be determined, most often because a named player never
+              took the field. Voiding happens automatically by fixed rule, never
+              by hand, and the reason is recorded against each one. They are
+              listed here rather than quietly dropped.
+            </p>
+            <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">Reason</th>
+                    <th className="px-4 py-2 font-medium text-right">Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(voidsByReason)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([reason, n]) => (
+                      <tr key={reason} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+                        <td className="px-4 py-2 text-black dark:text-zinc-50">
+                          {VOID_REASON_LABELS[reason] || reason}
+                        </td>
+                        <td className="px-4 py-2 text-right text-zinc-500">{n}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
       </main>
