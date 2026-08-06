@@ -13,6 +13,13 @@ interface ScorecardRow {
   log_loss: number;
 }
 
+interface League {
+  code: string;
+  name: string;
+  concluded: boolean;
+  n_predictions: number;
+}
+
 interface CalibrationRow {
   league: string;
   market: string;
@@ -33,6 +40,30 @@ const MARKET_LABELS: Record<string, string> = {
 
 function marketLabel(market: string): string {
   return MARKET_LABELS[market] || market;
+}
+
+async function getLeagues(): Promise<League[]> {
+  try {
+    const res = await fetch(`${API_URL}/leagues`, { cache: "no-store" });
+    if (!res.ok) return [];
+    return (await res.json()).leagues || [];
+  } catch {
+    return [];
+  }
+}
+
+// A finished competition keeps every prediction it ever made and stays in the
+// rates below. It is labelled, not removed: dropping a concluded competition
+// from published figures would select the record on the basis of how it went.
+function ConcludedBadge() {
+  return (
+    <span
+      title="This competition has finished. Its predictions remain in the record."
+      className="ml-1.5 inline-flex items-center rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+    >
+      completed
+    </span>
+  );
 }
 
 async function getScorecard(): Promise<ScorecardRow[]> {
@@ -58,10 +89,14 @@ async function getCalibration(): Promise<CalibrationRow[]> {
 }
 
 export default async function TrackRecordPage() {
-  const [scorecard, calibration] = await Promise.all([
+  const [scorecard, calibration, leagues] = await Promise.all([
     getScorecard(),
     getCalibration(),
+    getLeagues(),
   ]);
+  const concluded = new Set(
+    leagues.filter((l) => l.concluded).map((l) => l.code)
+  );
 
   const totalPredictions = scorecard.reduce((sum, r) => sum + r.n_predictions, 0);
   const totalGraded = scorecard.length > 0;
@@ -114,7 +149,10 @@ export default async function TrackRecordPage() {
                       key={i}
                       className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
                     >
-                      <td className="px-4 py-2 text-zinc-500">{row.league}</td>
+                      <td className="px-4 py-2 text-zinc-500">
+                        {row.league}
+                        {concluded.has(row.league) && <ConcludedBadge />}
+                      </td>
                       <td className="px-4 py-2 text-black dark:text-zinc-50">
                         {marketLabel(row.market)}
                       </td>
@@ -165,6 +203,7 @@ export default async function TrackRecordPage() {
                         <div className="text-sm font-medium text-black dark:text-zinc-50">
                           {marketLabel(market)}{" "}
                           <span className="font-normal text-zinc-500">({league})</span>
+                          {concluded.has(league) && <ConcludedBadge />}
                         </div>
                         <div className="mt-3 space-y-3">
                           {sorted.map((row, i) => (

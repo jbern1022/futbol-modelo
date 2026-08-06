@@ -9,6 +9,8 @@ Run locally:
 
 Endpoints:
     GET /fixtures?league=MLS&status=scheduled&days=21
+    GET /fixtures?status=final&days_back=14   (results view)
+    GET /leagues
     GET /fixtures/{match_id}/slate
     GET /scorecard?league=MLS
     GET /calibration?league=MLS
@@ -17,6 +19,7 @@ Endpoints:
     POST /ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
 """
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 import psycopg2
@@ -57,7 +60,7 @@ def get_conn():
 def root():
     return {"service": "futbol-modelo API", "status": "ok",
             "endpoints": ["/fixtures", "/fixtures/{match_id}/slate",
-                         "/scorecard", "/calibration", "/teams", "/ask",
+                         "/leagues", "/scorecard", "/calibration", "/teams", "/ask",
                          "/ask/team-form"]}
 
 
@@ -121,6 +124,57 @@ def list_fixtures(
             cur.execute(query, params)
             rows = cur.fetchall()
         return {"count": len(rows), "fixtures": rows}
+    finally:
+        conn.close()
+
+
+@app.get("/leagues")
+def list_leagues():
+    """
+    Per-league coverage, so the frontend can distinguish a live competition
+    from a finished one instead of listing them identically.
+
+    `concluded` is derived rather than configured: a league is concluded when
+    it has no scheduled fixtures left and its last match is over 30 days past.
+    That covers the World Cup once the tournament ends without anyone having
+    to remember to flag it, and it will do the same for a club season between
+    campaigns. Nothing is hidden — a concluded league keeps every prediction
+    it ever made, and keeps appearing in the track record. Removing a finished
+    competition from published rates would select the record on the basis of
+    how it went, which is precisely the bias the ledger exists to prevent.
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT l.code, l.name, l.is_international,
+                       COUNT(*) FILTER (WHERE m.status = 'scheduled'
+                                          AND m.kickoff_utc > now())   AS n_upcoming,
+                       COUNT(*) FILTER (WHERE m.status = 'final')       AS n_final,
+                       MAX(m.kickoff_utc) FILTER (WHERE m.status = 'final')
+                                                                       AS last_match,
+                       (SELECT COUNT(*) FROM futbol.predictions p
+                        JOIN futbol.matches mm USING (match_id)
+                        JOIN futbol.seasons ss ON ss.season_id = mm.season_id
+                        WHERE ss.league_id = l.league_id)               AS n_predictions
+                FROM futbol.leagues l
+                LEFT JOIN futbol.seasons s ON s.league_id = l.league_id
+                LEFT JOIN futbol.matches m ON m.season_id = s.season_id
+                GROUP BY l.league_id, l.code, l.name, l.is_international
+                ORDER BY l.code
+            """)
+            rows = cur.fetchall()
+        leagues = []
+        for r in rows:
+            r = dict(r)
+            last = r["last_match"]
+            r["concluded"] = bool(
+                r["n_upcoming"] == 0
+                and last is not None
+                and (datetime.now(timezone.utc) - last).days > 30
+            )
+            leagues.append(r)
+        return {"count": len(leagues), "leagues": leagues}
     finally:
         conn.close()
 
