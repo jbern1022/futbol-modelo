@@ -45,6 +45,16 @@ echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) nightly run start ==="
 python -m ingestion.api_football backfill --league MLS --season 2026
 python -m ingestion.api_football backfill --league EPL --season 2026 --primary
 python -m ingestion.api_football backfill --league SERIE_A --season 2026 --primary
+
+# Rebuild the rolling feature tables from the data just ingested. This has to
+# happen between ingestion and slate generation: the props models read
+# team_match_features, so skipping it means predicting from however stale the
+# tables were when it was last run by hand. The rebuild is transactional and
+# refuses to commit an empty result, so a bad ingest leaves the previous
+# features in place rather than replacing them with nothing.
+echo "--- rebuilding features ---"
+psql "$FUTBOL_DSN" -v ON_ERROR_STOP=1 -f "$REPO_ROOT/sql/features.sql"
+
 python scripts/auto_slate.py --league MLS --days 21
 python scripts/auto_slate.py --league EPL --days 45
 python scripts/auto_slate.py --league SERIE_A --days 45
