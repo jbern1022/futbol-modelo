@@ -22,6 +22,8 @@ interface SlateResponse {
     away: string;
     kickoff_utc: string;
     status: string;
+    home_goals: number | null;
+    away_goals: number | null;
   };
   predictions: Prediction[];
 }
@@ -176,7 +178,15 @@ export default async function FixturePage({
               </span>
             </span>
             <h1 className="mt-1 text-2xl font-semibold text-black dark:text-zinc-50">
-              {fixture.home} vs {fixture.away}
+              {fixture.home}{" "}
+              {fixture.home_goals !== null && fixture.away_goals !== null ? (
+                <span className="tabular-nums">
+                  {fixture.home_goals}&ndash;{fixture.away_goals}
+                </span>
+              ) : (
+                <span className="text-zinc-400">vs</span>
+              )}{" "}
+              {fixture.away}
             </h1>
             <p className="mt-1 text-zinc-500">
               {new Date(fixture.kickoff_utc).toLocaleString(undefined, {

@@ -65,32 +65,59 @@ def root():
 def list_fixtures(
     league: Optional[str] = Query(None, description="EPL, SERIE_A, MLS, or WC"),
     status: str = Query("scheduled", description="scheduled or final"),
-    days: int = Query(21, description="Only fixtures within this many days"),
+    days: int = Query(21, description="Look this many days forward"),
+    days_back: int = Query(1, ge=0, le=365,
+                           description="Look this many days back. Results views "
+                                       "want this; the default of 1 preserves "
+                                       "the original upcoming-fixtures window."),
+    limit: int = Query(200, ge=1, le=500),
 ):
+    """
+    Also serves the results view. Finished matches previously had no route into
+    the site at all: this endpoint defaults to status=scheduled and only ever
+    looked one day into the past, so a match disappeared at kickoff and its
+    graded slate became unreachable except as an aggregate on Track Record.
+
+    Grade counts are returned alongside so a results list can show how a slate
+    actually did without a follow-up request per fixture.
+    """
+    order = "DESC" if status == "final" else "ASC"
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            query = """
+            query = f"""
                 SELECT m.match_id, l.code AS league, s.label AS season,
                        th.name AS home, ta.name AS away,
                        m.kickoff_utc, m.status,
                        m.home_goals, m.away_goals,
-                       (SELECT COUNT(*) FROM futbol.predictions p
-                        WHERE p.match_id = m.match_id) AS n_predictions
+                       COUNT(p.prediction_id)                             AS n_predictions,
+                       COUNT(g.prediction_id) FILTER (
+                           WHERE g.outcome <> 'void')                     AS n_graded,
+                       COUNT(g.prediction_id) FILTER (
+                           WHERE g.outcome = 'hit')                       AS n_hits
                 FROM futbol.matches m
                 JOIN futbol.teams th ON th.team_id = m.home_team_id
                 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
                 JOIN futbol.seasons s ON s.season_id = m.season_id
                 JOIN futbol.leagues l ON l.league_id = s.league_id
+                LEFT JOIN futbol.predictions p ON p.match_id = m.match_id
+                LEFT JOIN futbol.prediction_grades g
+                       ON g.prediction_id = p.prediction_id
                 WHERE m.status = %s
-                  AND m.kickoff_utc BETWEEN now() - interval '1 day'
+                  AND m.kickoff_utc BETWEEN now() - (%s || ' days')::interval
                                         AND now() + (%s || ' days')::interval
             """
-            params = [status, days]
+            params = [status, days_back, days]
             if league:
                 query += " AND l.code = %s"
                 params.append(league)
-            query += " ORDER BY m.kickoff_utc"
+            query += f"""
+                GROUP BY m.match_id, l.code, s.label, th.name, ta.name,
+                         m.kickoff_utc, m.status, m.home_goals, m.away_goals
+                ORDER BY m.kickoff_utc {order}
+                LIMIT %s
+            """
+            params.append(limit)
             cur.execute(query, params)
             rows = cur.fetchall()
         return {"count": len(rows), "fixtures": rows}
@@ -105,7 +132,8 @@ def get_slate(match_id: int):
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT m.match_id, l.code AS league, th.name AS home,
-                          ta.name AS away, m.kickoff_utc, m.status
+                          ta.name AS away, m.kickoff_utc, m.status,
+                          m.home_goals, m.away_goals
                    FROM futbol.matches m
                    JOIN futbol.teams th ON th.team_id = m.home_team_id
                    JOIN futbol.teams ta ON ta.team_id = m.away_team_id
