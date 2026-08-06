@@ -106,6 +106,7 @@ def fixture_row(db):
         model_version_id = cur.fetchone()[0]
 
     return {
+        "season_id": season_id,
         "match_id": match_id,
         "model_version_id": model_version_id,
         "home_team_id": home_id,

@@ -19,7 +19,9 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-GRADER_VERSION = "grader-1.0"
+# 1.1 introduced rule-based voiding of predictions whose observed value
+# never arrives, with the reason recorded in prediction_grades.void_reason.
+GRADER_VERSION = "grader-1.1"
 
 
 # ---------- per-prediction grading ----------

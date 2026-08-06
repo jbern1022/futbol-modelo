@@ -218,7 +218,15 @@ CREATE TABLE prediction_grades (
     outcome         TEXT NOT NULL CHECK (outcome IN ('hit','miss','void')),
     actual_value    NUMERIC(8,3),                  -- observed stat (e.g. 7 corners)
     graded_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    grader_version  TEXT NOT NULL
+    grader_version  TEXT NOT NULL,
+    -- Why a prediction was voided: 'player_absent', 'stat_unavailable',
+    -- 'subject_missing'. Voiding is the one operation that can remove a
+    -- prediction from the published rates, so the reason is recorded and
+    -- published rather than left implicit. See auto_grade.py and
+    -- sql/migrations/003_prediction_grades_void_reason.sql.
+    void_reason     TEXT,
+    CONSTRAINT prediction_grades_void_reason_only_when_void
+        CHECK (void_reason IS NULL OR outcome = 'void')
 );
 
 -- ---------- Season report views ----------
