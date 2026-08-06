@@ -85,7 +85,7 @@ def list_fixtures(
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            query = f"""
+            query = """
                 SELECT m.match_id, l.code AS league, s.label AS season,
                        th.name AS home, ta.name AS away,
                        m.kickoff_utc, m.status,
