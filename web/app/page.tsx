@@ -95,23 +95,10 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
-      <main className="mx-auto max-w-4xl px-6 py-16">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
-            Futbol Modelo
-          </h1>
-          <div className="flex gap-2">
-            <a href="/petey" className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
-              Ask Petey
-            </a>
-            <a href="/how-it-works" className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
-              How It Works
-            </a>
-            <a href="/track-record" className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
-              Track Record
-            </a>
-          </div>
-        </div>
+      <main className="mx-auto max-w-4xl px-6 py-12">
+        <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
+          Futbol Modelo
+        </h1>
         <p className="mt-2 text-zinc-600 dark:text-zinc-400">
           Calibrated soccer predictions across MLS, the Premier League, Serie A, and La Liga — generated and graded automatically, with every prediction locked before kickoff.
         </p>

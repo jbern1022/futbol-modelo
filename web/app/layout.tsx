@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ThemeToggle from "./theme-toggle";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 
 export const metadata: Metadata = {
   title: "Futbol Modelo",
@@ -32,7 +33,9 @@ export default function RootLayout({
         <div className="fixed bottom-4 right-4 z-50">
           <ThemeToggle />
         </div>
-        {children}
+        <SiteHeader />
+        <div className="flex-1">{children}</div>
+        <SiteFooter />
       </body>
     </html>
   );

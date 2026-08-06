@@ -1,3 +1,6 @@
--r requirements-api.txt
+# Full runtime deps, not just the API subset: the model tests import numpy,
+# pandas, scipy, scikit-learn and lightgbm, so CI has to install what the
+# project actually ships or it fails at collection.
+-r requirements.txt
 pytest>=8.0
 ruff>=0.6

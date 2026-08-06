@@ -1,3 +1,5 @@
+import { SmallSampleBadge, isSmallSample } from "../small-sample";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface ScorecardRow {
@@ -66,12 +68,9 @@ export default async function TrackRecordPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
-      <main className="mx-auto max-w-4xl px-6 py-16">
-        <a href="/" className="text-sm text-zinc-500 hover:underline">
-          &larr; Back to fixtures
-        </a>
+      <main className="mx-auto max-w-4xl px-6 py-12">
 
-        <h1 className="mt-6 text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
+        <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
           Track Record
         </h1>
         <p className="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">
@@ -121,6 +120,9 @@ export default async function TrackRecordPage() {
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-500">
                         {row.n_predictions}
+                        {isSmallSample(row.n_predictions) && (
+                          <SmallSampleBadge n={row.n_predictions} />
+                        )}
                       </td>
                       <td className="px-4 py-2 text-right text-black dark:text-zinc-50">
                         {(row.avg_confidence * 100).toFixed(1)}%
@@ -170,6 +172,7 @@ export default async function TrackRecordPage() {
                               <div className="text-xs text-zinc-400">
                                 Confidence band ~{(row.avg_stated_prob * 100).toFixed(0)}%
                                 <span className="ml-1 text-zinc-500">(n={row.n})</span>
+                                {isSmallSample(row.n) && <SmallSampleBadge n={row.n} />}
                               </div>
                               <div className="mt-1 space-y-1">
                                 <div className="flex items-center gap-2">

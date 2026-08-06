@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { SmallSampleNote } from "../small-sample";
+
 const LEAGUES = ["MLS", "EPL", "SERIE_A", "LA_LIGA", "WC"];
 const MARKETS = [
   { value: "1X2", label: "Match Result" },
@@ -96,12 +98,9 @@ function PeteyPageInner() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
-      <main className="mx-auto max-w-2xl px-6 py-16">
-        <a href="/" className="text-sm text-zinc-500 hover:underline">
-          &larr; Back to fixtures
-        </a>
+      <main className="mx-auto max-w-2xl px-6 py-12">
 
-        <h1 className="mt-6 text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
+        <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
           Ask Petey
         </h1>
         <p className="mt-2 text-zinc-600 dark:text-zinc-400">
@@ -216,10 +215,12 @@ function PeteyPageInner() {
               </p>
             )}
 
-            {response.disclaimer && (
-              <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
-                &#9888; {response.disclaimer}
-              </p>
+            {response.small_sample && (
+              <SmallSampleNote
+                className="mt-2"
+                n={response.n_predictions ?? response.n_games ?? 0}
+                noun={mode === "form" ? "game" : "prediction"}
+              />
             )}
           </div>
         )}
