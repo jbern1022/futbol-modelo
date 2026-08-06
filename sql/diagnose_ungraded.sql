@@ -57,6 +57,36 @@ GROUP BY 1 ORDER BY n DESC;
 
 
 \echo ''
+\echo '=== 2b. Root cause for the player markets (PLAYER_GOALS, PLAYER_SAVES) ==='
+-- The likely story here is different from the team markets. The team
+-- definitely played; a named player may simply not have featured.
+-- load_fixture_players skips anyone with zero or null minutes, so an unused
+-- substitute gets no player_match_stats row at all and the prediction can
+-- never be graded. Conventionally an anytime-scorer market voids when the
+-- player does not appear — it does not lose — so hanging forever is the wrong
+-- outcome as well as an invisible one.
+SELECT CASE
+         WHEN p.subject_player_id IS NULL           THEN 'c) prediction has no subject_player_id'
+         WHEN pms.match_id IS NULL                  THEN 'a) player has no row — did not feature'
+         WHEN p.market = 'PLAYER_GOALS'
+              AND pms.goals IS NULL                 THEN 'b) row exists, goals is NULL'
+         WHEN p.market = 'PLAYER_SAVES'
+              AND pms.saves IS NULL                 THEN 'b) row exists, saves is NULL (not a keeper?)'
+         ELSE 'gradeable — investigate why auto_grade skipped it'
+       END AS cause,
+       p.market,
+       COUNT(*) AS n
+FROM futbol.predictions p
+JOIN futbol.matches m USING (match_id)
+LEFT JOIN futbol.prediction_grades g USING (prediction_id)
+LEFT JOIN futbol.player_match_stats pms
+       ON pms.match_id = p.match_id AND pms.player_id = p.subject_player_id
+WHERE g.prediction_id IS NULL AND m.status = 'final'
+  AND p.market IN ('PLAYER_GOALS', 'PLAYER_SAVES')
+GROUP BY 1, 2 ORDER BY n DESC;
+
+
+\echo ''
 \echo '=== 3. Sanity: is the subject team even in the match? ==='
 -- Should return zero rows. Anything here is a real data bug: a prediction
 -- about a team that did not play in the match it is attached to.
