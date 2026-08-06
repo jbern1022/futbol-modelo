@@ -76,6 +76,13 @@ export default function HowItWorksPage() {
             Ask Petey &rarr;
           </a>
         </div>
+
+        <p className="mt-10 text-sm text-zinc-500 dark:text-zinc-500">
+          Futbol Modelo is an analytics and calibration project, not a
+          gambling product. It doesn&apos;t place bets, take odds, or offer
+          betting advice — every prediction exists to be graded against
+          reality, nothing more.
+        </p>
       </main>
     </div>
   );

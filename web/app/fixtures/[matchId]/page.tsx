@@ -1,3 +1,5 @@
+import { marketLabel } from "@/lib/markets";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface Prediction {
@@ -26,16 +28,6 @@ interface SlateResponse {
   predictions: Prediction[];
 }
 
-const MARKET_LABELS: Record<string, string> = {
-  "1X2": "Match Result",
-  BTTS: "Both Teams to Score",
-  TOTAL_GOALS: "Total Goals",
-  CORNERS: "Corners",
-  SOT: "Shots on Target",
-  PLAYER_GOALS: "Anytime Goalscorer",
-  PLAYER_SAVES: "Goalkeeper Saves",
-};
-
 const LEAGUE_COLORS: Record<string, string> = {
   MLS: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
   EPL: "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300",
@@ -51,10 +43,6 @@ function leagueBadge(league: string) {
       {league}
     </span>
   );
-}
-
-function marketLabel(market: string): string {
-  return MARKET_LABELS[market] || market;
 }
 
 function cleanStatement(statement: string, market: string): string {

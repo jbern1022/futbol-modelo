@@ -53,7 +53,7 @@ export default function LessonsLearnedPage() {
 
           <section>
             <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
-              Petey read a percentage as a body count
+              Petey reads a percentage as a body count
             </h2>
             <p className="mt-2 text-zinc-600 dark:text-zinc-400">
               The first time Petey answered a real question about a market
@@ -70,8 +70,8 @@ export default function LessonsLearnedPage() {
               politely didn&apos;t hold. What did: a structural filter that
               throws away any answer containing an unsupported judgment
               word and falls back to a plain, deterministic sentence
-              instead. Safety through architecture, not through a better
-              -worded request.
+              instead. Safety through architecture, not through a
+              better-worded request.
             </p>
           </section>
 

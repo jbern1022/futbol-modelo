@@ -1,3 +1,5 @@
+import { marketLabel } from "@/lib/markets";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface ScorecardRow {
@@ -17,20 +19,6 @@ interface CalibrationRow {
   avg_stated_prob: number;
   realized_rate: number;
   n: number;
-}
-
-const MARKET_LABELS: Record<string, string> = {
-  "1X2": "Match Result",
-  BTTS: "Both Teams to Score",
-  TOTAL_GOALS: "Total Goals",
-  CORNERS: "Corners",
-  SOT: "Shots on Target",
-  PLAYER_GOALS: "Anytime Goalscorer",
-  PLAYER_SAVES: "Goalkeeper Saves",
-};
-
-function marketLabel(market: string): string {
-  return MARKET_LABELS[market] || market;
 }
 
 async function getScorecard(): Promise<ScorecardRow[]> {
