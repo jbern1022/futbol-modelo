@@ -22,6 +22,10 @@ from scipy.stats import poisson
 MAX_GOALS = 10  # scoreline grid size
 
 
+class UnratedTeamError(KeyError):
+    """Raised when predicting for a team absent from the fit with no prior set."""
+
+
 def _tau(x: int, y: int, lam: float, mu: float, rho: float) -> float:
     """Dixon-Coles low-score dependency adjustment."""
     if x == 0 and y == 0:
@@ -41,6 +45,12 @@ class DixonColes:
         self.xi = xi
         self.teams: list[str] = []
         self.params: np.ndarray | None = None
+        # Ratings applied to a team with no match history in this league —
+        # newly promoted sides. Without this every fixture involving one is
+        # unratable, and the slate generator skipped them outright: in one
+        # real run that was 9 of 13 upcoming Premier League fixtures.
+        self.prior_attack: float | None = None
+        self.prior_defence: float | None = None
 
     # ---------- fitting ----------
 
@@ -86,8 +96,33 @@ class DixonColes:
             penalty = reg * (np.sum(atk ** 2) + np.sum(dfn ** 2)) if reg else 0.0
             return -ll.sum() + penalty
 
+        def tau_margin(p: np.ndarray) -> float:
+            """
+            Smallest low-score correction across the training set.
+
+            The Dixon-Coles tau adjustment is only a valid probability
+            adjustment while all four of its cases stay positive, which bounds
+            rho relative to the scoring rates. Without this the optimiser is
+            free to pick a rho that makes tau negative: the clip inside nll()
+            hides it during fitting, and score_matrix() then applies the same
+            rho unclipped and produces negative probabilities.
+            """
+            atk, dfn = p[:n], p[n:2 * n]
+            gamma, rho = p[2 * n], p[2 * n + 1]
+            lam = np.exp(atk[home_i] + dfn[away_i] + gamma)
+            mu = np.exp(atk[away_i] + dfn[home_i])
+            return float(np.min(np.concatenate([
+                1 - lam * mu * rho,
+                1 + lam * rho,
+                1 + mu * rho,
+                np.array([1 - rho]),
+            ])) - 1e-4)
+
         # identifiability: mean attack = 0
-        cons = [{"type": "eq", "fun": lambda p: p[:n].sum()}]
+        cons = [
+            {"type": "eq", "fun": lambda p: p[:n].sum()},
+            {"type": "ineq", "fun": tau_margin},
+        ]
         res = minimize(nll, x0, constraints=cons, method="SLSQP",
                        options={"maxiter": 300, "ftol": 1e-8})
         self.params = res.x
@@ -95,14 +130,43 @@ class DixonColes:
 
     # ---------- inference ----------
 
+    def knows(self, team: str) -> bool:
+        return team in self.teams
+
+    def set_unknown_team_prior(self, attack: float, defence: float) -> None:
+        """
+        Ratings to use for a team absent from the fit — in practice a newly
+        promoted side with no top-flight history.
+
+        Callers should derive these from data (see promoted_team_prior in
+        scripts/generate_slate.py, which measures how previously promoted
+        teams actually performed) rather than inventing a number.
+        """
+        self.prior_attack = float(attack)
+        self.prior_defence = float(defence)
+
+    def _team_params(self, team: str, atk: np.ndarray, dfn: np.ndarray,
+                     idx: dict[str, int]) -> tuple[float, float]:
+        if team in idx:
+            return float(atk[idx[team]]), float(dfn[idx[team]])
+        if self.prior_attack is None or self.prior_defence is None:
+            raise UnratedTeamError(
+                f"{team!r} has no match history in this fit and no prior is "
+                f"set. Call set_unknown_team_prior() before predicting for "
+                f"promoted or newly added teams."
+            )
+        return self.prior_attack, self.prior_defence
+
     def rates(self, home: str, away: str) -> tuple[float, float, float]:
         n = len(self.teams)
         idx = {t: i for i, t in enumerate(self.teams)}
         p = self.params
         atk, dfn = p[:n], p[n:2 * n]
         gamma, rho = p[2 * n], p[2 * n + 1]
-        lam = float(np.exp(atk[idx[home]] + dfn[idx[away]] + gamma))
-        mu = float(np.exp(atk[idx[away]] + dfn[idx[home]]))
+        atk_h, dfn_h = self._team_params(home, atk, dfn, idx)
+        atk_a, dfn_a = self._team_params(away, atk, dfn, idx)
+        lam = float(np.exp(atk_h + dfn_a + gamma))
+        mu = float(np.exp(atk_a + dfn_h))
         return lam, mu, rho
 
     def score_matrix(self, home: str, away: str) -> np.ndarray:
@@ -114,6 +178,22 @@ class DixonColes:
         for x in range(2):
             for y in range(2):
                 m[x, y] *= _tau(x, y, lam, mu, rho)
+
+        # tau can still drive a cell negative for rates outside the range the
+        # fit was constrained over — an unrated team using a prior, say. A
+        # negative cell is not a probability, so clip it, but refuse to
+        # normalise away a meaningful amount of mass: that would silently
+        # return a confident-looking distribution the model does not support.
+        negative_mass = float(-m[m < 0].sum()) if (m < 0).any() else 0.0
+        if negative_mass > 0:
+            m = np.clip(m, 0.0, None)
+            if negative_mass > 0.01 * m.sum():
+                raise ValueError(
+                    f"score_matrix invalid for {home} vs {away} "
+                    f"(lam={lam:.2f}, mu={mu:.2f}, rho={rho:.3f}): the "
+                    f"low-score correction went negative by "
+                    f"{negative_mass:.3g}. Refit, or widen the prior."
+                )
         total = m.sum()
         if total < 1e-6:
             raise ValueError(

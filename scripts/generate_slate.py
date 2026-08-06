@@ -93,6 +93,82 @@ def fit_dixon_coles(cur, league: str) -> DixonColes:
     return DixonColes(xi=xi).fit(df, reg=reg)
 
 
+def promoted_team_prior(cur, league: str) -> tuple[float, float] | None:
+    """
+    Attack/defence ratings for a team with no history in this league,
+    measured from how previously promoted sides actually performed.
+
+    Method: find every team whose first season in the league is not the
+    earliest season on record — those are promotions we can observe — and
+    compare the goals they scored and conceded in that first season against
+    the league-wide average. In the Dixon-Coles parameterisation a team's
+    scoring rate is exp(attack + opponent_defence + home_advantage), so a
+    log ratio of goal rates is the natural scale:
+
+        attack  = log(promoted goals for     / league average)
+        defence = log(promoted goals against / league average)
+
+    `defence` is defensive WEAKNESS — it is added to the opponent's scoring
+    rate — so a promoted side gets a negative attack and a positive defence.
+
+    This is an approximation: it ignores home advantage and the mean-zero
+    attack constraint, and it treats every promoted season as exchangeable.
+    It is a prior, not an estimate, and it is replaced by real ratings as
+    soon as the team has played matches. Returns None when the league has no
+    observable promotions, in which case the caller should skip rather than
+    guess.
+    """
+    cur.execute(
+        """SELECT s.label AS season, m.kickoff_utc, th.name AS team,
+                  m.home_goals AS gf, m.away_goals AS ga
+           FROM futbol.matches m
+           JOIN futbol.teams th ON th.team_id = m.home_team_id
+           JOIN futbol.seasons s ON s.season_id = m.season_id
+           JOIN futbol.leagues l ON l.league_id = s.league_id
+           WHERE l.code = %s AND m.status = 'final'
+         UNION ALL
+           SELECT s.label, m.kickoff_utc, ta.name, m.away_goals, m.home_goals
+           FROM futbol.matches m
+           JOIN futbol.teams ta ON ta.team_id = m.away_team_id
+           JOIN futbol.seasons s ON s.season_id = m.season_id
+           JOIN futbol.leagues l ON l.league_id = s.league_id
+           WHERE l.code = %s AND m.status = 'final'""",
+        (league, league))
+    rows = cur.fetchall()
+    if not rows:
+        return None
+    df = pd.DataFrame(rows, columns=["season", "kickoff", "team", "gf", "ga"])
+    df[["gf", "ga"]] = df[["gf", "ga"]].apply(pd.to_numeric, errors="coerce")
+    df = df.dropna(subset=["gf", "ga"])
+    if df.empty:
+        return None
+
+    season_start = df.groupby("season")["kickoff"].min().sort_values()
+    order = {s: i for i, s in enumerate(season_start.index)}
+    df["season_no"] = df["season"].map(order)
+
+    first_seen = df.groupby("team")["season_no"].min()
+    # Teams present in the earliest season on record may or may not have been
+    # promoted into it — we cannot tell, so they are excluded.
+    promoted = first_seen[first_seen > 0]
+    if promoted.empty:
+        return None
+
+    mask = df.apply(
+        lambda r: r["team"] in promoted.index
+        and r["season_no"] == promoted[r["team"]], axis=1)
+    debut = df[mask]
+    if len(debut) < 20:  # too few observed promotions to learn anything
+        return None
+
+    league_avg = float(df["gf"].mean())
+    if league_avg <= 0:
+        return None
+    attack = float(np.log(max(debut["gf"].mean(), 0.05) / league_avg))
+    defence = float(np.log(max(debut["ga"].mean(), 0.05) / league_avg))
+    return attack, defence
+
+
 def current_form(cur, team_id: int, kickoff) -> dict:
     cur.execute(
         """SELECT tms.corners, tms.shots, tms.shots_on_target, tms.xg,
@@ -275,10 +351,19 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
         return None
 
     dc = fit_dixon_coles(cur, league)
-    if home not in dc.teams or away not in dc.teams:
+    unrated = [t for t in (home, away) if not dc.knows(t)]
+    if unrated:
+        prior = promoted_team_prior(cur, league)
+        if prior is None:
+            if verbose:
+                print(f"  SKIP {home} vs {away}: {', '.join(unrated)} unrated "
+                      f"and no promoted-team prior available for {league}")
+            return None
+        dc.set_unknown_team_prior(*prior)
         if verbose:
-            print(f"  SKIP {home} vs {away}: team(s) not in fitted list")
-        return None
+            print(f"  NOTE {home} vs {away}: {', '.join(unrated)} has no "
+                  f"{league} history — using the promoted-team prior "
+                  f"(attack={prior[0]:+.3f}, defence={prior[1]:+.3f})")
     mk = derive_markets(dc.predict(home, away))
 
     candidates = [
