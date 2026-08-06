@@ -13,7 +13,14 @@ spec:
           containers:
           - name: predict
             image: gitea.lab/bernal-labs/futbol-modelo:latest
-            command: ["python","scripts/predict_upcoming.py"]
+            command: ["/bin/sh","-c"]
+            args:
+              - python scripts/auto_slate.py --league MLS --days 21 &&
+                python scripts/auto_slate.py --league EPL --days 45 &&
+                python scripts/auto_slate.py --league SERIE_A --days 45
+            resources:
+              requests: { cpu: 250m, memory: 256Mi }
+              limits: { cpu: 1000m, memory: 1Gi }
             env:
             - name: FUTBOL_DSN
               valueFrom: { secretKeyRef: { name: futbol-db, key: dsn } }

@@ -19,6 +19,9 @@ spec:
             args:
               - python -m ingestion.loader matchday --league EPL &&
                 python -m ingestion.loader matchday --league SERIE_A
+            resources:
+              requests: { cpu: 250m, memory: 256Mi }
+              limits: { cpu: 1000m, memory: 1Gi }
             env:
             - name: FUTBOL_DSN
               valueFrom: { secretKeyRef: { name: futbol-db, key: dsn } }

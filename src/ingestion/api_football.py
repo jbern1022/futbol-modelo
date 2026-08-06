@@ -63,14 +63,31 @@ def _session() -> requests.Session:
     return s
 
 
-def _get(session: requests.Session, endpoint: str, params: dict) -> list:
-    resp = session.get(f"{BASE_URL}/{endpoint}", params=params, timeout=15)
-    resp.raise_for_status()
-    data = resp.json()
-    if data.get("errors"):
-        raise RuntimeError(f"API-Football error on {endpoint}: {data['errors']}")
-    time.sleep(0.3)
-    return data.get("response", [])
+def _get(session: requests.Session, endpoint: str, params: dict, attempts: int = 3) -> list:
+    last_err = None
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = session.get(f"{BASE_URL}/{endpoint}", params=params, timeout=15)
+            if resp.status_code == 429 or resp.status_code >= 500:
+                raise requests.exceptions.RequestException(
+                    f"transient {resp.status_code} on {endpoint}")
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("errors"):
+                raise RuntimeError(f"API-Football error on {endpoint}: {data['errors']}")
+            time.sleep(0.3)
+            return data.get("response", [])
+        except (requests.exceptions.RequestException, requests.exceptions.Timeout) as e:
+            last_err = e
+            if attempt == attempts:
+                break
+            wait = 5 * attempt
+            log.info("request to %s failed (attempt %d/%d: %s), retrying in %ds...",
+                     endpoint, attempt, attempts, e, wait)
+            time.sleep(wait)
+    raise RuntimeError(
+        f"API-Football request to {endpoint} failed after {attempts} attempts"
+    ) from last_err
 
 
 def _load_cache() -> dict:

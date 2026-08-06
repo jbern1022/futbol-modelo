@@ -53,6 +53,23 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+# Scorecard/calibration change at most once a night (grading runs once,
+# slates once); a short in-process TTL cache avoids hitting Postgres on
+# every page view without risking genuinely stale data.
+CACHE_TTL_SECONDS = 300
+_response_cache: dict[str, tuple[float, object]] = {}
+
+
+def _cached(key: str, compute):
+    now = time.time()
+    cached = _response_cache.get(key)
+    if cached is not None and now - cached[0] < CACHE_TTL_SECONDS:
+        return cached[1]
+    value = compute()
+    _response_cache[key] = (now, value)
+    return value
+
+
 def _enforce_rate_limit(request: Request):
     ip = _client_ip(request)
     now = time.time()
@@ -183,38 +200,42 @@ def get_slate(match_id: int):
 
 @app.get("/scorecard")
 def scorecard(league: Optional[str] = Query(None)):
-    conn = get_conn()
-    try:
-        with conn.cursor() as cur:
-            query = "SELECT * FROM futbol.v_season_scorecard"
-            params = []
-            if league:
-                query += " WHERE league = %s"
-                params.append(league)
-            query += " ORDER BY league, season, market"
-            cur.execute(query, params)
-            rows = cur.fetchall()
-        return {"count": len(rows), "scorecard": rows}
-    finally:
-        conn.close()
+    def compute():
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                query = "SELECT * FROM futbol.v_season_scorecard"
+                params = []
+                if league:
+                    query += " WHERE league = %s"
+                    params.append(league)
+                query += " ORDER BY league, season, market"
+                cur.execute(query, params)
+                rows = cur.fetchall()
+            return {"count": len(rows), "scorecard": rows}
+        finally:
+            conn.close()
+    return _cached(f"scorecard:{league}", compute)
 
 
 @app.get("/calibration")
 def calibration(league: Optional[str] = Query(None)):
-    conn = get_conn()
-    try:
-        with conn.cursor() as cur:
-            query = "SELECT * FROM futbol.v_calibration WHERE n >= 3"
-            params = []
-            if league:
-                query += " AND league = %s"
-                params.append(league)
-            query += " ORDER BY league, market, avg_stated_prob"
-            cur.execute(query, params)
-            rows = cur.fetchall()
-        return {"count": len(rows), "calibration": rows}
-    finally:
-        conn.close()
+    def compute():
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                query = "SELECT * FROM futbol.v_calibration WHERE n >= 3"
+                params = []
+                if league:
+                    query += " AND league = %s"
+                    params.append(league)
+                query += " ORDER BY league, market, avg_stated_prob"
+                cur.execute(query, params)
+                rows = cur.fetchall()
+            return {"count": len(rows), "calibration": rows}
+        finally:
+            conn.close()
+    return _cached(f"calibration:{league}", compute)
 
 
 class AskRequest(BaseModel):

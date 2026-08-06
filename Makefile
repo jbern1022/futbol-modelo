@@ -1,4 +1,4 @@
-.PHONY: install lint test features ingest slate grade web-dev web-build
+.PHONY: install lint test features ingest slate grade review web-dev web-build
 
 LEAGUE ?= MLS
 DAYS ?= 21
@@ -25,6 +25,9 @@ slate:
 
 grade:
 	python scripts/auto_grade.py
+
+review:
+	python scripts/review_queue.py
 
 web-dev:
 	cd web && npm run dev

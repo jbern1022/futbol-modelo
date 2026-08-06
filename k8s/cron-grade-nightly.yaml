@@ -13,7 +13,10 @@ spec:
           containers:
           - name: grade
             image: gitea.lab/bernal-labs/futbol-modelo:latest
-            command: ["python","-c","from grading.grader import run_nightly; import grading.observed as obs; import psycopg2,os; c=psycopg2.connect(os.environ['FUTBOL_DSN']); print(run_nightly(c, obs.fetch_observed))"]
+            command: ["python","scripts/auto_grade.py"]
+            resources:
+              requests: { cpu: 250m, memory: 256Mi }
+              limits: { cpu: 1000m, memory: 1Gi }
             env:
             - name: FUTBOL_DSN
               valueFrom: { secretKeyRef: { name: futbol-db, key: dsn } }

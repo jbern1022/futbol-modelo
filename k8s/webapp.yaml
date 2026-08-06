@@ -32,6 +32,9 @@ spec:
             secretKeyRef:
               name: futbol-secrets
               key: FUTBOL_OLLAMA_URL
+        resources:
+          requests: { cpu: 100m, memory: 128Mi }
+          limits: { cpu: 500m, memory: 512Mi }
         readinessProbe:
           httpGet:
             path: /health
@@ -79,6 +82,9 @@ spec:
           value: "http://futbol-api-svc:8000"
         - name: HOSTNAME
           value: "0.0.0.0"
+        resources:
+          requests: { cpu: 100m, memory: 128Mi }
+          limits: { cpu: 500m, memory: 512Mi }
         readinessProbe:
           httpGet:
             path: /
