@@ -22,6 +22,10 @@ complete on the site.
   both-teams-to-score — fitted per league with time decay and the low-score
   correction, plus a measured prior so newly promoted teams can be rated
   before they have any top-flight history.
+- **Calibration on every published market.** Corners and shots on target are
+  calibrated on out-of-fold predictions; 1X2, total goals and BTTS on a
+  walk-forward backtest. Both must beat the uncalibrated version on held-out
+  data or they are not saved.
 - **LightGBM** for team count markets — corners and shots on target. Each is
   trained offline, calibrated with isotonic regression on out-of-fold
   predictions, and **must beat a naive baseline on a held-out period or it is
@@ -64,11 +68,14 @@ things exist specifically to keep that true:
 Things that are true but not yet good. Listed because a track record you can
 trust requires knowing what it does not cover.
 
-- **Match markets are not calibrated.** 1X2, total goals and BTTS go straight
-  from the Dixon-Coles scoreline distribution to a stated probability. Only
-  corners and shots on target pass through a calibrator. Poisson-derived tails
-  are known to run overconfident, so those probabilities should be read as
-  model output rather than calibrated ones.
+- **Match-market calibration is fit on a backtest, not on the ledger.** 1X2,
+  total goals and BTTS are calibrated, but the calibrator is trained by
+  replaying history — fitting Dixon-Coles on matches before a block and
+  predicting that block — because the ledger does not yet hold enough graded
+  match predictions to calibrate against directly. Those are honest
+  out-of-sample predictions, but they are not the same thing as measuring the
+  live system against its own record. That check gets stronger as the ledger
+  grows.
 - **Roughly one in four player-market predictions voids** because the named
   player does not feature. Selection uses recent shot volume with no view of
   rotation, injury or suspension, so the market advertises more coverage than
@@ -122,7 +129,7 @@ flowchart TD
 
 ## Testing
 
-79 tests, run on every push. Unit tests cover the grading semantics and the
+93 tests, run on every push. Unit tests cover the grading semantics and the
 probability invariants; integration tests build the real schema against a
 throwaway Postgres and verify the guarantees by trying to break them — that
 predictions cannot be updated or deleted, that a prediction locked at kickoff

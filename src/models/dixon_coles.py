@@ -26,6 +26,27 @@ class UnratedTeamError(KeyError):
     """Raised when predicting for a team absent from the fit with no prior set."""
 
 
+def _tau_vec(x: np.ndarray, y: np.ndarray, lam: np.ndarray, mu: np.ndarray,
+             rho: float) -> np.ndarray:
+    """
+    Vectorised low-score correction, same piecewise definition as _tau.
+
+    The scalar version inside a list comprehension dominated fitting cost —
+    SLSQP evaluates the likelihood thousands of times and each pass looped over
+    every match in Python. That was tolerable for a single fit and prohibitive
+    for the walk-forward backtest, which refits dozens of times per league.
+    """
+    out = np.ones_like(lam, dtype=float)
+    m = (x == 0) & (y == 0)
+    out[m] = 1 - lam[m] * mu[m] * rho
+    m = (x == 0) & (y == 1)
+    out[m] = 1 + lam[m] * rho
+    m = (x == 1) & (y == 0)
+    out[m] = 1 + mu[m] * rho
+    out[(x == 1) & (y == 1)] = 1 - rho
+    return out
+
+
 def _tau(x: int, y: int, lam: float, mu: float, rho: float) -> float:
     """Dixon-Coles low-score dependency adjustment."""
     if x == 0 and y == 0:
@@ -83,11 +104,7 @@ class DixonColes:
             gamma, rho = p[2 * n], p[2 * n + 1]
             lam = np.exp(atk[home_i] + dfn[away_i] + gamma)   # home goal rate
             mu = np.exp(atk[away_i] + dfn[home_i])            # away goal rate
-            tau = np.array([
-                _tau(x, y, l, m, rho)
-                for x, y, l, m in zip(hg, ag, lam, mu)
-            ])
-            tau = np.clip(tau, 1e-10, None)
+            tau = np.clip(_tau_vec(hg, ag, lam, mu, rho), 1e-10, None)
             ll = w * (
                 np.log(tau)
                 + poisson.logpmf(hg, lam)

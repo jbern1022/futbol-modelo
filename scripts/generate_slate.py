@@ -23,6 +23,8 @@ import psycopg2
 from scipy.stats import poisson
 
 from models.dixon_coles import DixonColes, derive_markets
+from models.match_calibration import MatchCalibrator
+from models.match_calibration import artifact_path as calibrator_path
 from models.props import MARKETS, PropsModel, artifact_path
 from predictions.generator import Inference, build_slate, persist_slate
 
@@ -58,6 +60,24 @@ def load_props_models() -> dict:
             continue
         models[market] = PropsModel.load(path)
     return models
+
+
+def load_match_calibrator():
+    """
+    Load the match-market calibrator, or None.
+
+    Unlike the props models, a missing artifact here does not skip the market:
+    1X2, total goals and BTTS are the core of every slate, and shipping them
+    raw is what the project did until this existed. It is logged loudly so an
+    uncalibrated run is visible rather than assumed.
+    """
+    path = calibrator_path(MODEL_DIR)
+    if not path.exists():
+        print(f"  WARNING: no match calibrator at {path} — 1X2, total goals "
+              f"and BTTS will ship UNCALIBRATED. "
+              f"Run scripts/train_match_calibrator.py")
+        return None
+    return MatchCalibrator.load(path)
 
 
 def find_fixture(cur, league: str, home: str, away: str):
@@ -337,12 +357,15 @@ def build_player_saves_inference(model, features_list, form, player_id, player_n
 
 def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                          match_id: int, kickoff, home_id: int, away_id: int,
-                         verbose: bool = True, props_models: dict | None = None):
+                         verbose: bool = True, props_models: dict | None = None,
+                         match_calibrator=None):
     """`props_models` is loaded once by the caller and reused across fixtures —
     loading it per fixture would reintroduce the per-fixture cost that
     refitting used to have."""
     if props_models is None:
         props_models = load_props_models()
+    if match_calibrator is None:
+        match_calibrator = load_match_calibrator()
     now = datetime.now(timezone.utc)
     kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
     if now >= kickoff_aware:
@@ -366,12 +389,26 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                   f"(attack={prior[0]:+.3f}, defence={prior[1]:+.3f})")
     mk = derive_markets(dc.predict(home, away))
 
+    # Calibrate before anything reaches the ledger. derive_markets returns the
+    # raw scoreline sums, which inherit whatever the Poisson approximation gets
+    # wrong; the calibrator was fit on out-of-sample walk-forward predictions.
+    # The 1X2 triple is calibrated together so it still sums to 1.
+    if match_calibrator is not None:
+        p_home, p_draw, p_away = match_calibrator.apply_1x2(
+            mk["home_win"], mk["draw"], mk["away_win"])
+        p_over_25 = match_calibrator.apply("TOTAL_GOALS", "over",
+                                           mk["over_2.5"], line=2.5)
+        p_btts = match_calibrator.apply("BTTS", "yes", mk["btts_yes"])
+    else:
+        p_home, p_draw, p_away = mk["home_win"], mk["draw"], mk["away_win"]
+        p_over_25, p_btts = mk["over_2.5"], mk["btts_yes"]
+
     candidates = [
-        Inference("1X2", f"{home} win", None, "home", mk["home_win"], home_id),
-        Inference("1X2", "Draw (90 min)", None, "draw", mk["draw"]),
-        Inference("1X2", f"{away} win", None, "away", mk["away_win"], away_id),
-        Inference("TOTAL_GOALS", "Over 2.5 goals", 2.5, "over", mk["over_2.5"]),
-        Inference("BTTS", "Both teams to score", None, "yes", mk["btts_yes"]),
+        Inference("1X2", f"{home} win", None, "home", p_home, home_id),
+        Inference("1X2", "Draw (90 min)", None, "draw", p_draw),
+        Inference("1X2", f"{away} win", None, "away", p_away, away_id),
+        Inference("TOTAL_GOALS", "Over 2.5 goals", 2.5, "over", p_over_25),
+        Inference("BTTS", "Both teams to score", None, "yes", p_btts),
     ]
 
     if league in PROPS_LEAGUES and lgb is not None:
