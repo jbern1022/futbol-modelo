@@ -235,6 +235,22 @@ def load_fixture_players(session, cur, match_id: int, fixture_id: int,
                  passes.get("key"), goals.get("saves"), goals.get("conceded")))
 
 
+# Leagues spanning two calendar years have used the hyphenated "YYYY-YY"
+# label (matching loader.py's _season_label) for every prior season in
+# the DB -- MLS is a single-calendar-year competition where the bare
+# year is correct. A previous version of season_label_for() used bare
+# year unconditionally, which created a real mismatch: a second,
+# duplicate season row the moment loader.py or a human ever looked up
+# "the current EPL season" by its established hyphenated format.
+CROSS_YEAR_LEAGUES = ("EPL", "SERIE_A", "LA_LIGA")
+
+
+def season_label_for(league_code: str, season_start_year: int) -> str:
+    if league_code in CROSS_YEAR_LEAGUES:
+        return f"{season_start_year}-{str(season_start_year + 1)[-2:]}"
+    return f"{season_start_year}"
+
+
 def backfill_primary(league_code: str, season_start_year: int):
     """
     Full primary-source backfill for leagues with no Understat/FBref
@@ -246,7 +262,7 @@ def backfill_primary(league_code: str, season_start_year: int):
     session = _session()
     league_id_api = resolve_league_id(session, league_code)
     league_name, _ = LEAGUE_SEARCH[league_code]
-    season_label = f"{season_start_year}"
+    season_label = season_label_for(league_code, season_start_year)
 
     conn = psycopg2.connect(DSN)
     fixtures = _get(session, "fixtures",
