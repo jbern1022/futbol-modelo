@@ -4,7 +4,7 @@ LEAGUE ?= MLS
 DAYS ?= 21
 
 install:
-	pip install -r requirements.txt -r requirements-api.txt
+	pip install -r requirements.txt -r requirements-api.txt -r requirements-dev.txt
 	cd web && npm install
 
 lint:
