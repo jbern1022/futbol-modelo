@@ -1,4 +1,4 @@
-.PHONY: install lint test features ingest slate grade review dq-check web-dev web-build
+.PHONY: install lint test coverage features ingest slate grade review dq-check web-dev web-build
 
 LEAGUE ?= MLS
 DAYS ?= 21
@@ -13,6 +13,10 @@ lint:
 
 test:
 	PYTHONPATH=src pytest
+
+coverage:
+	PYTHONPATH=src pytest --cov=src --cov=api --cov=scripts --cov-report=term-missing
+	python scripts/make_coverage_badge.py
 
 features:
 	psql "$$FUTBOL_DSN" -f sql/features.sql

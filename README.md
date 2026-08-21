@@ -1,5 +1,7 @@
 # futbol-modelo — Bernal Labs
 
+![coverage](coverage.svg)
+
 Calibrated soccer prediction system. Premier League + Serie A at launch,
 international module (World Cup) layered on later. Every prediction is
 logged immutably before kickoff and graded after — the season-end
