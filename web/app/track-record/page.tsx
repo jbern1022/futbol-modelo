@@ -60,14 +60,24 @@ export default async function TrackRecordPage() {
           &larr; Back to fixtures
         </a>
 
-        <h1 className="mt-6 text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
-          Track Record
-        </h1>
-        <p className="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">
-          Every prediction is locked before kickoff and graded automatically once
-          the match finishes. This page shows the honest, unfiltered record —
-          including the misses.
-        </p>
+        <div className="mt-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
+              Track Record
+            </h1>
+            <p className="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">
+              Every prediction is locked before kickoff and graded automatically once
+              the match finishes. This page shows the honest, unfiltered record —
+              including the misses.
+            </p>
+          </div>
+          <a
+            href="/api/export"
+            className="whitespace-nowrap rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            Download CSV
+          </a>
+        </div>
 
         {!totalGraded && (
           <div className="mt-10 rounded-lg border border-zinc-200 bg-white p-6 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">

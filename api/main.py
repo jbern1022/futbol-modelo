@@ -16,6 +16,8 @@ Endpoints:
     POST /ask  {"market": "CORNERS", "league": "MLS"}
     POST /ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
 """
+import csv
+import io
 import os
 import time
 from collections import defaultdict
@@ -26,6 +28,7 @@ import psycopg2.extras
 import requests
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 RO_DSN = os.environ.get(
@@ -196,6 +199,58 @@ def get_slate(match_id: int):
         return {"fixture": fixture, "predictions": predictions}
     finally:
         conn.close()
+
+
+@app.get("/export/predictions.csv")
+def export_predictions_csv(league: Optional[str] = Query(None)):
+    """Every graded prediction we've ever made, with grades. Anyone can
+    download this and recompute the track record themselves."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            query = """
+                SELECT l.code AS league, s.label AS season, th.name AS home,
+                       ta.name AS away, m.kickoff_utc, p.market, p.statement,
+                       p.side, p.line, p.probability, p.locked_at,
+                       tt.name AS subject_team, pl.full_name AS subject_player,
+                       g.outcome, g.actual_value, g.graded_at
+                FROM futbol.predictions p
+                JOIN futbol.matches m ON m.match_id = p.match_id
+                JOIN futbol.teams th ON th.team_id = m.home_team_id
+                JOIN futbol.teams ta ON ta.team_id = m.away_team_id
+                JOIN futbol.seasons s ON s.season_id = m.season_id
+                JOIN futbol.leagues l ON l.league_id = s.league_id
+                LEFT JOIN futbol.teams tt ON tt.team_id = p.subject_team_id
+                LEFT JOIN futbol.players pl ON pl.player_id = p.subject_player_id
+                JOIN futbol.prediction_grades g ON g.prediction_id = p.prediction_id
+                WHERE g.outcome <> 'void'
+            """
+            params = []
+            if league:
+                query += " AND l.code = %s"
+                params.append(league)
+            query += " ORDER BY m.kickoff_utc, p.prediction_id"
+            cur.execute(query, params)
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["league", "season", "home", "away", "kickoff_utc", "market",
+                     "statement", "side", "line", "probability", "locked_at",
+                     "subject_team", "subject_player", "outcome", "actual_value",
+                     "graded_at"])
+    for r in rows:
+        writer.writerow([r[k] for k in (
+            "league", "season", "home", "away", "kickoff_utc", "market",
+            "statement", "side", "line", "probability", "locked_at",
+            "subject_team", "subject_player", "outcome", "actual_value",
+            "graded_at")])
+    buf.seek(0)
+    return StreamingResponse(
+        buf, media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=futbol-modelo-predictions.csv"})
 
 
 @app.get("/scorecard")

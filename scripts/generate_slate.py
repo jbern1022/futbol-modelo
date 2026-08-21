@@ -13,7 +13,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -57,7 +57,7 @@ def find_fixture(cur, league: str, home: str, away: str):
     return cur.fetchone()
 
 
-def fit_dixon_coles(cur, league: str) -> DixonColes:
+def fit_dixon_coles(cur, league: str) -> tuple[DixonColes, dict]:
     cur.execute(
         """SELECT m.kickoff_utc::date AS date, th.name AS home, ta.name AS away,
                   m.home_goals AS hg, m.away_goals AS ag
@@ -73,10 +73,17 @@ def fit_dixon_coles(cur, league: str) -> DixonColes:
     df["date"] = pd.to_datetime(df["date"])
     reg = 8.0 if len(df) < 200 else 0.0
     xi = 0.0005 if len(df) < 200 else 0.0015
-    return DixonColes(xi=xi).fit(df, reg=reg)
+    dc = DixonColes(xi=xi).fit(df, reg=reg)
+    meta = {
+        "xi": xi, "reg": reg, "n_matches": len(df),
+        "training_window": (f"{df['date'].min().date()}..{df['date'].max().date()}"
+                            if len(df) else None),
+    }
+    return dc, meta
 
 
 def current_form(cur, team_id: int, kickoff) -> dict:
+    kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
     cur.execute(
         """SELECT tms.corners, tms.shots, tms.shots_on_target, tms.xg,
                   o.corners AS corners_c, o.shots AS shots_c,
@@ -86,9 +93,15 @@ def current_form(cur, team_id: int, kickoff) -> dict:
            JOIN futbol.team_match_stats o
              ON o.match_id = tms.match_id AND o.team_id <> tms.team_id
            WHERE tms.team_id = %s AND m.status = 'final'
-           ORDER BY m.kickoff_utc DESC LIMIT 5""", (team_id,))
+             AND m.kickoff_utc BETWEEN %s AND %s
+           ORDER BY m.kickoff_utc DESC LIMIT 5""",
+        (team_id, kickoff_aware - timedelta(days=90), kickoff_aware))
     rows = cur.fetchall()
-    if not rows:
+    # Fewer than 3 games inside the 90-day window means either preseason
+    # or too far removed from a squad rebuild to call it "current form" --
+    # return empty (candidate generation skips this team/market) rather
+    # than silently averaging stale games from months ago.
+    if len(rows) < 3:
         return {}
     cols = ["corners", "shots", "sot", "xg", "corners_c", "shots_c", "sot_c", "xg_c", "kickoff"]
     df = pd.DataFrame(rows, columns=cols)
@@ -154,11 +167,17 @@ def fit_props_model(cur, market: str):
         iso.fit(raw_p, actual)
         calibrators[line] = iso
 
-    model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
-                              num_leaves=20, min_child_samples=30, subsample=0.8,
-                              colsample_bytree=0.8, verbose=-1)
+    hyperparams = {"objective": "poisson", "n_estimators": 300, "learning_rate": 0.03,
+                   "num_leaves": 20, "min_child_samples": 30, "subsample": 0.8,
+                   "colsample_bytree": 0.8}
+    meta = {
+        "features": features, "hyperparams": hyperparams,
+        "n_rows": len(df), "oof_mae": round(float(np.mean(np.abs(oof_mu - df["y"].values))), 4),
+    }
+
+    model = lgb.LGBMRegressor(verbose=-1, **hyperparams)
     model.fit(df[features], df["y"])
-    return model, features, calibrators
+    return model, features, calibrators, meta
 
 
 def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
@@ -177,11 +196,18 @@ def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
         raw_p = float(1 - poisson.cdf(np.floor(line), mu))
         calibrator = calibrators.get(line)
         p = float(calibrator.predict([raw_p])[0]) if calibrator is not None else raw_p
-        if not (0.55 <= p <= 0.80 or 0.20 <= p <= 0.45):
+        if 0.55 <= p <= 0.80:
+            side, stated_p = "over", p
+        elif 0.20 <= p <= 0.45:
+            # Low P(over) is a genuine high-confidence P(under) claim, not a
+            # weak "over" one -- flip it so the ledger actually gets
+            # under-side calibration support instead of never emitting it.
+            side, stated_p = "under", 1 - p
+        else:
             continue
         out.append(Inference(
-            market=market, statement=f"{team_name} — {market_label} over {line}",
-            line=line, side="over", probability=round(p, 5),
+            market=market, statement=f"{team_name} — {market_label} {side} {line}",
+            line=line, side=side, probability=round(stated_p, 5),
             subject_team_id=team_id))
     return out
 
@@ -312,7 +338,7 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
             print(f"  SKIP {home} vs {away}: kickoff already passed")
         return None
 
-    dc = fit_dixon_coles(cur, league)
+    dc, dc_meta = fit_dixon_coles(cur, league)
     if home not in dc.teams or away not in dc.teams:
         if verbose:
             print(f"  SKIP {home} vs {away}: team(s) not in fitted list")
@@ -327,12 +353,14 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
         Inference("BTTS", "Both teams to score", None, "yes", mk["btts_yes"]),
     ]
 
+    props_meta = {}
     if league in PROPS_LEAGUES and lgb is not None:
         home_form = current_form(cur, home_id, kickoff)
         away_form = current_form(cur, away_id, kickoff)
         if home_form and away_form:
             for market in PROPS_MARKETS:
-                model, _, calibrators = fit_props_model(cur, market)
+                model, _, calibrators, meta = fit_props_model(cur, market)
+                props_meta[market] = meta
                 candidates += build_props_inferences(model, home_form, True, home_id, market, home, calibrators)
                 candidates += build_props_inferences(model, away_form, False, away_id, market, away, calibrators)
 
@@ -383,17 +411,28 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
 
     slate = build_slate(candidates, size=20)
 
+    # Stable per league+code-version, NOT per fixture -- every fixture in
+    # this league on this code version dedupes into the same row via
+    # ON CONFLICT, so the registry actually means something (was
+    # previously f"{home}_v_{away}_{date}", which never conflicted and
+    # minted one throwaway row per fixture forever).
     cur.execute(
         """INSERT INTO futbol.model_versions
              (model_name, version_tag, training_window, params, train_metrics)
            VALUES (%s,%s,%s,%s,%s)
            ON CONFLICT (model_name, version_tag) DO UPDATE
-             SET train_metrics = EXCLUDED.train_metrics
+             SET training_window = EXCLUDED.training_window,
+                 params = EXCLUDED.params,
+                 train_metrics = EXCLUDED.train_metrics
            RETURNING model_version_id""",
-        (f"slate_generator_{league.lower()}",
-         f"{home}_v_{away}_{datetime.now().date()}",
-         "live_fit", json.dumps({"league": league}),
-         json.dumps({"n_candidates": len(candidates), "n_slate": len(slate)})))
+        (f"slate_generator_{league.lower()}", "v1",
+         dc_meta["training_window"],
+         json.dumps({"dixon_coles": {"xi": dc_meta["xi"], "reg": dc_meta["reg"]},
+                     "props": {m: meta["hyperparams"] | {"features": meta["features"]}
+                               for m, meta in props_meta.items()}}),
+         json.dumps({"dixon_coles_n_matches": dc_meta["n_matches"],
+                     "props_oof_mae": {m: meta["oof_mae"] for m, meta in props_meta.items()},
+                     "props_n_rows": {m: meta["n_rows"] for m, meta in props_meta.items()}})))
     mvid = cur.fetchone()[0]
 
     n = persist_slate(conn, match_id, mvid, slate)
