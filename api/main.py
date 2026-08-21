@@ -140,7 +140,7 @@ def list_fixtures(
                 SELECT m.match_id, l.code AS league, s.label AS season,
                        th.name AS home, ta.name AS away,
                        m.kickoff_utc, m.status,
-                       m.home_goals, m.away_goals,
+                       m.home_score, m.away_score,
                        (SELECT COUNT(*) FROM futbol.predictions p
                         WHERE p.match_id = m.match_id) AS n_predictions
                 FROM futbol.matches m

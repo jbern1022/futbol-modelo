@@ -73,11 +73,11 @@ def upsert_match(cur, season_id, home_id, away_id, kickoff, hg, ag, status, ext_
     cur.execute(
         """INSERT INTO futbol.matches
              (season_id, home_team_id, away_team_id, kickoff_utc,
-              home_goals, away_goals, status, external_ref)
+              home_score, away_score, status, external_ref)
            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
            ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
-           DO UPDATE SET home_goals = EXCLUDED.home_goals,
-                         away_goals = EXCLUDED.away_goals,
+           DO UPDATE SET home_score = EXCLUDED.home_score,
+                         away_score = EXCLUDED.away_score,
                          status     = EXCLUDED.status
            RETURNING match_id""",
         (season_id, home_id, away_id, kickoff, hg, ag, status, ext_ref))
@@ -248,17 +248,17 @@ def load_world_cup(conn, seasons: list[str]):
             cur.execute(
                 """INSERT INTO futbol.matches
                      (season_id, home_team_id, away_team_id, kickoff_utc,
-                      stage, home_goals, away_goals, went_to_et, went_to_pens,
+                      stage, home_score, away_score, went_to_ot, went_to_pens,
                       status, external_ref)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
                    DO UPDATE SET
-                     home_goals = COALESCE(EXCLUDED.home_goals, futbol.matches.home_goals),
-                     away_goals = COALESCE(EXCLUDED.away_goals, futbol.matches.away_goals),
+                     home_score = COALESCE(EXCLUDED.home_score, futbol.matches.home_score),
+                     away_score = COALESCE(EXCLUDED.away_score, futbol.matches.away_score),
                      status = CASE WHEN EXCLUDED.status = 'final'
                                     OR futbol.matches.status <> 'final'
                                    THEN EXCLUDED.status ELSE futbol.matches.status END,
-                     went_to_et = COALESCE(EXCLUDED.went_to_et, futbol.matches.went_to_et),
+                     went_to_ot = COALESCE(EXCLUDED.went_to_ot, futbol.matches.went_to_ot),
                      went_to_pens = COALESCE(EXCLUDED.went_to_pens, futbol.matches.went_to_pens)
                    RETURNING match_id""",
                 (season_id, hid, aid, r["date"], stage, hg, ag,
@@ -270,7 +270,7 @@ def load_world_cup(conn, seasons: list[str]):
 def _parse_score(raw) -> tuple[int | None, int | None, bool, bool]:
     """
     FBref score formats seen: '2-1', '1-1 (4-3)' [penalties],
-    '2-1 (AET)'. Returns (home_goals, away_goals, went_to_et, went_to_pens).
+    '2-1 (AET)'. Returns (home_score, away_score, went_to_ot, went_to_pens).
     90'-result goals are used for grading (standard convention);
     the paren group, if present, signals ET/pens occurred.
     """

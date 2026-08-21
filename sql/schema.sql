@@ -58,9 +58,9 @@ CREATE TABLE matches (
     kickoff_utc     TIMESTAMPTZ NOT NULL,
     stage           TEXT,                          -- 'league', 'group', 'R16', 'QF'...
     status          TEXT NOT NULL DEFAULT 'scheduled',  -- scheduled|live|final|postponed
-    home_goals      INT,
-    away_goals      INT,
-    went_to_et      BOOLEAN DEFAULT FALSE,
+    home_score      INT,
+    away_score      INT,
+    went_to_ot      BOOLEAN DEFAULT FALSE,
     went_to_pens    BOOLEAN DEFAULT FALSE,
     pens_home       INT,
     pens_away       INT,

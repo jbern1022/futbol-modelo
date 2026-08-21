@@ -60,7 +60,7 @@ def find_fixture(cur, league: str, home: str, away: str):
 def fit_dixon_coles(cur, league: str) -> tuple[DixonColes, dict]:
     cur.execute(
         """SELECT m.kickoff_utc::date AS date, th.name AS home, ta.name AS away,
-                  m.home_goals AS hg, m.away_goals AS ag
+                  m.home_score AS hg, m.away_score AS ag
            FROM futbol.matches m
            JOIN futbol.teams th ON th.team_id = m.home_team_id
            JOIN futbol.teams ta ON ta.team_id = m.away_team_id

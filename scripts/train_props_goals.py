@@ -35,7 +35,7 @@ SELECT
     f.match_id, f.team_id, f.is_home, f.kickoff_utc,
     f.xg_for_r5, f.xg_against_r5, f.rest_days,
     th.name AS team_name,
-    CASE WHEN f.is_home THEN m.home_goals ELSE m.away_goals END AS goals_scored,
+    CASE WHEN f.is_home THEN m.home_score ELSE m.away_score END AS goals_scored,
     CASE WHEN f.is_home THEN ta.name ELSE th2.name END AS opponent
 FROM futbol.team_match_features f
 JOIN futbol.matches m ON m.match_id = f.match_id

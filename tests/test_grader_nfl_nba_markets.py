@@ -9,8 +9,8 @@ right by inspection.
 from grading.grader import grade_prediction
 
 
-def _match(home_goals, away_goals, status="final"):
-    return {"status": status, "home_goals": home_goals, "away_goals": away_goals}
+def _match(home_score, away_score, status="final"):
+    return {"status": status, "home_score": home_score, "away_score": away_score}
 
 
 def test_spread_home_favorite_covers():

@@ -21,7 +21,7 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 UNGRADED_SQL = """
 SELECT p.prediction_id, p.match_id, p.market, p.side, p.line,
        p.subject_team_id, p.subject_player_id,
-       m.status, m.home_goals, m.away_goals
+       m.status, m.home_score, m.away_score
 FROM futbol.predictions p
 JOIN futbol.matches m USING (match_id)
 LEFT JOIN futbol.prediction_grades g USING (prediction_id)
@@ -62,8 +62,8 @@ def main():
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
 
         for row in rows:
-            match = {"status": row["status"], "home_goals": row["home_goals"],
-                     "away_goals": row["away_goals"]}
+            match = {"status": row["status"], "home_score": row["home_score"],
+                     "away_score": row["away_score"]}
             pred = {"market": row["market"], "side": row["side"], "line": row["line"]}
 
             needs_stats = row["market"] in TEAM_STAT_COLUMN or row["market"] in PLAYER_STAT_COLUMN

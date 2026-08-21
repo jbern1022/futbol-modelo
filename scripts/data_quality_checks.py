@@ -47,7 +47,7 @@ def check_possession_sums_to_100(cur, tolerance: float = 2.0) -> list[str]:
 def check_final_matches_have_goals(cur) -> list[str]:
     cur.execute(
         """SELECT match_id FROM futbol.matches
-           WHERE status = 'final' AND (home_goals IS NULL OR away_goals IS NULL)"""
+           WHERE status = 'final' AND (home_score IS NULL OR away_score IS NULL)"""
     )
     rows = cur.fetchall()
     return [f"match_id={r['match_id']} is final with a NULL goals value" for r in rows]

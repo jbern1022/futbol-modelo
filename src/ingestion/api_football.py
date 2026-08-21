@@ -276,11 +276,11 @@ def backfill_primary(league_code: str, season_start_year: int):
             cur.execute(
                 """INSERT INTO futbol.matches
                      (season_id, home_team_id, away_team_id, kickoff_utc,
-                      home_goals, away_goals, status, external_ref)
+                      home_score, away_score, status, external_ref)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
-                   DO UPDATE SET home_goals = EXCLUDED.home_goals,
-                                 away_goals = EXCLUDED.away_goals,
+                   DO UPDATE SET home_score = EXCLUDED.home_score,
+                                 away_score = EXCLUDED.away_score,
                                  status     = EXCLUDED.status
                    RETURNING match_id""",
                 (season_id, home_id, away_id, kickoff, hg, ag, status,

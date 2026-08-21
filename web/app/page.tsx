@@ -10,8 +10,8 @@ interface Fixture {
   away: string;
   kickoff_utc: string;
   status: string;
-  home_goals: number | null;
-  away_goals: number | null;
+  home_score: number | null;
+  away_score: number | null;
   n_predictions: number;
 }
 

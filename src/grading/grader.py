@@ -38,24 +38,24 @@ def grade_prediction(pred: dict, match: dict, stats: dict) -> tuple[str, float |
         return "void", None
 
     if market == "1X2":
-        hg, ag = match["home_goals"], match["away_goals"]
+        hg, ag = match["home_score"], match["away_score"]
         result = "home" if hg > ag else ("away" if ag > hg else "draw")
         return ("hit" if side == result else "miss"), float(hg - ag)
 
     if market == "BTTS":
-        both = match["home_goals"] > 0 and match["away_goals"] > 0
+        both = match["home_score"] > 0 and match["away_score"] > 0
         want = side == "yes"
         return ("hit" if both == want else "miss"), float(both)
 
     if market == "TOTAL_GOALS" or market == "TOTAL_POINTS":
-        total = match["home_goals"] + match["away_goals"]
+        total = match["home_score"] + match["away_score"]
         return _grade_line(total, line, side)
 
     if market == "MONEYLINE":
         # 2-way, no draw -- NFL/NBA. A tied match dict (shouldn't happen in
         # either real sport; both resolve ties in-game) voids rather than
         # guessing a winner.
-        hg, ag = match["home_goals"], match["away_goals"]
+        hg, ag = match["home_score"], match["away_score"]
         if hg == ag:
             return "void", float(hg - ag)
         result = "home" if hg > ag else "away"
@@ -69,7 +69,7 @@ def grade_prediction(pred: dict, match: dict, stats: dict) -> tuple[str, float |
         # spread -- e.g. side=home, line=-3.5 covers iff (hg-ag) > 3.5.
         # Reduces exactly to _grade_line on the signed margin, which
         # already handles the exact-push case (line lands on an integer).
-        hg, ag = match["home_goals"], match["away_goals"]
+        hg, ag = match["home_score"], match["away_score"]
         margin = (hg - ag) if side == "home" else (ag - hg)
         return _grade_line(margin, -line, "over")
 
@@ -93,7 +93,7 @@ def _grade_line(actual: float, line: float, side: str) -> tuple[str, float]:
 UNGRADED_SQL = """
 SELECT p.prediction_id, p.match_id, p.market, p.side, p.line,
        p.subject_team_id, p.subject_player_id,
-       m.status, m.home_goals, m.away_goals
+       m.status, m.home_score, m.away_score
 FROM futbol.predictions p
 JOIN futbol.matches m USING (match_id)
 LEFT JOIN futbol.prediction_grades g USING (prediction_id)
@@ -112,7 +112,7 @@ def run_nightly(conn, fetch_observed) -> int:
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     for row in rows:
-        match = {k: row[k] for k in ("status", "home_goals", "away_goals")}
+        match = {k: row[k] for k in ("status", "home_score", "away_score")}
         stats = fetch_observed(row) if row["market"] not in ("1X2", "BTTS", "TOTAL_GOALS") else {}
         outcome, actual = grade_prediction(row, match, stats)
         with conn.cursor() as cur:

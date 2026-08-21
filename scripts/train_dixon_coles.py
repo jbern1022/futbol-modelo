@@ -29,7 +29,7 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
 Q = """
 SELECT m.kickoff_utc::date AS date, th.name AS home, ta.name AS away,
-       m.home_goals AS hg, m.away_goals AS ag, se.label AS season
+       m.home_score AS hg, m.away_score AS ag, se.label AS season
 FROM futbol.matches m
 JOIN futbol.teams th ON th.team_id = m.home_team_id
 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
