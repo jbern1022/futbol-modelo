@@ -1,0 +1,182 @@
+[
+  {
+    "market": "CORNERS",
+    "statement": "synthetic candidate 10",
+    "line": 0.5,
+    "side": "under",
+    "probability": 0.68411,
+    "subject_team_id": 5,
+    "subject_player_id": null
+  },
+  {
+    "market": "1X2",
+    "statement": "synthetic candidate 0",
+    "line": null,
+    "side": "away",
+    "probability": 0.7174,
+    "subject_team_id": 1,
+    "subject_player_id": null
+  },
+  {
+    "market": "PLAYER_GOALS",
+    "statement": "synthetic candidate 12",
+    "line": 2.5,
+    "side": "under",
+    "probability": 0.62212,
+    "subject_team_id": null,
+    "subject_player_id": 102
+  },
+  {
+    "market": "1X2",
+    "statement": "duplicate-key filler",
+    "line": null,
+    "side": "home",
+    "probability": 0.65,
+    "subject_team_id": 99,
+    "subject_player_id": null
+  },
+  {
+    "market": "PLAYER_SAVES",
+    "statement": "synthetic candidate 13",
+    "line": 0.5,
+    "side": "under",
+    "probability": 0.65316,
+    "subject_team_id": null,
+    "subject_player_id": 102
+  },
+  {
+    "market": "BTTS",
+    "statement": "synthetic candidate 1",
+    "line": null,
+    "side": "yes",
+    "probability": 0.65903,
+    "subject_team_id": 6,
+    "subject_player_id": null
+  },
+  {
+    "market": "BTTS",
+    "statement": "synthetic candidate 22",
+    "line": 0.5,
+    "side": "yes",
+    "probability": 0.6147,
+    "subject_team_id": 1,
+    "subject_player_id": null
+  },
+  {
+    "market": "PLAYER_SAVES",
+    "statement": "synthetic candidate 6",
+    "line": 0.5,
+    "side": "under",
+    "probability": 0.91149,
+    "subject_team_id": null,
+    "subject_player_id": 101
+  },
+  {
+    "market": "CORNERS",
+    "statement": "synthetic candidate 24",
+    "line": 1.5,
+    "side": "under",
+    "probability": 0.92397,
+    "subject_team_id": 5,
+    "subject_player_id": null
+  },
+  {
+    "market": "TOTAL_GOALS",
+    "statement": "synthetic candidate 16",
+    "line": 1.5,
+    "side": "over",
+    "probability": 0.80857,
+    "subject_team_id": 6,
+    "subject_player_id": null
+  },
+  {
+    "market": "CORNERS",
+    "statement": "synthetic candidate 3",
+    "line": 3.5,
+    "side": "over",
+    "probability": 0.07388,
+    "subject_team_id": 5,
+    "subject_player_id": null
+  },
+  {
+    "market": "BTTS",
+    "statement": "synthetic candidate 15",
+    "line": 2.5,
+    "side": "yes",
+    "probability": 0.39151,
+    "subject_team_id": 2,
+    "subject_player_id": null
+  },
+  {
+    "market": "1X2",
+    "statement": "synthetic candidate 14",
+    "line": null,
+    "side": "away",
+    "probability": 0.59822,
+    "subject_team_id": 6,
+    "subject_player_id": null
+  },
+  {
+    "market": "SOT",
+    "statement": "synthetic candidate 11",
+    "line": null,
+    "side": "over",
+    "probability": 0.81979,
+    "subject_team_id": 3,
+    "subject_player_id": null
+  },
+  {
+    "market": "1X2",
+    "statement": "synthetic candidate 21",
+    "line": 0.5,
+    "side": "draw",
+    "probability": 0.50857,
+    "subject_team_id": 2,
+    "subject_player_id": null
+  },
+  {
+    "market": "BTTS",
+    "statement": "synthetic candidate 8",
+    "line": 4.5,
+    "side": "no",
+    "probability": 0.46348,
+    "subject_team_id": 1,
+    "subject_player_id": null
+  },
+  {
+    "market": "PLAYER_GOALS",
+    "statement": "synthetic candidate 5",
+    "line": 5.5,
+    "side": "over",
+    "probability": 0.19369,
+    "subject_team_id": null,
+    "subject_player_id": 106
+  },
+  {
+    "market": "TOTAL_GOALS",
+    "statement": "synthetic candidate 2",
+    "line": 2.5,
+    "side": "over",
+    "probability": 0.0786,
+    "subject_team_id": 5,
+    "subject_player_id": null
+  },
+  {
+    "market": "TOTAL_GOALS",
+    "statement": "synthetic candidate 9",
+    "line": 3.5,
+    "side": "under",
+    "probability": 0.31386,
+    "subject_team_id": 1,
+    "subject_player_id": null
+  },
+  {
+    "market": "SOT",
+    "statement": "synthetic candidate 18",
+    "line": 4.5,
+    "side": "over",
+    "probability": 0.33321,
+    "subject_team_id": 5,
+    "subject_player_id": null
+  }
+]
