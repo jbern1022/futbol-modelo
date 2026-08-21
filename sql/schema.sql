@@ -105,6 +105,55 @@ CREATE TABLE player_match_stats (
     PRIMARY KEY (match_id, player_id)
 );
 
+-- ---------- NFL stats (per-sport tables per 2026-08-21 decision: the
+-- soccer stat tables above don't generalize, per-sport tables keep full
+-- type safety and easy indexing over a shared JSONB blob). matches/teams/
+-- players/leagues/seasons stay shared -- only the stat shape is soccer-
+-- specific. Column list is a best-effort standard NFL box-score set
+-- (matches what nflverse/nfl_data_py exposes); expect adjustment once the
+-- actual NFL ingestion adapter is built and its real field names are known.
+
+CREATE TABLE team_match_stats_nfl (
+    match_id            INT NOT NULL REFERENCES matches(match_id),
+    team_id             INT NOT NULL REFERENCES teams(team_id),
+    is_home             BOOLEAN NOT NULL,
+    total_yards         INT,
+    passing_yards       INT,
+    rushing_yards       INT,
+    turnovers           INT,
+    sacks_allowed       INT,
+    sacks_made          INT,
+    penalties           INT,
+    penalty_yards       INT,
+    first_downs         INT,
+    third_down_attempts INT,
+    third_down_conversions INT,
+    time_of_possession_seconds INT,
+    PRIMARY KEY (match_id, team_id)
+);
+
+CREATE TABLE player_match_stats_nfl (
+    match_id            INT NOT NULL REFERENCES matches(match_id),
+    player_id           INT NOT NULL REFERENCES players(player_id),
+    team_id             INT NOT NULL REFERENCES teams(team_id),
+    position            TEXT,                       -- 'QB','RB','WR','TE',...
+    passing_attempts    INT,
+    passing_completions INT,
+    passing_yards       INT,
+    passing_tds         INT,
+    interceptions_thrown INT,
+    rushing_attempts    INT,
+    rushing_yards       INT,
+    rushing_tds         INT,
+    targets             INT,
+    receptions          INT,
+    receiving_yards     INT,
+    receiving_tds       INT,
+    tackles             INT,                         -- defense
+    sacks               NUMERIC(3,1),                 -- defense; half-sacks are real
+    PRIMARY KEY (match_id, player_id)
+);
+
 -- Event-level shots (Understat) — feeds the custom xG model later (v3)
 CREATE TABLE shots (
     shot_id         BIGSERIAL PRIMARY KEY,
