@@ -47,9 +47,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col font-sans">
-        <div className="fixed bottom-4 right-4 z-50">
+        <header className="flex justify-end px-4 py-2">
           <ThemeToggle />
-        </div>
+        </header>
         <AskPeteyDrawer />
         {children}
         <Footer />
