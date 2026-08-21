@@ -1,4 +1,4 @@
-.PHONY: install lint test features ingest slate grade review web-dev web-build
+.PHONY: install lint test features ingest slate grade review dq-check web-dev web-build
 
 LEAGUE ?= MLS
 DAYS ?= 21
@@ -28,6 +28,9 @@ grade:
 
 review:
 	python scripts/review_queue.py
+
+dq-check:
+	python scripts/data_quality_checks.py
 
 web-dev:
 	cd web && npm run dev

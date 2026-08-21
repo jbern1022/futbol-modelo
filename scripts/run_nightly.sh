@@ -22,4 +22,5 @@ python scripts/auto_slate.py --league MLS --days 21
 python scripts/auto_slate.py --league EPL --days 45
 python scripts/auto_slate.py --league SERIE_A --days 45
 python scripts/auto_grade.py
+python scripts/data_quality_checks.py
 echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) nightly run end ==="
