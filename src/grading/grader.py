@@ -47,9 +47,31 @@ def grade_prediction(pred: dict, match: dict, stats: dict) -> tuple[str, float |
         want = side == "yes"
         return ("hit" if both == want else "miss"), float(both)
 
-    if market == "TOTAL_GOALS":
+    if market == "TOTAL_GOALS" or market == "TOTAL_POINTS":
         total = match["home_goals"] + match["away_goals"]
         return _grade_line(total, line, side)
+
+    if market == "MONEYLINE":
+        # 2-way, no draw -- NFL/NBA. A tied match dict (shouldn't happen in
+        # either real sport; both resolve ties in-game) voids rather than
+        # guessing a winner.
+        hg, ag = match["home_goals"], match["away_goals"]
+        if hg == ag:
+            return "void", float(hg - ag)
+        result = "home" if hg > ag else "away"
+        return ("hit" if side == result else "miss"), float(hg - ag)
+
+    if market == "SPREAD":
+        # side names which team the prediction is about (home/away); line
+        # is that team's spread in standard signed convention (negative =
+        # favored by that many points, positive = getting that many).
+        # "Covers" means the team's signed margin beats its own negated
+        # spread -- e.g. side=home, line=-3.5 covers iff (hg-ag) > 3.5.
+        # Reduces exactly to _grade_line on the signed margin, which
+        # already handles the exact-push case (line lands on an integer).
+        hg, ag = match["home_goals"], match["away_goals"]
+        margin = (hg - ag) if side == "home" else (ag - hg)
+        return _grade_line(margin, -line, "over")
 
     # count markets — caller supplies the observed value
     actual = stats.get("actual")
