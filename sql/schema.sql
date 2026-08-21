@@ -13,7 +13,9 @@ CREATE TABLE leagues (
     league_id       SERIAL PRIMARY KEY,
     code            TEXT UNIQUE NOT NULL,          -- 'EPL', 'SERIE_A', 'WC'
     name            TEXT NOT NULL,
-    is_international BOOLEAN NOT NULL DEFAULT FALSE
+    is_international BOOLEAN NOT NULL DEFAULT FALSE,
+    sport           TEXT NOT NULL DEFAULT 'soccer'
+                    CHECK (sport IN ('soccer', 'basketball', 'football'))
 );
 
 CREATE TABLE seasons (
@@ -142,8 +144,15 @@ CREATE TABLE predictions (
     match_id        INT NOT NULL REFERENCES matches(match_id),
     model_version_id INT NOT NULL REFERENCES model_versions(model_version_id),
     market          TEXT NOT NULL CHECK (market IN (
+                        -- soccer (live)
                         '1X2', 'BTTS', 'TOTAL_GOALS', 'CORNERS', 'SOT',
-                        'PLAYER_GOALS', 'PLAYER_SAVES')),
+                        'PLAYER_GOALS', 'PLAYER_SAVES',
+                        -- NFL/NBA (schema prep only -- nothing writes these
+                        -- yet; neither sport has a draw, so 1X2 doesn't
+                        -- apply, MONEYLINE is the 2-way equivalent, SPREAD
+                        -- is a handicap on signed margin, not an O/U on a
+                        -- count)
+                        'MONEYLINE', 'SPREAD', 'TOTAL_POINTS')),
     subject_team_id INT REFERENCES teams(team_id),
     subject_player_id INT REFERENCES players(player_id),
     statement       TEXT NOT NULL,   -- human-readable: 'Inter over 5.5 corners'
