@@ -49,7 +49,7 @@ function leagueBadge(league: string) {
 
 function cleanStatement(p: Prediction): string {
   let text = p.statement.replace(/^Sot\b/i, "Shots on target");
-  if (p.subject_team) {
+  if (p.subject_team && (p.market === "CORNERS" || p.market === "SOT")) {
     // Predictions written before the team-name prefix landed have no
     // "Team — " in the ledger text (immutable, can't be backfilled) --
     // strip whatever prefix is there, if any, and rebuild from the
