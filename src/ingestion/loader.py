@@ -180,6 +180,7 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
     import soccerdata as sd
     import pandas as pd
     fb = sd.FBref(leagues=[league_key], seasons=seasons)
+    league_code = next(v for v in LEAGUES.values() if v["soccerdata"] == league_key)["code"]
 
     with conn.cursor() as cur:
         # team match-level stats
@@ -206,7 +207,7 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
             for _, r in df.iterrows():
                 team = entities.resolve_team("fbref", r["team"])
                 tid = upsert_team(cur, team)
-                mid = _find_match(cur, r, tid)
+                mid = _find_match(cur, r, tid, league_code)
                 if mid is None:
                     continue
                 sets = ", ".join(f"{v} = %s" for v in cols.values())
@@ -343,13 +344,18 @@ def _parse_score(raw) -> tuple[int | None, int | None, bool, bool]:
     return hg, ag, went_et, went_pens
 
 
-def _find_match(cur, row, team_id) -> int | None:
-    """Locate the match by date + team participation (source-agnostic join)."""
+def _find_match(cur, row, team_id, league_code) -> int | None:
+    """Locate the match by date + team participation, scoped to the league
+    being loaded -- without this, a team playing two competitions on the
+    same date (league + cup) could silently match the wrong fixture."""
     cur.execute(
-        """SELECT match_id FROM futbol.matches
-           WHERE DATE(kickoff_utc) = DATE(%s)
-             AND (home_team_id = %s OR away_team_id = %s)""",
-        (row["date"], team_id, team_id))
+        """SELECT m.match_id FROM futbol.matches m
+           JOIN futbol.seasons s ON s.season_id = m.season_id
+           JOIN futbol.leagues l ON l.league_id = s.league_id
+           WHERE DATE(m.kickoff_utc) = DATE(%s)
+             AND (m.home_team_id = %s OR m.away_team_id = %s)
+             AND l.code = %s""",
+        (row["date"], team_id, team_id, league_code))
     r = cur.fetchone()
     return r[0] if r else None
 

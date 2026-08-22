@@ -141,15 +141,29 @@ def resolve_team_id(cur, api_team_id: int, api_team_name: str) -> int | None:
     return None
 
 
-def find_match_id(cur, home_team_id: int, away_team_id: int, date: str) -> int | None:
+def find_match_id(cur, home_team_id: int, away_team_id: int, date: str,
+                  league_code: str | None = None) -> int | None:
     """+/-1 day tolerance: sources occasionally disagree on which
-    calendar day a match falls on across a UTC boundary."""
-    cur.execute(
-        """SELECT match_id FROM futbol.matches
-           WHERE home_team_id = %s AND away_team_id = %s
-             AND DATE(kickoff_utc) BETWEEN %s::date - 1 AND %s::date + 1
-           ORDER BY ABS(DATE(kickoff_utc) - %s::date) LIMIT 1""",
-        (home_team_id, away_team_id, date, date, date))
+    calendar day a match falls on across a UTC boundary. Scoped to the
+    league being loaded when known -- the same two teams can meet twice
+    in a short window across league + cup competitions."""
+    if league_code is not None:
+        cur.execute(
+            """SELECT m.match_id FROM futbol.matches m
+               JOIN futbol.seasons s ON s.season_id = m.season_id
+               JOIN futbol.leagues l ON l.league_id = s.league_id
+               WHERE m.home_team_id = %s AND m.away_team_id = %s
+                 AND DATE(m.kickoff_utc) BETWEEN %s::date - 1 AND %s::date + 1
+                 AND l.code = %s
+               ORDER BY ABS(DATE(m.kickoff_utc) - %s::date) LIMIT 1""",
+            (home_team_id, away_team_id, date, date, league_code, date))
+    else:
+        cur.execute(
+            """SELECT match_id FROM futbol.matches
+               WHERE home_team_id = %s AND away_team_id = %s
+                 AND DATE(kickoff_utc) BETWEEN %s::date - 1 AND %s::date + 1
+               ORDER BY ABS(DATE(kickoff_utc) - %s::date) LIMIT 1""",
+            (home_team_id, away_team_id, date, date, date))
     row = cur.fetchone()
     return row[0] if row else None
 
@@ -396,7 +410,7 @@ def backfill(league_code: str, season_start_year: int):
                 skipped_team += 1
                 continue
 
-            match_id = find_match_id(cur, home_id, away_id, date)
+            match_id = find_match_id(cur, home_id, away_id, date, league_code)
             if not match_id:
                 skipped_match += 1
                 continue
