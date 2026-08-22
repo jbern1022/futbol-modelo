@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import psycopg2
 
 from grading.grader import grade_prediction, GRADER_VERSION
+from ops.pipeline_run import track_run
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -54,43 +55,45 @@ def fetch_observed(cur, market: str, match_id: int, subject_team_id, subject_pla
 
 
 def main():
-    conn = psycopg2.connect(DSN)
-    graded, voided, skipped = 0, 0, 0
-    with conn.cursor() as cur:
-        cur.execute(UNGRADED_SQL)
-        cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    with track_run("auto_grade") as set_rows_written:
+        conn = psycopg2.connect(DSN)
+        graded, voided, skipped = 0, 0, 0
+        with conn.cursor() as cur:
+            cur.execute(UNGRADED_SQL)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
 
-        for row in rows:
-            match = {"status": row["status"], "home_score": row["home_score"],
-                     "away_score": row["away_score"]}
-            pred = {"market": row["market"], "side": row["side"], "line": row["line"]}
+            for row in rows:
+                match = {"status": row["status"], "home_score": row["home_score"],
+                         "away_score": row["away_score"]}
+                pred = {"market": row["market"], "side": row["side"], "line": row["line"]}
 
-            needs_stats = row["market"] in TEAM_STAT_COLUMN or row["market"] in PLAYER_STAT_COLUMN
-            if needs_stats:
-                stats = fetch_observed(cur, row["market"], row["match_id"],
-                                       row["subject_team_id"], row["subject_player_id"])
-                if not stats:
-                    skipped += 1
-                    continue
-            else:
-                stats = {}
+                needs_stats = row["market"] in TEAM_STAT_COLUMN or row["market"] in PLAYER_STAT_COLUMN
+                if needs_stats:
+                    stats = fetch_observed(cur, row["market"], row["match_id"],
+                                           row["subject_team_id"], row["subject_player_id"])
+                    if not stats:
+                        skipped += 1
+                        continue
+                else:
+                    stats = {}
 
-            outcome, actual = grade_prediction(pred, match, stats)
-            cur.execute(
-                """INSERT INTO futbol.prediction_grades
-                     (prediction_id, outcome, actual_value, graded_at, grader_version)
-                   VALUES (%s,%s,%s,%s,%s)""",
-                (row["prediction_id"], outcome, actual,
-                 datetime.now(timezone.utc), GRADER_VERSION))
-            graded += 1
-            if outcome == "void":
-                voided += 1
+                outcome, actual = grade_prediction(pred, match, stats)
+                cur.execute(
+                    """INSERT INTO futbol.prediction_grades
+                         (prediction_id, outcome, actual_value, graded_at, grader_version)
+                       VALUES (%s,%s,%s,%s,%s)""",
+                    (row["prediction_id"], outcome, actual,
+                     datetime.now(timezone.utc), GRADER_VERSION))
+                graded += 1
+                if outcome == "void":
+                    voided += 1
 
-        conn.commit()
-    conn.close()
-    print(f"[{datetime.now(timezone.utc).isoformat()}] auto_grade: "
-          f"{graded} graded ({voided} void), {skipped} skipped (no stats yet)")
+            conn.commit()
+        conn.close()
+        set_rows_written(graded)
+        print(f"[{datetime.now(timezone.utc).isoformat()}] auto_grade: "
+              f"{graded} graded ({voided} void), {skipped} skipped (no stats yet)")
 
 
 if __name__ == "__main__":

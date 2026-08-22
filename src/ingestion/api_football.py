@@ -370,6 +370,7 @@ def backfill_primary(league_code: str, season_start_year: int):
     conn.close()
     log.info("done: %d matches created/updated, %d had stats filled",
              created, updated_stats)
+    return created
 
 
 def backfill(league_code: str, season_start_year: int):
@@ -433,6 +434,7 @@ def backfill(league_code: str, season_start_year: int):
     conn.close()
     log.info("done: %d updated, %d skipped (team match), %d skipped (fixture match)",
              updated, skipped_team, skipped_match)
+    return updated
 
 
 def main():
@@ -444,10 +446,14 @@ def main():
     ap.add_argument("--primary", action="store_true",
                     help="Use API-Football as the sole source for future/unplayed seasons")
     args = ap.parse_args()
-    if args.league == "MLS" or args.primary:
-        backfill_primary(args.league, args.season)
-    else:
-        backfill(args.league, args.season)
+    from ops.pipeline_run import track_run
+    job_name = f"nightly_refresh:{args.league}"
+    with track_run(job_name) as set_rows_written:
+        if args.league == "MLS" or args.primary:
+            n = backfill_primary(args.league, args.season)
+        else:
+            n = backfill(args.league, args.season)
+        set_rows_written(n)
 
 
 if __name__ == "__main__":

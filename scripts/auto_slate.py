@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import psycopg2
 
 from generate_slate import generate_for_fixture, PROPS_LEAGUES
+from ops.pipeline_run import track_run
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -43,23 +44,25 @@ def main():
     ap.add_argument("--days", type=int, default=7)
     args = ap.parse_args()
 
-    conn = psycopg2.connect(DSN)
-    with conn.cursor() as cur:
-        cur.execute(UPCOMING_UNSLATED_SQL, (args.league, args.days))
-        fixtures = cur.fetchall()
-        print(f"[{args.league}] {len(fixtures)} upcoming fixture(s) without a slate "
-              f"(next {args.days} days)")
+    with track_run(f"auto_slate:{args.league}") as set_rows_written:
+        conn = psycopg2.connect(DSN)
+        with conn.cursor() as cur:
+            cur.execute(UPCOMING_UNSLATED_SQL, (args.league, args.days))
+            fixtures = cur.fetchall()
+            print(f"[{args.league}] {len(fixtures)} upcoming fixture(s) without a slate "
+                  f"(next {args.days} days)")
 
-        written = 0
-        for match_id, kickoff, home, away, home_id, away_id in fixtures:
-            n = generate_for_fixture(conn, cur, args.league, home, away,
-                                     match_id, kickoff, home_id, away_id)
-            if n:
-                written += n
+            written = 0
+            for match_id, kickoff, home, away, home_id, away_id in fixtures:
+                n = generate_for_fixture(conn, cur, args.league, home, away,
+                                         match_id, kickoff, home_id, away_id)
+                if n:
+                    written += n
 
-    conn.close()
-    print(f"[{args.league}] auto_slate done: {len(fixtures)} fixtures processed, "
-          f"{written} total predictions written")
+        conn.close()
+        set_rows_written(written)
+        print(f"[{args.league}] auto_slate done: {len(fixtures)} fixtures processed, "
+              f"{written} total predictions written")
 
 
 if __name__ == "__main__":

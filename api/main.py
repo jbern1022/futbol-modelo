@@ -110,7 +110,7 @@ def root():
     return {"service": "futbol-modelo API", "status": "ok",
             "endpoints": ["/fixtures", "/fixtures/{match_id}/slate",
                          "/scorecard", "/calibration", "/teams", "/ask",
-                         "/ask/team-form"]}
+                         "/ask/team-form", "/pipeline-status"]}
 
 
 @app.get("/health")
@@ -125,6 +125,25 @@ def health():
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"database unreachable: {e}")
     return {"status": "ok"}
+
+
+@app.get("/pipeline-status")
+def pipeline_status():
+    """Latest run of each tracked job (auto_slate:*, auto_grade,
+    nightly_refresh:*) -- backs the "last updated" freshness indicator."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT ON (job_name)
+                       job_name, status, started_at, finished_at, rows_written
+                FROM futbol.pipeline_runs
+                ORDER BY job_name, started_at DESC
+            """)
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+    return {"jobs": rows}
 
 
 @app.get("/fixtures")
