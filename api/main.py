@@ -229,6 +229,44 @@ def get_slate(match_id: int):
         conn.close()
 
 
+@app.get("/predictions/{prediction_id}")
+def get_prediction(prediction_id: int):
+    """Single-prediction permalink data -- statement, model version, lock
+    timestamp, grade, and the fixture it belongs to, so every prediction
+    is individually citable."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT p.prediction_id, p.market, p.statement, p.side,
+                          p.line, p.probability, p.locked_at, p.created_at,
+                          p.context,
+                          tt.name AS subject_team,
+                          pl.full_name AS subject_player,
+                          g.outcome, g.actual_value, g.graded_at,
+                          mv.model_name, mv.version_tag, mv.trained_at,
+                          m.match_id, l.code AS league, th.name AS home,
+                          ta.name AS away, m.kickoff_utc, m.status
+                   FROM futbol.predictions p
+                   JOIN futbol.matches m ON m.match_id = p.match_id
+                   JOIN futbol.teams th ON th.team_id = m.home_team_id
+                   JOIN futbol.teams ta ON ta.team_id = m.away_team_id
+                   JOIN futbol.seasons s ON s.season_id = m.season_id
+                   JOIN futbol.leagues l ON l.league_id = s.league_id
+                   JOIN futbol.model_versions mv ON mv.model_version_id = p.model_version_id
+                   LEFT JOIN futbol.teams tt ON tt.team_id = p.subject_team_id
+                   LEFT JOIN futbol.players pl ON pl.player_id = p.subject_player_id
+                   LEFT JOIN futbol.prediction_grades g
+                     ON g.prediction_id = p.prediction_id
+                   WHERE p.prediction_id = %s""", (prediction_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Prediction not found")
+        return row
+    finally:
+        conn.close()
+
+
 @app.get("/export/predictions.csv")
 def export_predictions_csv(league: Optional[str] = Query(None)):
     """Every graded prediction we've ever made, with grades. Anyone can
