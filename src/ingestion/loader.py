@@ -70,6 +70,24 @@ def upsert_team(cur, canonical: str) -> int:
 
 
 def upsert_match(cur, season_id, home_id, away_id, kickoff, hg, ag, status, ext_ref) -> int:
+    # A kickoff-time correction between scrapes changes the natural key
+    # below, so ON CONFLICT on that key alone would insert a duplicate
+    # row instead of updating the existing one (found live as a real,
+    # active bug via api_football.py's equivalent path -- 9 duplicate
+    # fixtures, 139 predictions that could never be graded). Look up by
+    # the stable external_ref first; only fall back to the natural key
+    # for a genuinely new fixture, which also covers another source
+    # having already created this real match under a different ref.
+    if ext_ref is not None:
+        cur.execute("SELECT match_id FROM futbol.matches WHERE external_ref = %s", (ext_ref,))
+        existing = cur.fetchone()
+        if existing:
+            cur.execute(
+                """UPDATE futbol.matches
+                   SET kickoff_utc = %s, home_score = %s, away_score = %s, status = %s
+                   WHERE match_id = %s""",
+                (kickoff, hg, ag, status, existing[0]))
+            return existing[0]
     cur.execute(
         """INSERT INTO futbol.matches
              (season_id, home_team_id, away_team_id, kickoff_utc,
@@ -78,7 +96,8 @@ def upsert_match(cur, season_id, home_id, away_id, kickoff, hg, ag, status, ext_
            ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
            DO UPDATE SET home_score = EXCLUDED.home_score,
                          away_score = EXCLUDED.away_score,
-                         status     = EXCLUDED.status
+                         status     = EXCLUDED.status,
+                         external_ref = COALESCE(futbol.matches.external_ref, EXCLUDED.external_ref)
            RETURNING match_id""",
         (season_id, home_id, away_id, kickoff, hg, ag, status, ext_ref))
     return cur.fetchone()[0]
@@ -104,9 +123,16 @@ def load_understat(conn, league_key: str, seasons: list[str]):
             away = entities.resolve_team("understat", r["away_team"])
             hid, aid = upsert_team(cur, home), upsert_team(cur, away)
             status = "final" if r.notna().get("home_goals", False) else "scheduled"
+            # _clean(), not a bare '' default: r.get('game_id', '') only
+            # falls back when the key is missing, not when it's present
+            # but NaN -- that let multiple NaN rows collide on the
+            # literal external_ref "understat:nan" (same bug found and
+            # fixed for the WC path below).
+            game_id = _clean(r.get("game_id"))
+            ext_ref = f"understat:{game_id}" if game_id is not None else None
             mid = upsert_match(cur, season_id, hid, aid, r["date"],
                                _int(r.get("home_goals")), _int(r.get("away_goals")),
-                               status, f"understat:{r.get('game_id', '')}")
+                               status, ext_ref)
             # team xG into team_match_stats
             for tid, xg, is_home in ((hid, r.get("home_xg"), True),
                                      (aid, r.get("away_xg"), False)):
@@ -244,25 +270,55 @@ def load_world_cup(conn, seasons: list[str]):
             hg, ag, went_et, went_pens = _parse_score(r.get("score"))
             status = "final" if hg is not None else "scheduled"
             stage = r.get("round")  # e.g. 'Round of 16', 'Quarter-finals'
+            # _clean(), not a bare '' default: r.get('game_id','') only
+            # falls back when the key is missing, not when it's present
+            # but NaN -- multiple NaN rows were colliding on the literal
+            # external_ref "fbref-wc:nan" (found live: matches 97/98/99/100).
+            wc_game_id = _clean(r.get("game_id"))
+            ext_ref = f"fbref-wc:{wc_game_id}" if wc_game_id is not None else None
 
-            cur.execute(
-                """INSERT INTO futbol.matches
-                     (season_id, home_team_id, away_team_id, kickoff_utc,
-                      stage, home_score, away_score, went_to_ot, went_to_pens,
-                      status, external_ref)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                   ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
-                   DO UPDATE SET
-                     home_score = COALESCE(EXCLUDED.home_score, futbol.matches.home_score),
-                     away_score = COALESCE(EXCLUDED.away_score, futbol.matches.away_score),
-                     status = CASE WHEN EXCLUDED.status = 'final'
-                                    OR futbol.matches.status <> 'final'
-                                   THEN EXCLUDED.status ELSE futbol.matches.status END,
-                     went_to_ot = COALESCE(EXCLUDED.went_to_ot, futbol.matches.went_to_ot),
-                     went_to_pens = COALESCE(EXCLUDED.went_to_pens, futbol.matches.went_to_pens)
-                   RETURNING match_id""",
-                (season_id, hid, aid, r["date"], stage, hg, ag,
-                 went_et, went_pens, status, f"fbref-wc:{r.get('game_id','')}"))
+            # Same kickoff-drift risk as upsert_match above: look up by
+            # external_ref first so a schedule correction updates the
+            # existing row instead of colliding with the new unique
+            # index on external_ref (or, before that index existed,
+            # silently duplicating).
+            existing_mid = None
+            if ext_ref is not None:
+                cur.execute("SELECT match_id FROM futbol.matches WHERE external_ref = %s", (ext_ref,))
+                found = cur.fetchone()
+                if found:
+                    existing_mid = found[0]
+                    cur.execute(
+                        """UPDATE futbol.matches SET
+                             kickoff_utc = %s, stage = %s,
+                             home_score = COALESCE(%s, home_score),
+                             away_score = COALESCE(%s, away_score),
+                             status = CASE WHEN %s = 'final' OR status <> 'final'
+                                           THEN %s ELSE status END,
+                             went_to_ot = COALESCE(%s, went_to_ot),
+                             went_to_pens = COALESCE(%s, went_to_pens)
+                           WHERE match_id = %s""",
+                        (r["date"], stage, hg, ag, status, status, went_et, went_pens, existing_mid))
+            if existing_mid is None:
+                cur.execute(
+                    """INSERT INTO futbol.matches
+                         (season_id, home_team_id, away_team_id, kickoff_utc,
+                          stage, home_score, away_score, went_to_ot, went_to_pens,
+                          status, external_ref)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
+                       DO UPDATE SET
+                         home_score = COALESCE(EXCLUDED.home_score, futbol.matches.home_score),
+                         away_score = COALESCE(EXCLUDED.away_score, futbol.matches.away_score),
+                         status = CASE WHEN EXCLUDED.status = 'final'
+                                        OR futbol.matches.status <> 'final'
+                                       THEN EXCLUDED.status ELSE futbol.matches.status END,
+                         went_to_ot = COALESCE(EXCLUDED.went_to_ot, futbol.matches.went_to_ot),
+                         went_to_pens = COALESCE(EXCLUDED.went_to_pens, futbol.matches.went_to_pens),
+                         external_ref = COALESCE(futbol.matches.external_ref, EXCLUDED.external_ref)
+                       RETURNING match_id""",
+                    (season_id, hid, aid, r["date"], stage, hg, ag,
+                     went_et, went_pens, status, ext_ref))
         conn.commit()
     log.info("World Cup load complete")
 

@@ -288,20 +288,41 @@ def backfill_primary(league_code: str, season_start_year: int):
 
             status = "final" if short_status == "FT" else (
                 "scheduled" if short_status in ("NS", "TBD") else short_status.lower())
+            ext_ref = f"api-football:{fixture_id}"
 
-            cur.execute(
-                """INSERT INTO futbol.matches
-                     (season_id, home_team_id, away_team_id, kickoff_utc,
-                      home_score, away_score, status, external_ref)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                   ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
-                   DO UPDATE SET home_score = EXCLUDED.home_score,
-                                 away_score = EXCLUDED.away_score,
-                                 status     = EXCLUDED.status
-                   RETURNING match_id""",
-                (season_id, home_id, away_id, kickoff, hg, ag, status,
-                 f"api-football:{fixture_id}"))
-            match_id = cur.fetchone()[0]
+            # A kickoff-time correction between runs (broadcast
+            # rescheduling -- real and common) changes the old conflict
+            # key (season, home, away, kickoff_utc), so an ON CONFLICT
+            # on that key alone inserted a duplicate row instead of
+            # updating the existing one. Found live: 9 real fixtures each
+            # ended up as two match rows this way. Look up by the stable
+            # external_ref first; only fall back to the natural key for
+            # a genuinely new fixture (which also covers the case where
+            # another source already created this real match under a
+            # different external_ref format).
+            cur.execute("SELECT match_id FROM futbol.matches WHERE external_ref = %s", (ext_ref,))
+            existing = cur.fetchone()
+            if existing:
+                match_id = existing[0]
+                cur.execute(
+                    """UPDATE futbol.matches
+                       SET kickoff_utc = %s, home_score = %s, away_score = %s, status = %s
+                       WHERE match_id = %s""",
+                    (kickoff, hg, ag, status, match_id))
+            else:
+                cur.execute(
+                    """INSERT INTO futbol.matches
+                         (season_id, home_team_id, away_team_id, kickoff_utc,
+                          home_score, away_score, status, external_ref)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
+                       DO UPDATE SET home_score = EXCLUDED.home_score,
+                                     away_score = EXCLUDED.away_score,
+                                     status     = EXCLUDED.status,
+                                     external_ref = COALESCE(futbol.matches.external_ref, EXCLUDED.external_ref)
+                       RETURNING match_id""",
+                    (season_id, home_id, away_id, kickoff, hg, ag, status, ext_ref))
+                match_id = cur.fetchone()[0]
             created += 1
 
             if status == "final":

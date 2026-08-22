@@ -68,6 +68,13 @@ CREATE TABLE matches (
     UNIQUE (season_id, home_team_id, away_team_id, kickoff_utc)
 );
 CREATE INDEX idx_matches_kickoff ON matches (kickoff_utc);
+-- Partial (nullable-safe) unique index: a kickoff-time correction
+-- between ingestion runs must update the existing row for a fixture,
+-- not insert a duplicate. Ingestion code looks this up explicitly
+-- before falling back to the natural key above (see api_football.py's
+-- backfill_primary()) -- found live as a real, active bug (9 duplicate
+-- fixtures, 139 predictions that could never be graded).
+CREATE UNIQUE INDEX idx_matches_external_ref ON matches (external_ref) WHERE external_ref IS NOT NULL;
 CREATE INDEX idx_matches_status  ON matches (status);
 
 CREATE TABLE team_match_stats (
