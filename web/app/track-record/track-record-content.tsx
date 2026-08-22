@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { marketLabel } from "@/lib/markets";
 import CalibrationSection from "./calibration-section";
 
@@ -67,9 +68,27 @@ export default function TrackRecordContent({
   scorecard: ScorecardRow[];
   calibration: CalibrationRow[];
 }) {
-  const [league, setLeague] = useState("");
-  const [season, setSeason] = useState("");
-  const [market, setMarket] = useState("");
+  const searchParams = useSearchParams();
+  const [league, setLeague] = useState(() => searchParams.get("league") ?? "");
+  const [season, setSeason] = useState(() => searchParams.get("season") ?? "");
+  const [market, setMarket] = useState(() => searchParams.get("market") ?? "");
+
+  // Sync filters into the URL (?league=&season=&market=) so a filtered
+  // view is shareable/bookmarkable -- this is what ADR-011's "link to
+  // the relevant filtered Track Record view" needs to actually resolve
+  // to something. Uses the native History API directly rather than
+  // next/navigation's router: router.replace() would re-run this page's
+  // server component and refetch scorecard/calibration for a filter
+  // change that's already fully handled client-side.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (league) params.set("league", league);
+    if (season) params.set("season", season);
+    if (market) params.set("market", market);
+    const query = params.toString();
+    const url = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    window.history.replaceState(null, "", url);
+  }, [league, season, market]);
 
   const leagues = useMemo(() => uniqueSorted(scorecard.map((r) => r.league)), [scorecard]);
   const seasons = useMemo(() => uniqueSorted(scorecard.map((r) => r.season)), [scorecard]);

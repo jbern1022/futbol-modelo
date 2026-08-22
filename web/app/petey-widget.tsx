@@ -253,7 +253,14 @@ export default function PeteyWidget({
                 <> &middot; {(response.hit_rate * 100).toFixed(1)}% hit rate</>
               )}
               {" "}&middot;{" "}
-              <a href="/track-record" className="underline hover:no-underline">
+              <a
+                href={
+                  mode === "accuracy"
+                    ? `/track-record?league=${encodeURIComponent(league)}&market=${encodeURIComponent(effectiveMarket)}`
+                    : "/track-record"
+                }
+                className="underline hover:no-underline"
+              >
                 see full breakdown
               </a>
             </p>
