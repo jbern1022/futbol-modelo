@@ -30,7 +30,7 @@ export function leagueBadge(league: string) {
   );
 }
 
-export function cleanStatement(p: PredictionLike): string {
+export function cleanStatement(p: Pick<PredictionLike, "market" | "statement" | "subject_team">): string {
   let text = p.statement.replace(/^Sot\b/i, "Shots on target");
   if (p.subject_team && (p.market === "CORNERS" || p.market === "SOT")) {
     // Predictions written before the team-name prefix landed have no

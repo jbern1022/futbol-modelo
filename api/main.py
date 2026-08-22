@@ -267,6 +267,43 @@ def get_prediction(prediction_id: int):
         conn.close()
 
 
+@app.get("/misses")
+def biggest_misses(league: Optional[str] = Query(None), limit: int = Query(20, le=100)):
+    """Highest-confidence predictions that missed, most confident first --
+    the honesty-first counterpart to only ever showing hits."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            query = """
+                SELECT p.prediction_id, p.market, p.statement, p.side,
+                       p.probability, p.locked_at, g.actual_value,
+                       tt.name AS subject_team, pl.full_name AS subject_player,
+                       m.match_id, l.code AS league, th.name AS home,
+                       ta.name AS away, m.kickoff_utc
+                FROM futbol.predictions p
+                JOIN futbol.prediction_grades g ON g.prediction_id = p.prediction_id
+                JOIN futbol.matches m ON m.match_id = p.match_id
+                JOIN futbol.teams th ON th.team_id = m.home_team_id
+                JOIN futbol.teams ta ON ta.team_id = m.away_team_id
+                JOIN futbol.seasons s ON s.season_id = m.season_id
+                JOIN futbol.leagues l ON l.league_id = s.league_id
+                LEFT JOIN futbol.teams tt ON tt.team_id = p.subject_team_id
+                LEFT JOIN futbol.players pl ON pl.player_id = p.subject_player_id
+                WHERE g.outcome = 'miss'
+            """
+            params: list = []
+            if league:
+                query += " AND l.code = %s"
+                params.append(league)
+            query += " ORDER BY p.probability DESC LIMIT %s"
+            params.append(limit)
+            cur.execute(query, params)
+            rows = cur.fetchall()
+        return {"count": len(rows), "misses": rows}
+    finally:
+        conn.close()
+
+
 @app.get("/export/predictions.csv")
 def export_predictions_csv(league: Optional[str] = Query(None)):
     """Every graded prediction we've ever made, with grades. Anyone can
