@@ -89,6 +89,22 @@ function outcomeBadge(outcome: string | null) {
   );
 }
 
+// Mirrors build_slate()'s own selection bands in src/predictions/generator.py
+// (TARGET_BAND = 0.60-0.75, anchors > 0.80, specs < 0.45) -- purely a
+// display label, derived from probability, not a stored field.
+function roleBadge(probability: number) {
+  let label: string | null = null;
+  if (probability > 0.8) label = "Anchor";
+  else if (probability >= 0.6 && probability <= 0.75) label = "Bold pick";
+  else if (probability < 0.45) label = "Long shot";
+  if (!label) return null;
+  return (
+    <span className="ml-2 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+      {label}
+    </span>
+  );
+}
+
 export default async function FixturePage({
   params,
 }: {
@@ -187,6 +203,7 @@ export default async function FixturePage({
                     <div key={p.prediction_id} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
                       <div className="text-black dark:text-zinc-50">
                         {cleanStatement(p)}
+                        {roleBadge(p.probability)}
                         {outcomeBadge(p.outcome)}
                       </div>
                       <div className="text-right">
