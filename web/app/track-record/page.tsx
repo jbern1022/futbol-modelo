@@ -18,6 +18,7 @@ interface ScorecardRow {
 interface CalibrationRow {
   league: string;
   market: string;
+  side: string;
   avg_stated_prob: number;
   realized_rate: number;
   n: number;
