@@ -125,6 +125,10 @@ def fit_props_model(cur, market: str):
                if market == "CORNERS" else \
                ["sot_for_r5", "sot_against_r5", "shots_for_r5",
                "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"]
+    # n_prior >= 5: a team with 1-2 prior matches gets a "rolling 5" average
+    # that's really just those 1-2 games, fed to the model as if it were a
+    # full window. Extends ADR-007's small-sample honesty threshold (used
+    # elsewhere for UI disclaimers) down into training data itself.
     cur.execute(
         f"""SELECT {', '.join('f.'+c for c in features)}, tms.{spec['target_col']} AS y
             FROM futbol.team_match_features f
@@ -133,7 +137,8 @@ def fit_props_model(cur, market: str):
             JOIN futbol.leagues l ON l.league_id = s.league_id
             JOIN futbol.team_match_stats tms
               ON tms.match_id = f.match_id AND tms.team_id = f.team_id
-            WHERE l.code = ANY(%s) AND tms.{spec['target_col']} IS NOT NULL""",
+            WHERE l.code = ANY(%s) AND tms.{spec['target_col']} IS NOT NULL
+              AND f.n_prior >= 5""",
         (list(PROPS_LEAGUES),))
     rows = cur.fetchall()
     df = pd.DataFrame(rows, columns=features + ["y"])
