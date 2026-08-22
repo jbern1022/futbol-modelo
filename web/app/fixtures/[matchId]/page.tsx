@@ -47,9 +47,20 @@ function leagueBadge(league: string) {
   );
 }
 
-function cleanStatement(statement: string, market: string): string {
-  return statement
-    .replace(/^Sot\b/i, "Shots on target");
+function cleanStatement(p: Prediction): string {
+  let text = p.statement.replace(/^Sot\b/i, "Shots on target");
+  if (p.subject_team) {
+    // Predictions written before the team-name prefix landed have no
+    // "Team — " in the ledger text (immutable, can't be backfilled) --
+    // strip whatever prefix is there, if any, and rebuild from the
+    // API's resolved subject_team so old and new rows render the same.
+    const dashIdx = text.indexOf(" — ");
+    if (dashIdx !== -1) {
+      text = text.slice(dashIdx + 3);
+    }
+    text = `${p.subject_team} — ${text}`;
+  }
+  return text;
 }
 
 async function getSlate(matchId: string): Promise<SlateResponse | null> {
@@ -175,7 +186,7 @@ export default async function FixturePage({
                   .map((p) => (
                     <div key={p.prediction_id} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
                       <div className="text-black dark:text-zinc-50">
-                        {cleanStatement(p.statement, p.market)}
+                        {cleanStatement(p)}
                         {outcomeBadge(p.outcome)}
                       </div>
                       <div className="text-right">
