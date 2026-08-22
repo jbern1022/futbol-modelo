@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import PeteyWidget from "../petey-widget";
 
@@ -14,9 +15,9 @@ function PeteyPageInner() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
       <main className="mx-auto max-w-2xl px-6 py-16">
-        <a href="/" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/" className="text-sm text-zinc-500 hover:underline">
           &larr; Back to fixtures
-        </a>
+        </Link>
 
         <h1 className="mt-6 text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
           Ask Petey

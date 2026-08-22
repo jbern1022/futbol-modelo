@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { marketLabel } from "@/lib/markets";
 import CalibrationSection from "./calibration-section";
 
@@ -56,9 +57,9 @@ export default async function TrackRecordPage() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
       <main className="mx-auto max-w-4xl px-6 py-16">
-        <a href="/" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/" className="text-sm text-zinc-500 hover:underline">
           &larr; Back to fixtures
-        </a>
+        </Link>
 
         <div className="mt-6 flex items-start justify-between gap-4">
           <div>

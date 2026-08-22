@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { marketLabel } from "@/lib/markets";
 import { plainOdds } from "@/lib/format";
 
@@ -89,9 +90,9 @@ export default async function FixturePage({
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-black">
         <main className="mx-auto max-w-3xl px-6 py-16">
-          <a href="/" className="text-sm text-zinc-500 hover:underline">
+          <Link href="/" className="text-sm text-zinc-500 hover:underline">
             &larr; Back to fixtures
-          </a>
+          </Link>
           <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
             Fixture not found, or the API is unreachable.
           </div>
@@ -130,9 +131,9 @@ export default async function FixturePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaOrgEvent) }}
       />
       <main className="mx-auto max-w-3xl px-6 py-16">
-        <a href="/" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/" className="text-sm text-zinc-500 hover:underline">
           &larr; Back to fixtures
-        </a>
+        </Link>
 
         <div className="mt-6 flex items-start justify-between">
           <div>

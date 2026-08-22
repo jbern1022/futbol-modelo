@@ -1,10 +1,12 @@
+import Link from "next/link";
+
 export default function HowItWorksPage() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
       <main className="mx-auto max-w-2xl px-6 py-16">
-        <a href="/" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/" className="text-sm text-zinc-500 hover:underline">
           &larr; Back to fixtures
-        </a>
+        </Link>
 
         <h1 className="mt-6 text-3xl font-semibold tracking-tight text-black dark:text-zinc-50">
           How Futbol Modelo Works
@@ -74,6 +76,9 @@ export default function HowItWorksPage() {
           </a>
           <a href="/petey" className="inline-block rounded-md border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
             Ask Petey &rarr;
+          </a>
+          <a href="/data-dictionary" className="inline-block rounded-md border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
+            Data dictionary &rarr;
           </a>
         </div>
 
