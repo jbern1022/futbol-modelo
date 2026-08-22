@@ -94,7 +94,10 @@ def persist_slate(conn, match_id: int, model_version_id: int,
                      created_at, locked_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (match_id, model_version_id, market,
-                             subject_team_id, subject_player_id, side, line)
+                             COALESCE(subject_team_id, '-1'::integer),
+                             COALESCE(subject_player_id, '-1'::integer),
+                             COALESCE(side, ''::text),
+                             COALESCE(line, '-9999'::integer::numeric))
                 DO NOTHING
                 """,
                 (match_id, model_version_id, inf.market, inf.subject_team_id,
