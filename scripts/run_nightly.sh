@@ -1,4 +1,11 @@
 #!/bin/bash
+# NOT what's deployed. Production runs as three separate k8s CronJobs
+# (see k8s/cronjobs.yaml) on the cluster, each with its own
+# pipeline_runs tracking (src/ops/pipeline_run.py) -- this script is a
+# local-Mac-only equivalent (hardcoded path below, meant to run from a
+# personal crontab via .venv), useful for manually replaying the same
+# steps by hand but not part of the real automated pipeline.
+#
 # Cron-safe nightly runner — cron does NOT source .zshrc/.bash_profile, so
 # FUTBOL_DSN and API_FOOTBALL_KEY must be exported before this script runs
 # (e.g. from a gitignored env file sourced by the crontab entry itself).
