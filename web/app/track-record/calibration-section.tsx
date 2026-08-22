@@ -6,9 +6,19 @@ import { marketLabel } from "@/lib/markets";
 interface CalibrationRow {
   league: string;
   market: string;
+  side: string;
   avg_stated_prob: number;
   realized_rate: number;
   n: number;
+}
+
+// "over"/"under" read fine bare; a bare "home"/"away"/"draw" doesn't say
+// what it's the side of, so 1X2 sides get spelled out per-market.
+function sideLabel(market: string, side: string): string {
+  if (market === "1X2") {
+    return { home: "Home win", away: "Away win", draw: "Draw" }[side] ?? side;
+  }
+  return side.charAt(0).toUpperCase() + side.slice(1);
 }
 
 // Matches TARGET_BAND in src/predictions/generator.py -- the confidence
@@ -29,17 +39,17 @@ export default function CalibrationSection({ calibration }: { calibration: Calib
 
   const grouped = Object.entries(
     calibration.reduce<Record<string, CalibrationRow[]>>((acc, row) => {
-      const key = `${row.league}::${row.market}`;
+      const key = `${row.league}::${row.market}::${row.side}`;
       (acc[key] ??= []).push(row);
       return acc;
     }, {})
   ).map(([key, rows]) => {
-    const [league, market] = key.split("::");
+    const [league, market, side] = key.split("::");
     const sorted = rows.slice().sort((a, b) => a.avg_stated_prob - b.avg_stated_prob);
     const filtered = bandOnly
       ? sorted.filter((r) => r.avg_stated_prob >= TARGET_BAND[0] && r.avg_stated_prob <= TARGET_BAND[1])
       : sorted;
-    return { key, league, market, rows: filtered };
+    return { key, league, market, side, rows: filtered };
   }).filter((g) => g.rows.length > 0);
 
   return (
@@ -69,10 +79,10 @@ export default function CalibrationSection({ calibration }: { calibration: Calib
         <p className="mt-6 text-sm text-zinc-500">No bands in the 60–75% range yet.</p>
       ) : (
         <div className="mt-4 space-y-6">
-          {grouped.map(({ key, league, market, rows }) => (
+          {grouped.map(({ key, league, market, side, rows }) => (
             <div key={key} className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
               <div className="text-sm font-medium text-black dark:text-zinc-50">
-                {marketLabel(market)}{" "}
+                {marketLabel(market)} &mdash; {sideLabel(market, side)}{" "}
                 <span className="font-normal text-zinc-500">({league})</span>
               </div>
               <div className="mt-3 space-y-3">

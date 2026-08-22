@@ -264,14 +264,15 @@ SELECT
     width_bucket(p.probability, 0.0, 1.0, 10) AS prob_bucket,      -- decile bins
     ROUND(AVG(p.probability)::numeric, 4)     AS avg_stated_prob,
     ROUND(AVG((g.outcome = 'hit')::int)::numeric, 4) AS realized_rate,
-    COUNT(*) AS n
+    COUNT(*) AS n,
+    p.side
 FROM predictions p
 JOIN prediction_grades g USING (prediction_id)
 JOIN matches m USING (match_id)
 JOIN seasons s USING (season_id)
 JOIN leagues l USING (league_id)
 WHERE g.outcome <> 'void'
-GROUP BY p.market, l.code, prob_bucket;
+GROUP BY p.market, p.side, l.code, prob_bucket;
 
 CREATE OR REPLACE VIEW v_season_scorecard AS
 SELECT

@@ -312,7 +312,7 @@ def calibration(league: Optional[str] = Query(None)):
                 if league:
                     query += " AND league = %s"
                     params.append(league)
-                query += " ORDER BY league, market, avg_stated_prob"
+                query += " ORDER BY league, market, side, avg_stated_prob"
                 cur.execute(query, params)
                 rows = cur.fetchall()
             return {"count": len(rows), "calibration": rows}
