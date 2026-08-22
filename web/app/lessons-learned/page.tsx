@@ -86,7 +86,7 @@ export default function LessonsLearnedPage() {
               completely the moment it went live. The reason: the
               frontend&apos;s API calls were pointed at Kubernetes&apos;
               internal service name for the backend &mdash; a hostname that
-              only resolves <em>inside</em> the cluster&apos;s own network.
+              only resolves <em>inside</em>{" "}the cluster&apos;s own network.
               A real browser, out on the public internet, has no way to
               look that up. Every server-rendered page worked fine, because
               those requests run from inside a pod. Only the
@@ -114,7 +114,7 @@ export default function LessonsLearnedPage() {
               The calibration code sat in a validated, working training
               script for weeks while live predictions kept shipping on raw,
               uncorrected probabilities. Nobody caught it because nothing
-              was <em>wrong</em> in an obviously visible way &mdash; the
+              was <em>wrong</em>{" "}in an obviously visible way &mdash; the
               predictions still looked reasonable, the site still worked,
               the commit messages read like a finished feature. It took
               directly grepping the actual file the CronJob executes,
