@@ -13,6 +13,8 @@ interface Fixture {
   home_score: number | null;
   away_score: number | null;
   n_predictions: number;
+  headline_statement: string | null;
+  headline_probability: number | null;
 }
 
 interface FixturesResponse {

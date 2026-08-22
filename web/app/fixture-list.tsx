@@ -13,6 +13,15 @@ interface Fixture {
   home_score: number | null;
   away_score: number | null;
   n_predictions: number;
+  headline_statement: string | null;
+  headline_probability: number | null;
+}
+
+function fixtureSummary(f: Fixture): string {
+  if (f.headline_statement && f.headline_probability !== null) {
+    return `${f.headline_statement}, ${(f.headline_probability * 100).toFixed(0)}%`;
+  }
+  return `${f.n_predictions} prediction${f.n_predictions === 1 ? "" : "s"}`;
 }
 
 const LEAGUE_COLORS: Record<string, string> = {
@@ -94,7 +103,7 @@ export default function FixtureList({ fixtures }: { fixtures: Fixture[] }) {
                       minute: "2-digit",
                     })}
                   </div>
-                  <div className="mt-1 text-xs text-zinc-400">{f.n_predictions} predictions</div>
+                  <div className="mt-1 text-xs text-zinc-400">{fixtureSummary(f)}</div>
                 </div>
               </div>
             </a>
