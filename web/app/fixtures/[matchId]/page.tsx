@@ -16,6 +16,55 @@ interface Prediction {
   subject_player: string | null;
   outcome: string | null;
   actual_value: number | null;
+  context: Record<string, number> | null;
+}
+
+// current_form()/player-form's raw feature keys, in src/predictions/generator.py
+// terms -- rendered as the "why" panel. Falls back to a humanized version
+// of any key not listed here rather than hiding it.
+const CONTEXT_LABELS: Record<string, string> = {
+  corners_for_r5: "Corners for (last 5)",
+  corners_against_r5: "Corners against (last 5)",
+  shots_for_r5: "Shots for (last 5)",
+  shots_against_r5: "Shots against (last 5)",
+  sot_for_r5: "Shots on target for (last 5)",
+  sot_against_r5: "Shots on target against (last 5)",
+  xg_for_r5: "xG for (last 5)",
+  xg_against_r5: "xG against (last 5)",
+  rest_days: "Rest days",
+  is_home: "Home game",
+  p_shots_r5: "Player shots (last 5)",
+  p_minutes_r5: "Player minutes (last 5)",
+  p_goals_r10: "Player goals (last 10)",
+  p_key_passes_r5: "Player key passes (last 5)",
+  p_saves_r5: "Player saves (last 5)",
+};
+
+function humanizeKey(key: string): string {
+  return key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+
+function whyPanel(context: Record<string, number> | null) {
+  if (!context) return null;
+  const entries = Object.entries(context).filter(([, v]) => v !== null);
+  if (entries.length === 0) return null;
+  return (
+    <details className="mt-2 text-xs text-zinc-500">
+      <summary className="cursor-pointer select-none hover:text-zinc-700 dark:hover:text-zinc-300">
+        Why
+      </summary>
+      <dl className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+        {entries.map(([key, value]) => (
+          <div key={key} className="flex justify-between gap-2">
+            <dt>{CONTEXT_LABELS[key] ?? humanizeKey(key)}</dt>
+            <dd className="text-zinc-700 dark:text-zinc-300">
+              {typeof value === "number" ? value.toFixed(key === "rest_days" ? 0 : 2) : String(value)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
 }
 
 interface SlateResponse {
@@ -200,11 +249,12 @@ export default async function FixturePage({
                   .slice()
                   .sort((a, b) => b.probability - a.probability)
                   .map((p) => (
-                    <div key={p.prediction_id} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div key={p.prediction_id} className="flex items-start justify-between gap-4 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
                       <div className="text-black dark:text-zinc-50">
                         {cleanStatement(p)}
                         {roleBadge(p.probability)}
                         {outcomeBadge(p.outcome)}
+                        {whyPanel(p.context)}
                       </div>
                       <div className="text-right">
                         <div className="text-lg font-semibold text-black dark:text-zinc-50">

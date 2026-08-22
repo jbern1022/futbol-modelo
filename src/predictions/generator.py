@@ -15,8 +15,11 @@ Selection policy (v1):
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
+
+from psycopg2.extras import Json
 
 TARGET_BAND = (0.60, 0.75)
 SLATE_SIZE = 20
@@ -32,6 +35,7 @@ class Inference:
     subject_team_id: int | None = None
     subject_player_id: int | None = None
     base_rate: float | None = None      # historical frequency of this claim
+    context: dict | None = None         # form inputs the model saw ("why" panel)
 
     @property
     def edge(self) -> float:
@@ -74,6 +78,17 @@ def build_slate(candidates: list[Inference],
     return final[:size]
 
 
+def _sanitize_context(context: dict | None) -> dict | None:
+    """json.dumps happily emits literal NaN for a NaN float, which is not
+    valid JSON -- Postgres's JSONB parser rejects it and the whole INSERT
+    fails. current_form()'s rolling .mean() can produce NaN on a sparse
+    data window, so this isn't just theoretical."""
+    if context is None:
+        return None
+    return {k: (None if isinstance(v, float) and math.isnan(v) else v)
+            for k, v in context.items()}
+
+
 def persist_slate(conn, match_id: int, model_version_id: int,
                   slate: list[Inference]) -> int:
     """
@@ -91,8 +106,8 @@ def persist_slate(conn, match_id: int, model_version_id: int,
                 INSERT INTO futbol.predictions
                     (match_id, model_version_id, market, subject_team_id,
                      subject_player_id, statement, line, side, probability,
-                     created_at, locked_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                     created_at, locked_at, context)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (match_id, model_version_id, market,
                              COALESCE(subject_team_id, '-1'::integer),
                              COALESCE(subject_player_id, '-1'::integer),
@@ -102,7 +117,8 @@ def persist_slate(conn, match_id: int, model_version_id: int,
                 """,
                 (match_id, model_version_id, inf.market, inf.subject_team_id,
                  inf.subject_player_id, inf.statement, inf.line, inf.side,
-                 round(inf.probability, 5), now, now),
+                 round(inf.probability, 5), now, now,
+                 Json(_sanitize_context(inf.context))),
             )
             inserted += cur.rowcount
     conn.commit()

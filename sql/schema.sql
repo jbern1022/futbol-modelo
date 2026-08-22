@@ -216,7 +216,11 @@ CREATE TABLE predictions (
     side            TEXT,            -- 'over'|'under'|'home'|'draw'|'away'|'yes'|'no'
     probability     NUMERIC(6,5) NOT NULL CHECK (probability > 0 AND probability < 1),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    locked_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    locked_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    context         JSONB            -- form inputs the model saw (last-5 rolling
+                                      -- stats, rest days, etc), for the "why"
+                                      -- panel. Nullable -- only props markets
+                                      -- populate it; older rows predate it.
 );
 CREATE INDEX idx_predictions_match ON predictions (match_id);
 CREATE INDEX idx_predictions_market ON predictions (market);

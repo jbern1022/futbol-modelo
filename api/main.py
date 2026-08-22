@@ -212,7 +212,7 @@ def get_slate(match_id: int):
 
             cur.execute(
                 """SELECT p.prediction_id, p.market, p.statement, p.side,
-                          p.line, p.probability, p.locked_at,
+                          p.line, p.probability, p.locked_at, p.context,
                           tt.name AS subject_team,
                           pl.full_name AS subject_player,
                           g.outcome, g.actual_value

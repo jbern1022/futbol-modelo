@@ -223,7 +223,7 @@ def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
         out.append(Inference(
             market=market, statement=f"{team_name} — {market_label} {side} {line}",
             line=line, side=side, probability=round(stated_p, 5),
-            subject_team_id=team_id))
+            subject_team_id=team_id, context=features))
     return out
 
 
@@ -329,7 +329,7 @@ def build_player_goal_inference(model, features_list, form, player_id, player_na
         return None
     return Inference(market="PLAYER_GOALS", statement=f"{player_name} to score",
                      line=0.5, side="over", probability=round(p, 5),
-                     subject_player_id=player_id)
+                     subject_player_id=player_id, context=form)
 
 
 def build_player_saves_inference(model, features_list, form, player_id, player_name, line=3.5):
@@ -340,7 +340,7 @@ def build_player_saves_inference(model, features_list, form, player_id, player_n
         return None
     return Inference(market="PLAYER_SAVES", statement=f"{player_name} over {line} saves",
                      line=line, side="over", probability=round(p, 5),
-                     subject_player_id=player_id)
+                     subject_player_id=player_id, context=form)
 
 
 def generate_for_fixture(conn, cur, league: str, home: str, away: str,
