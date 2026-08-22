@@ -161,12 +161,21 @@ def list_fixtures(
                        m.kickoff_utc, m.status,
                        m.home_score, m.away_score,
                        (SELECT COUNT(*) FROM futbol.predictions p
-                        WHERE p.match_id = m.match_id) AS n_predictions
+                        WHERE p.match_id = m.match_id) AS n_predictions,
+                       headline.statement AS headline_statement,
+                       headline.probability AS headline_probability
                 FROM futbol.matches m
                 JOIN futbol.teams th ON th.team_id = m.home_team_id
                 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
                 JOIN futbol.seasons s ON s.season_id = m.season_id
                 JOIN futbol.leagues l ON l.league_id = s.league_id
+                LEFT JOIN LATERAL (
+                    SELECT p.statement, p.probability
+                    FROM futbol.predictions p
+                    WHERE p.match_id = m.match_id AND p.market = '1X2'
+                    ORDER BY p.probability DESC
+                    LIMIT 1
+                ) headline ON true
                 WHERE m.status = %s
                   AND m.kickoff_utc BETWEEN now() - interval '1 day'
                                         AND now() + (%s || ' days')::interval
