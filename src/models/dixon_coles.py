@@ -114,6 +114,13 @@ class DixonColes:
         for x in range(2):
             for y in range(2):
                 m[x, y] *= _tau(x, y, lam, mu, rho)
+        # tau(0,0) = 1 - lam*mu*rho can go negative when lam*mu*|rho| >= 1 --
+        # doesn't happen with realistic fitted params (checked: real
+        # lam/mu ~0.5-3.5, |rho| ~0.05-0.15 stays well under 1), but nothing
+        # here enforced that, so a future fit() change could silently walk
+        # into a >1 derived probability. Clip before normalizing instead of
+        # relying on callers never hitting the boundary.
+        m = np.clip(m, 0, None)
         total = m.sum()
         if total < 1e-6:
             raise ValueError(
