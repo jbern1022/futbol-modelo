@@ -25,7 +25,17 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 
 from models.dixon_coles import DixonColes, derive_markets, knockout_extension
-from predictions.generator import Inference, build_slate, persist_slate
+from predictions.generator import Inference, build_slate, persist_slate, TARGET_BAND
+
+# Emission threshold for CORNERS/SOT candidates in build_props_inferences()
+# below -- distinct from generator.TARGET_BAND, which ranks/selects among
+# already-emitted candidates across every market. This one decides whether
+# a raw model line is confident enough to become a candidate at all; it's
+# deliberately wider than TARGET_BAND to leave build_slate() something to
+# rank. Named here (rather than left as bare literals) so the two bands
+# can't silently drift apart without it being visible in a diff.
+PROPS_OVER_BAND = (0.55, 0.80)
+PROPS_UNDER_BAND = (0.20, 0.45)
 
 try:
     import lightgbm as lgb
@@ -201,9 +211,9 @@ def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
         raw_p = float(1 - poisson.cdf(np.floor(line), mu))
         calibrator = calibrators.get(line)
         p = float(calibrator.predict([raw_p])[0]) if calibrator is not None else raw_p
-        if 0.55 <= p <= 0.80:
+        if PROPS_OVER_BAND[0] <= p <= PROPS_OVER_BAND[1]:
             side, stated_p = "over", p
-        elif 0.20 <= p <= 0.45:
+        elif PROPS_UNDER_BAND[0] <= p <= PROPS_UNDER_BAND[1]:
             # Low P(over) is a genuine high-confidence P(under) claim, not a
             # weak "over" one -- flip it so the ledger actually gets
             # under-side calibration support instead of never emitting it.
@@ -414,7 +424,7 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                 if verbose:
                     print(f"  (player props skipped: {e})")
 
-    slate = build_slate(candidates, size=20)
+    slate = build_slate(candidates, band=TARGET_BAND, size=20)
 
     # Stable per league+code-version, NOT per fixture -- every fixture in
     # this league on this code version dedupes into the same row via
