@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { marketLabel } from "@/lib/markets";
-import CalibrationSection from "./calibration-section";
+import TrackRecordContent from "./track-record-content";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -52,7 +51,6 @@ export default async function TrackRecordPage() {
     getCalibration(),
   ]);
 
-  const totalPredictions = scorecard.reduce((sum, r) => sum + r.n_predictions, 0);
   const totalGraded = scorecard.length > 0;
 
   return (
@@ -87,74 +85,7 @@ export default async function TrackRecordPage() {
           </div>
         )}
 
-        {totalGraded && (
-          <>
-            <div className="mt-8 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-              <span className="text-sm text-zinc-500">Total graded predictions</span>
-              <div className="text-2xl font-semibold text-black dark:text-zinc-50">
-                {totalPredictions.toLocaleString()}
-              </div>
-            </div>
-
-            <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">
-              By market
-            </h2>
-            <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">League</th>
-                    <th className="px-4 py-2 font-medium">Market</th>
-                    <th className="px-4 py-2 font-medium text-right">N</th>
-                    <th className="px-4 py-2 font-medium text-right">Stated</th>
-                    <th className="px-4 py-2 font-medium text-right">Realized</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scorecard.map((row, i) => (
-                    <tr
-                      key={i}
-                      className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
-                    >
-                      <td className="px-4 py-2 text-zinc-500">{row.league}</td>
-                      <td className="px-4 py-2 text-black dark:text-zinc-50">
-                        {marketLabel(row.market)}
-                      </td>
-                      <td className="px-4 py-2 text-right text-zinc-500">
-                        {row.n_predictions}
-                        {row.n_predictions < 5 && (
-                          <span title="Small sample -- treat this cautiously" className="ml-1 text-amber-600 dark:text-amber-400">
-                            &#9888;
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-right text-black dark:text-zinc-50">
-                        {(row.avg_confidence * 100).toFixed(1)}%
-                      </td>
-                      <td className="px-4 py-2 text-right text-black dark:text-zinc-50">
-                        {(row.hit_rate * 100).toFixed(1)}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-2 text-xs text-zinc-400">
-              <span className="text-amber-600 dark:text-amber-400">&#9888;</span>{" "}
-              marks a market with fewer than 5 graded predictions -- treat
-              those numbers cautiously.
-            </p>
-
-            {calibration.length > 0 && (
-              <>
-                <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">
-                  Calibration
-                </h2>
-                <CalibrationSection calibration={calibration} />
-              </>
-            )}
-          </>
-        )}
+        {totalGraded && <TrackRecordContent scorecard={scorecard} calibration={calibration} />}
       </main>
     </div>
   );
