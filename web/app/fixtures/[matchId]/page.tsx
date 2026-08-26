@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { marketLabel } from "@/lib/markets";
 import { plainOdds } from "@/lib/format";
@@ -42,6 +43,27 @@ async function getSlate(matchId: string): Promise<SlateResponse | null> {
   } catch {
     return null;
   }
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ matchId: string }>;
+}): Promise<Metadata> {
+  const { matchId } = await params;
+  const data = await getSlate(matchId);
+  if (!data) return { title: "Fixture not found — Futbol Modelo" };
+
+  const { home, away, league } = data.fixture;
+  const title = `${home} vs ${away} — Futbol Modelo`;
+  const description = `Calibrated ${league} predictions for ${home} vs ${away}, locked before kickoff and graded automatically.`;
+
+  return {
+    title,
+    description,
+    openGraph: { title, description },
+    twitter: { title, description },
+  };
 }
 
 export default async function FixturePage({
