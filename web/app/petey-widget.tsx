@@ -138,7 +138,6 @@ export default function PeteyWidget({
   const canAsk =
     (mode === "accuracy" && availableMarkets.length > 0) ||
     (mode === "form" && team.trim().length > 0);
-  const datalistId = compact ? "petey-teams-compact" : "petey-teams";
 
   return (
     <div>
@@ -197,12 +196,16 @@ export default function PeteyWidget({
             <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
               Team
             </label>
-            <input list={datalistId} value={team} onChange={(e) => setTeam(e.target.value)} placeholder="Start typing a team..." className={`mt-1 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 ${compact ? "w-full" : "w-56"}`} />
-            <datalist id={datalistId}>
+            <select
+              value={team}
+              onChange={(e) => setTeam(e.target.value)}
+              className={`mt-1 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 ${compact ? "w-full" : "w-56"}`}
+            >
+              <option value="">Select a team...</option>
               {teams.map((t) => (
-                <option key={t} value={t} />
+                <option key={t} value={t}>{t}</option>
               ))}
-            </datalist>
+            </select>
           </div>
 
           <div>
