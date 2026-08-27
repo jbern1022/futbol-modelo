@@ -21,6 +21,7 @@ import io
 import os
 import time
 from collections import defaultdict
+from datetime import datetime
 from typing import Optional
 
 import psycopg2
@@ -117,7 +118,180 @@ def put_conn(conn):
     DB_POOL.putconn(conn)
 
 
-@app.get("/")
+class RootResponse(BaseModel):
+    service: str
+    status: str
+    endpoints: list[str]
+
+
+class HealthResponse(BaseModel):
+    status: str
+
+
+class PipelineJob(BaseModel):
+    job_name: str
+    status: str
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    rows_written: Optional[int] = None
+
+
+class PipelineStatusResponse(BaseModel):
+    jobs: list[PipelineJob]
+
+
+class FixtureSummary(BaseModel):
+    match_id: int
+    league: str
+    season: str
+    home: str
+    away: str
+    kickoff_utc: datetime
+    status: str
+    home_score: Optional[int] = None
+    away_score: Optional[int] = None
+    n_predictions: int
+    headline_statement: Optional[str] = None
+    headline_probability: Optional[float] = None
+
+
+class FixturesResponse(BaseModel):
+    count: int
+    fixtures: list[FixtureSummary]
+
+
+class Fixture(BaseModel):
+    match_id: int
+    league: str
+    home: str
+    away: str
+    kickoff_utc: datetime
+    status: str
+
+
+class SlatePrediction(BaseModel):
+    prediction_id: int
+    market: str
+    statement: str
+    side: Optional[str] = None
+    line: Optional[float] = None
+    probability: float
+    locked_at: datetime
+    context: Optional[dict] = None
+    subject_team: Optional[str] = None
+    subject_player: Optional[str] = None
+    outcome: Optional[str] = None
+    actual_value: Optional[float] = None
+
+
+class SlateResponse(BaseModel):
+    fixture: Fixture
+    predictions: list[SlatePrediction]
+
+
+class PredictionDetail(BaseModel):
+    prediction_id: int
+    market: str
+    statement: str
+    side: Optional[str] = None
+    line: Optional[float] = None
+    probability: float
+    locked_at: datetime
+    created_at: datetime
+    context: Optional[dict] = None
+    subject_team: Optional[str] = None
+    subject_player: Optional[str] = None
+    outcome: Optional[str] = None
+    actual_value: Optional[float] = None
+    graded_at: Optional[datetime] = None
+    model_name: str
+    version_tag: str
+    trained_at: datetime
+    match_id: int
+    league: str
+    home: str
+    away: str
+    kickoff_utc: datetime
+    status: str
+
+
+class Miss(BaseModel):
+    prediction_id: int
+    market: str
+    statement: str
+    side: Optional[str] = None
+    probability: float
+    locked_at: datetime
+    actual_value: Optional[float] = None
+    subject_team: Optional[str] = None
+    subject_player: Optional[str] = None
+    match_id: int
+    league: str
+    home: str
+    away: str
+    kickoff_utc: datetime
+
+
+class MissesResponse(BaseModel):
+    count: int
+    misses: list[Miss]
+
+
+class ScorecardRow(BaseModel):
+    league: str
+    season: str
+    market: str
+    n_predictions: int
+    hit_rate: float
+    avg_confidence: float
+    brier: float
+    log_loss: float
+
+
+class ScorecardResponse(BaseModel):
+    count: int
+    scorecard: list[ScorecardRow]
+
+
+class CalibrationRow(BaseModel):
+    market: str
+    league: str
+    prob_bucket: int
+    avg_stated_prob: float
+    realized_rate: float
+    n: int
+    side: str
+
+
+class CalibrationResponse(BaseModel):
+    count: int
+    calibration: list[CalibrationRow]
+
+
+class AskResponse(BaseModel):
+    answer: str
+    n_predictions: int
+    hit_rate: Optional[float] = None
+    avg_confidence: Optional[float] = None
+    small_sample: bool
+    disclaimer: Optional[str] = None
+
+
+class TeamsResponse(BaseModel):
+    teams: list[str]
+
+
+class TeamFormResponse(BaseModel):
+    answer: str
+    n_games: int
+    team: Optional[str] = None
+    stat: Optional[str] = None
+    average: Optional[float] = None
+    small_sample: bool
+    disclaimer: Optional[str] = None
+
+
+@app.get("/", response_model=RootResponse)
 def root():
     return {"service": "futbol-modelo API", "status": "ok",
             "endpoints": ["/fixtures", "/fixtures/{match_id}/slate",
@@ -125,7 +299,7 @@ def root():
                          "/ask/team-form", "/pipeline-status"]}
 
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 def health():
     try:
         conn = get_conn()
@@ -139,7 +313,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/pipeline-status")
+@app.get("/pipeline-status", response_model=PipelineStatusResponse)
 def pipeline_status():
     """Latest run of each tracked job (auto_slate:*, auto_grade,
     nightly_refresh:*) -- backs the "last updated" freshness indicator."""
@@ -158,7 +332,7 @@ def pipeline_status():
     return {"jobs": rows}
 
 
-@app.get("/fixtures")
+@app.get("/fixtures", response_model=FixturesResponse)
 def list_fixtures(
     league: Optional[str] = Query(None, description="EPL, SERIE_A, MLS, or WC"),
     status: str = Query("scheduled", description="scheduled or final"),
@@ -204,7 +378,7 @@ def list_fixtures(
         put_conn(conn)
 
 
-@app.get("/fixtures/{match_id}/slate")
+@app.get("/fixtures/{match_id}/slate", response_model=SlateResponse)
 def get_slate(match_id: int):
     conn = get_conn()
     try:
@@ -241,7 +415,7 @@ def get_slate(match_id: int):
         put_conn(conn)
 
 
-@app.get("/predictions/{prediction_id}")
+@app.get("/predictions/{prediction_id}", response_model=PredictionDetail)
 def get_prediction(prediction_id: int):
     """Single-prediction permalink data -- statement, model version, lock
     timestamp, grade, and the fixture it belongs to, so every prediction
@@ -279,7 +453,7 @@ def get_prediction(prediction_id: int):
         put_conn(conn)
 
 
-@app.get("/misses")
+@app.get("/misses", response_model=MissesResponse)
 def biggest_misses(league: Optional[str] = Query(None), limit: int = Query(20, le=100)):
     """Highest-confidence predictions that missed, most confident first --
     the honesty-first counterpart to only ever showing hits."""
@@ -368,7 +542,7 @@ def export_predictions_csv(league: Optional[str] = Query(None)):
         headers={"Content-Disposition": "attachment; filename=futbol-modelo-predictions.csv"})
 
 
-@app.get("/scorecard")
+@app.get("/scorecard", response_model=ScorecardResponse)
 def scorecard(league: Optional[str] = Query(None)):
     def compute():
         conn = get_conn()
@@ -388,7 +562,7 @@ def scorecard(league: Optional[str] = Query(None)):
     return _cached(f"scorecard:{league}", compute)
 
 
-@app.get("/calibration")
+@app.get("/calibration", response_model=CalibrationResponse)
 def calibration(league: Optional[str] = Query(None)):
     def compute():
         conn = get_conn()
@@ -413,7 +587,7 @@ class AskRequest(BaseModel):
     league: str
 
 
-@app.post("/ask")
+@app.post("/ask", response_model=AskResponse)
 def ask_petey(req: AskRequest, request: Request):
     """
     Petey v1 — first real slice. Per ADR-002/ADR-008: Ollama never sees
@@ -498,7 +672,7 @@ def ask_petey(req: AskRequest, request: Request):
     return result
 
 
-@app.get("/teams")
+@app.get("/teams", response_model=TeamsResponse)
 def list_teams(league: Optional[str] = Query(None)):
     """Team names for the frontend's searchable select (ADR-004) —
     real, known values only, no free-text team entry anywhere."""
@@ -549,7 +723,7 @@ class TeamFormRequest(BaseModel):
     games: int = 10
 
 
-@app.post("/ask/team-form")
+@app.post("/ask/team-form", response_model=TeamFormResponse)
 def ask_team_form(req: TeamFormRequest, request: Request):
     """
     Team recent-form question. Per ADR-006, backward-looking questions
