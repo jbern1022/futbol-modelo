@@ -322,3 +322,10 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     detail        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_job ON pipeline_runs (job_name, started_at DESC);
+
+-- Tracks which sql/migrations/*.sql files have been applied -- see
+-- sql/migrations/README.md and scripts/migrate.py.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     TEXT PRIMARY KEY,
+    applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

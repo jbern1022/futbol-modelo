@@ -160,3 +160,39 @@ class of problem at a different layer: a live DB schema change with no
 corresponding image rebuild. `k8s/cronjobs.yaml` existing at all is a
 direct consequence of this decision's fragility — those manifests used
 to exist only as ad-hoc `kubectl apply` runs, invisible to git.
+
+---
+
+## ADR-007: Numbered SQL migrations, not an ORM migration framework
+
+**Status:** Accepted
+
+**Context:** For most of this project's life, schema changes landed as
+ad hoc one-off scripts in `sql/` (`fix_duplicate_teams.sql`,
+`add_pipeline_runs_table.sql`, `rename_goals_to_score.sql`, and eight
+others) applied by hand against the live database, with `schema.sql`
+manually kept in sync as a "current state" snapshot. Nothing forced
+the two to agree — the missing `predictions` UNIQUE constraint (see
+ADR-005) is a direct symptom of that drift. The alternative was
+adopting alembic or yoyo, which pull in an ORM-adjacent dependency
+graph this project otherwise avoids (see ADR-006's registry-less
+deploys, and the frontend's SVG-over-charting-library choices).
+
+**Decision:** `sql/migrations/NNNN_description.sql`, applied in
+filename order by `scripts/migrate.py`, tracked in a `schema_migrations`
+table — about 60 lines of plain psycopg2, no framework. `schema.sql`
+stays the canonical from-scratch reference and must be updated by hand
+alongside each new migration (enforced by convention in
+`sql/migrations/README.md`, not by tooling). The twelve pre-existing
+ad hoc scripts aren't retroactively renumbered into this sequence —
+they already ran; `0001_baseline.sql` is a deliberate no-op marking
+everything before this decision as already live.
+
+**Consequences:** Schema changes now have exactly one path: a numbered
+file, applied once, recorded permanently — the same "verify against
+the real, currently running code" discipline the ledger and the
+deploy workflow already enforce, just applied to the schema itself.
+The cost is the same one ADR-006 accepts: no framework means no
+auto-generated down-migrations or diffing — a wrong migration is fixed
+by writing a new one, not by rolling back, which is a deliberate
+match to the ledger's own append-only philosophy (ADR-002).

@@ -40,6 +40,15 @@ pulled from a registry. **A stale `.tar` file reused without rebuilding
 is a real, easy mistake — always confirm the image hash actually changed
 before trusting a deploy worked.**
 
+## Schema changes
+
+Since 2026-08-27, schema changes go through `sql/migrations/` (numbered
+`.sql` files, applied via `python scripts/migrate.py` against
+`FUTBOL_DSN`, tracked in a `schema_migrations` table) — not ad hoc
+scripts run by hand. See `sql/migrations/README.md` and ADR-007 in
+`docs/DECISIONS.md`. `sql/schema.sql` stays the from-scratch reference
+and must be updated by hand alongside each new migration.
+
 ## Where things actually are
 
 - Repo (private): `https://gitea.josephbernal.com/joe/futbol-modelo`
