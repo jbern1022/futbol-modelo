@@ -459,8 +459,8 @@ def ask_petey(req: AskRequest, request: Request):
         )
         resp.raise_for_status()
         answer = resp.json().get("response", "").strip()
-        if not answer:
-            raise ValueError("empty response")
+        if not answer or _contains_unsupported_judgment(answer):
+            raise ValueError("empty or unsupported-judgment response")
     except Exception:
         # Broad catch is deliberate here: Ollama is an external, unreliable
         # service (homelab hardware, not a guaranteed API), and ADR-005
