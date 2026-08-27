@@ -25,6 +25,7 @@ from typing import Optional
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 import requests
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -101,8 +102,19 @@ app.add_middleware(
 )
 
 
+DB_POOL = psycopg2.pool.ThreadedConnectionPool(
+    1, 10, RO_DSN, cursor_factory=psycopg2.extras.RealDictCursor
+)
+
+
 def get_conn():
-    return psycopg2.connect(RO_DSN, cursor_factory=psycopg2.extras.RealDictCursor)
+    conn = DB_POOL.getconn()
+    conn.autocommit = True
+    return conn
+
+
+def put_conn(conn):
+    DB_POOL.putconn(conn)
 
 
 @app.get("/")
@@ -121,7 +133,7 @@ def health():
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
         finally:
-            conn.close()
+            put_conn(conn)
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"database unreachable: {e}")
     return {"status": "ok"}
@@ -142,7 +154,7 @@ def pipeline_status():
             """)
             rows = cur.fetchall()
     finally:
-        conn.close()
+        put_conn(conn)
     return {"jobs": rows}
 
 
@@ -189,7 +201,7 @@ def list_fixtures(
             rows = cur.fetchall()
         return {"count": len(rows), "fixtures": rows}
     finally:
-        conn.close()
+        put_conn(conn)
 
 
 @app.get("/fixtures/{match_id}/slate")
@@ -226,7 +238,7 @@ def get_slate(match_id: int):
             predictions = cur.fetchall()
         return {"fixture": fixture, "predictions": predictions}
     finally:
-        conn.close()
+        put_conn(conn)
 
 
 @app.get("/predictions/{prediction_id}")
@@ -264,7 +276,7 @@ def get_prediction(prediction_id: int):
                 raise HTTPException(status_code=404, detail="Prediction not found")
         return row
     finally:
-        conn.close()
+        put_conn(conn)
 
 
 @app.get("/misses")
@@ -301,7 +313,7 @@ def biggest_misses(league: Optional[str] = Query(None), limit: int = Query(20, l
             rows = cur.fetchall()
         return {"count": len(rows), "misses": rows}
     finally:
-        conn.close()
+        put_conn(conn)
 
 
 @app.get("/export/predictions.csv")
@@ -336,7 +348,7 @@ def export_predictions_csv(league: Optional[str] = Query(None)):
             cur.execute(query, params)
             rows = cur.fetchall()
     finally:
-        conn.close()
+        put_conn(conn)
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -372,7 +384,7 @@ def scorecard(league: Optional[str] = Query(None)):
                 rows = cur.fetchall()
             return {"count": len(rows), "scorecard": rows}
         finally:
-            conn.close()
+            put_conn(conn)
     return _cached(f"scorecard:{league}", compute)
 
 
@@ -392,7 +404,7 @@ def calibration(league: Optional[str] = Query(None)):
                 rows = cur.fetchall()
             return {"count": len(rows), "calibration": rows}
         finally:
-            conn.close()
+            put_conn(conn)
     return _cached(f"calibration:{league}", compute)
 
 
@@ -420,7 +432,7 @@ def ask_petey(req: AskRequest, request: Request):
                 (req.market, req.league))
             row = cur.fetchone()
     finally:
-        conn.close()
+        put_conn(conn)
 
     if not row:
         return {
@@ -506,7 +518,7 @@ def list_teams(league: Optional[str] = Query(None)):
             rows = cur.fetchall()
         return {"teams": [r["name"] for r in rows]}
     finally:
-        conn.close()
+        put_conn(conn)
 
 
 TEAM_FORM_STATS = {
@@ -574,7 +586,7 @@ def ask_team_form(req: TeamFormRequest, request: Request):
                 (req.team, games))
             rows = cur.fetchall()
     finally:
-        conn.close()
+        put_conn(conn)
 
     stat_label = TEAM_FORM_STATS[req.stat]
 
