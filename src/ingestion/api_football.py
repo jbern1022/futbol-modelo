@@ -52,7 +52,14 @@ NAME_ALIASES = {
     "Oviedo": "Real Oviedo",
 }
 
-CACHE_FILE = Path.home() / ".api_football_cache.json"
+# /tmp, not Path.home(): the container's home dir (/app, per the
+# Dockerfile's `useradd -d /app`) is root-owned -- only the specific
+# subdirectories COPY --chown'd to appuser are writable, so writing
+# here as the non-root appuser always failed. /tmp is writable
+# regardless of the running user in virtually every base image. Each
+# CronJob run is a fresh pod anyway, so this only ever helped within
+# one script execution's repeated calls, never across separate runs.
+CACHE_FILE = Path("/tmp/.api_football_cache.json")
 
 
 def _session() -> requests.Session:
