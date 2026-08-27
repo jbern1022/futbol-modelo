@@ -353,6 +353,25 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
             print(f"  SKIP {home} vs {away}: kickoff already passed")
         return None
 
+    # A fixture gets one slate, ever -- persist_slate's ON CONFLICT dedupes
+    # by (match_id, model_version_id, ...), which does NOT catch a re-run
+    # under a different model_version_id (e.g. after a retrain), so a
+    # manual re-run against an already-slated match would otherwise double
+    # the fixture's predictions. auto_slate.py's own query already excludes
+    # already-slated matches, but that guard lived only there -- this
+    # check belongs here so it protects every caller, not just the cron
+    # entry point. (Real incident: match_id 4456 got slated twice, three
+    # weeks apart under two different model_version_id rows, producing 14
+    # duplicate prediction pairs that are now permanently unfixable since
+    # both copies were already graded before this was caught.)
+    cur.execute(
+        "SELECT 1 FROM futbol.predictions WHERE match_id = %s LIMIT 1",
+        (match_id,))
+    if cur.fetchone():
+        if verbose:
+            print(f"  SKIP {home} vs {away}: already has a slate")
+        return None
+
     dc, dc_meta = fit_dixon_coles(cur, league)
     if home not in dc.teams or away not in dc.teams:
         if verbose:

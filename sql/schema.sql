@@ -224,6 +224,16 @@ CREATE TABLE predictions (
 );
 CREATE INDEX idx_predictions_match ON predictions (match_id);
 CREATE INDEX idx_predictions_market ON predictions (market);
+-- Backs persist_slate()'s ON CONFLICT DO NOTHING -- one prediction per
+-- (fixture, model version, market/side/line/subject), so a re-run only
+-- inserts genuinely new rows. See sql/migrations/0002_track_predictions_natural_key.sql.
+CREATE UNIQUE INDEX predictions_natural_key ON predictions (
+    match_id, model_version_id, market,
+    COALESCE(subject_team_id, '-1'::integer),
+    COALESCE(subject_player_id, '-1'::integer),
+    COALESCE(side, ''::text),
+    COALESCE(line, '-9999'::integer::numeric)
+);
 
 -- Immutability + pre-kickoff enforcement
 CREATE OR REPLACE FUNCTION forbid_prediction_mutation() RETURNS trigger AS $$
