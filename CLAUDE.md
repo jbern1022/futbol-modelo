@@ -49,6 +49,16 @@ scripts run by hand. See `sql/migrations/README.md` and ADR-007 in
 `docs/DECISIONS.md`. `sql/schema.sql` stays the from-scratch reference
 and must be updated by hand alongside each new migration.
 
+## Database backups
+
+Nightly at 03:15 UTC via docker-host's crontab: `~/scripts/backup-futbol-db.sh`
+(deployed from `ops/backup-futbol-db.sh` in this repo -- that's the
+source of truth, docker-host's copy should match it) dumps the live
+database and keeps the last 14 days in `~/futbol-modelo-backups/` on
+docker-host, off the Postgres LXC's own disk. See `ops/README.md` for
+the restore procedure and the 2026-08-27 restore drill that verified
+it actually works.
+
 ## Where things actually are
 
 - Repo (private): `https://gitea.josephbernal.com/joe/futbol-modelo`
@@ -62,9 +72,16 @@ and must be updated by hand alongside each new migration.
 ## Credentials
 
 Never hardcoded, never committed. Real values live in:
-- `~/.zshrc` on the Mac (`FUTBOL_DSN`, `FUTBOL_RO_DSN`, `PGPASSWORD`)
+- `~/.zshrc` on the Mac (`FUTBOL_DSN`, `PGPASSWORD` -- note `FUTBOL_RO_DSN`
+  is NOT here, only in the k8s secret below)
 - The `futbol-secrets` Kubernetes secret on the control-plane (`FUTBOL_DSN`,
   `API_FOOTBALL_KEY`, `FUTBOL_RO_DSN`, `FUTBOL_OLLAMA_URL`, `PYTHONPATH`)
+- `~/.futbol_backup_dsn` on docker-host (chmod 600, not in any repo) --
+  the `futbol_backup` role (read-only via PostgreSQL's builtin
+  `pg_read_all_data`, see `sql/migrations/0004_create_backup_role.sql`),
+  used only by `ops/backup-futbol-db.sh`. Deliberately not `futbol_ro`:
+  that role is scoped to exactly the ~15 tables/views the API serves,
+  not the whole schema, which a backup needs.
 
 Two credentials were found exposed in early commit history and have
 since been rotated (dead values now, harmless, but don't reintroduce
