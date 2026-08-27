@@ -45,6 +45,20 @@ class Inference:
 def build_slate(candidates: list[Inference],
                 band: tuple[float, float] = TARGET_BAND,
                 size: int = SLATE_SIZE) -> list[Inference]:
+    # predictions.probability has a hard CHECK (0 < probability < 1),
+    # checked against persist_slate's round(probability, 5) -- not the
+    # raw float. A degenerate model output (e.g. a newly-promoted team
+    # with almost no fitted history) can be small enough to round to
+    # exactly 0.00000 (or 1.00000) while still passing a raw 0 < p < 1
+    # check, so this must match persist_slate's own rounding or it
+    # misses exactly the case it exists to catch. If this candidate
+    # reaches persist_slate, the whole fixture's INSERT fails and --
+    # since generate_for_fixture has no per-fixture error boundary --
+    # takes every other fixture in the same auto_slate run down with
+    # it. Filtered once here, at the top, so every downstream bucket
+    # (in_band/anchors/specs/leftovers) only ever sees valid candidates.
+    candidates = [c for c in candidates if 0 < round(c.probability, 5) < 1]
+
     lo, hi = band
     in_band = [c for c in candidates if lo <= c.probability <= hi]
     anchors = [c for c in candidates if c.probability > 0.80]

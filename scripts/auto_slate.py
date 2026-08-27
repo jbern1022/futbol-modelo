@@ -54,8 +54,24 @@ def main():
 
             written = 0
             for match_id, kickoff, home, away, home_id, away_id in fixtures:
-                n = generate_for_fixture(conn, cur, args.league, home, away,
-                                         match_id, kickoff, home_id, away_id)
+                # One fixture's failure (e.g. a degenerate model output)
+                # must not take every other fixture in this batch down
+                # with it -- and since this script is && chained with
+                # the next league's run in cronjobs.yaml, an uncaught
+                # exception here silently skips that league's entire
+                # slate too. conn.rollback() clears the aborted
+                # transaction state a failed INSERT leaves behind, so
+                # the next fixture starts clean. Real incident
+                # (2026-08-27): an uncaught CheckViolation on one
+                # newly-promoted team's 0.0 win probability killed the
+                # rest of EPL's batch and Serie A's run entirely.
+                try:
+                    n = generate_for_fixture(conn, cur, args.league, home, away,
+                                             match_id, kickoff, home_id, away_id)
+                except Exception as e:
+                    conn.rollback()
+                    print(f"  ERROR {home} vs {away}: {e} -- skipping, other fixtures unaffected")
+                    continue
                 if n:
                     written += n
 
