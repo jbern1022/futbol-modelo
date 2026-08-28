@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { marketLabel } from "@/lib/markets";
 import { leagueBadge, cleanStatement } from "@/lib/prediction-display";
+import { LocalDate } from "../local-date";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -74,11 +75,10 @@ export default async function MissesPage() {
                     <div className="mt-1 text-black dark:text-zinc-50">{cleanStatement(p)}</div>
                     <div className="mt-0.5 text-xs text-zinc-500">
                       {p.home} vs {p.away} &middot;{" "}
-                      {new Date(p.kickoff_utc).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
+                      <LocalDate
+                        date={p.kickoff_utc}
+                        options={{ month: "short", day: "numeric", year: "numeric" }}
+                      />
                     </div>
                   </div>
                   <div className="text-right">

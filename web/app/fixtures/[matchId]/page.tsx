@@ -3,6 +3,7 @@ import Link from "next/link";
 import { marketLabel } from "@/lib/markets";
 import { plainOdds } from "@/lib/format";
 import { leagueBadge, cleanStatement, outcomeBadge, roleBadge, whyPanel } from "@/lib/prediction-display";
+import { LocalDate } from "../../local-date";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -135,10 +136,11 @@ export default async function FixturePage({
               {fixture.home} vs {fixture.away}
             </h1>
             <p className="mt-1 text-zinc-500">
-              {new Date(fixture.kickoff_utc).toLocaleString(undefined, {
-                dateStyle: "full",
-                timeStyle: "short",
-              })}{" "}
+              <LocalDate
+                date={fixture.kickoff_utc}
+                mode="datetime"
+                options={{ dateStyle: "full", timeStyle: "short" }}
+              />{" "}
               <span className="text-xs">(your local time)</span>
             </p>
           </div>

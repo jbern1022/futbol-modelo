@@ -2,6 +2,7 @@ import Link from "next/link";
 import { plainOdds } from "@/lib/format";
 import { marketLabel } from "@/lib/markets";
 import { leagueBadge, cleanStatement, outcomeBadge, roleBadge, whyPanel } from "@/lib/prediction-display";
+import { LocalDate } from "../../local-date";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -138,20 +139,20 @@ export default async function PredictionPage({
           <div className="flex justify-between border-b border-zinc-200 pb-2 dark:border-zinc-800">
             <dt className="text-zinc-500">Kickoff</dt>
             <dd className="text-black dark:text-zinc-50">
-              {new Date(p.kickoff_utc).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })}
+              <LocalDate date={p.kickoff_utc} mode="datetime" options={{ dateStyle: "full", timeStyle: "short" }} />
             </dd>
           </div>
           <div className="flex justify-between border-b border-zinc-200 pb-2 dark:border-zinc-800">
             <dt className="text-zinc-500">Locked at</dt>
             <dd className="text-black dark:text-zinc-50">
-              {new Date(p.locked_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+              <LocalDate date={p.locked_at} mode="datetime" options={{ dateStyle: "medium", timeStyle: "short" }} />
             </dd>
           </div>
           {p.graded_at && (
             <div className="flex justify-between border-b border-zinc-200 pb-2 dark:border-zinc-800">
               <dt className="text-zinc-500">Graded at</dt>
               <dd className="text-black dark:text-zinc-50">
-                {new Date(p.graded_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                <LocalDate date={p.graded_at} mode="datetime" options={{ dateStyle: "medium", timeStyle: "short" }} />
               </dd>
             </div>
           )}

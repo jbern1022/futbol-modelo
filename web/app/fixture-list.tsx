@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LocalDate } from "./local-date";
 
 interface Fixture {
   match_id: number;
@@ -95,14 +96,11 @@ export default function FixtureList({ fixtures }: { fixtures: Fixture[] }) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-zinc-500">
-                    {new Date(f.kickoff_utc).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
-                  </div>
+                  <LocalDate
+                    date={f.kickoff_utc}
+                    className="text-sm text-zinc-500"
+                    options={{ month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }}
+                  />
                   <div className="mt-1 text-xs text-zinc-400">{fixtureSummary(f)}</div>
                 </div>
               </div>
