@@ -40,6 +40,19 @@ pulled from a registry. **A stale `.tar` file reused without rebuilding
 is a real, easy mistake — always confirm the image hash actually changed
 before trusting a deploy worked.**
 
+**The three CronJobs (`k8s/cronjobs.yaml`) need this same image workflow,
+but if a change also edits a CronJob's `command`/`args`, `schedule`, or
+anything else in the manifest itself, that also needs its own
+`kubectl apply -f k8s/cronjobs.yaml`.** The image rebuild alone only
+updates what code is *inside* the container; it does not touch the
+live CronJob object's spec. Real mistake made 2026-08-28: added a new
+step to `futbol-nightly-refresh`'s command chain, rebuilt and deployed
+the image, triggered a real run to verify — and it silently ran the
+*old* three-step command, because the live CronJob object still had
+the old `args`. No error, no warning, just quietly wrong. Verify by
+checking the actual CronJob object's spec matches the repo, not just
+that the image imported cleanly.
+
 ## Schema changes
 
 Since 2026-08-27, schema changes go through `sql/migrations/` (numbered
