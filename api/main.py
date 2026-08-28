@@ -500,14 +500,14 @@ def list_predictions(
                        tt.name AS subject_team, pl.full_name AS subject_player,
                        gp.match_id, gp.league, gp.season,
                        th.name AS home, ta.name AS away, m.kickoff_utc
-                FROM v_graded_predictions gp
-                JOIN predictions p ON p.prediction_id = gp.prediction_id
-                JOIN prediction_grades g ON g.prediction_id = gp.prediction_id
-                JOIN matches m ON m.match_id = gp.match_id
-                JOIN teams th ON th.team_id = m.home_team_id
-                JOIN teams ta ON ta.team_id = m.away_team_id
-                LEFT JOIN teams tt ON tt.team_id = p.subject_team_id
-                LEFT JOIN players pl ON pl.player_id = p.subject_player_id
+                FROM futbol.v_graded_predictions gp
+                JOIN futbol.predictions p ON p.prediction_id = gp.prediction_id
+                JOIN futbol.prediction_grades g ON g.prediction_id = gp.prediction_id
+                JOIN futbol.matches m ON m.match_id = gp.match_id
+                JOIN futbol.teams th ON th.team_id = m.home_team_id
+                JOIN futbol.teams ta ON ta.team_id = m.away_team_id
+                LEFT JOIN futbol.teams tt ON tt.team_id = p.subject_team_id
+                LEFT JOIN futbol.players pl ON pl.player_id = p.subject_player_id
                 WHERE 1=1
             """
             params: list = []
