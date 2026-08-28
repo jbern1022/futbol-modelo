@@ -23,6 +23,15 @@
 # `kubectl diff` catches this kind of drift; plain `kubectl get -o
 # yaml` skimming does not, since the annotation looks authoritative.
 #
+# futbol-nightly-refresh's last step (scripts/rebuild_features.py, see
+# "Orchestrate ingest -> features -> slate -> grade" in Todoist) runs
+# sql/features.sql right after ingestion -- previously nothing called
+# it at all, so team_match_features silently fell behind
+# team_match_stats every time ingestion actually wrote new rows (real
+# incident, twice: 2026-08-21 and again 2026-08-27). futbol-auto-slate
+# runs 15 minutes later and trains props models directly from
+# team_match_features, so this ordering matters.
+#
 #     kubectl apply -f k8s/cronjobs.yaml
 
 apiVersion: batch/v1
@@ -52,7 +61,8 @@ spec:
               - |
                 python -m ingestion.api_football backfill --league MLS --season 2026 &&
                 python -m ingestion.api_football backfill --league EPL --season 2026 --primary &&
-                python -m ingestion.api_football backfill --league SERIE_A --season 2026 --primary
+                python -m ingestion.api_football backfill --league SERIE_A --season 2026 --primary &&
+                python scripts/rebuild_features.py
             envFrom:
             - secretRef:
                 name: futbol-secrets
