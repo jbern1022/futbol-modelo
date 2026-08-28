@@ -30,6 +30,7 @@ import psycopg2.pool
 import requests
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -312,6 +313,17 @@ class TeamFormResponse(BaseModel):
     average: Optional[float] = None
     small_sample: bool
     disclaimer: Optional[str] = None
+
+
+@app.get("/docs-public", include_in_schema=False)
+def public_docs():
+    """Swagger UI is on by default at /docs, but that's never been
+    publicly reachable -- the public domain's /api/* paths only exist
+    where web/app/api/*/route.ts proxies them, and FastAPI's own /docs
+    HTML hardcodes openapi_url="/openapi.json" (resolves wrong once
+    proxied under /api/docs). This is the same page, generated with an
+    openapi_url that resolves correctly through that proxy instead."""
+    return get_swagger_ui_html(openapi_url="/api/openapi.json", title="futbol-modelo API")
 
 
 @app.get("/", response_model=RootResponse)

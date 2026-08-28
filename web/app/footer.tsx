@@ -62,6 +62,10 @@ export default async function Footer() {
         >
           Source on GitHub
         </a>
+        {" "}&middot;{" "}
+        <a href="/api/docs" className="hover:underline">
+          API docs
+        </a>
         {freshness && <> &middot; Predictions last generated {freshness}</>}
       </p>
     </footer>
