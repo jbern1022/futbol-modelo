@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { marketLabel } from "@/lib/markets";
 import CalibrationSection from "./calibration-section";
+import PredictionLog from "./prediction-log";
 
 interface ScorecardRow {
   league: string;
@@ -183,6 +184,9 @@ export default function TrackRecordContent({
           <CalibrationSection calibration={filteredCalibration} />
         </>
       )}
+
+      <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">Prediction log</h2>
+      <PredictionLog league={league} season={season} market={market} />
     </>
   );
 }

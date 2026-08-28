@@ -237,6 +237,29 @@ class MissesResponse(BaseModel):
     misses: list[Miss]
 
 
+class PredictionLogRow(BaseModel):
+    prediction_id: int
+    market: str
+    statement: str
+    side: Optional[str] = None
+    probability: float
+    outcome: str
+    actual_value: Optional[float] = None
+    subject_team: Optional[str] = None
+    subject_player: Optional[str] = None
+    match_id: int
+    league: str
+    season: str
+    home: str
+    away: str
+    kickoff_utc: datetime
+
+
+class PredictionLogResponse(BaseModel):
+    count: int
+    predictions: list[PredictionLogRow]
+
+
 class ScorecardRow(BaseModel):
     league: str
     season: str
@@ -449,6 +472,65 @@ def get_prediction(prediction_id: int):
             if not row:
                 raise HTTPException(status_code=404, detail="Prediction not found")
         return row
+    finally:
+        put_conn(conn)
+
+
+@app.get("/predictions", response_model=PredictionLogResponse)
+def list_predictions(
+    league: Optional[str] = Query(None),
+    season: Optional[str] = Query(None),
+    market: Optional[str] = Query(None),
+    outcome: Optional[str] = Query(None, description="hit or miss"),
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """Paginated, filterable log of every individually graded prediction
+    -- the "honest, unfiltered record" Track Record's copy promises but,
+    until now, never actually rendered a single row of. Built on
+    v_graded_predictions so a fixture that somehow got slated twice
+    can't double-count here either, matching /scorecard and
+    /calibration exactly."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            query = """
+                SELECT gp.prediction_id, gp.market, p.statement, gp.side,
+                       gp.probability, gp.outcome, g.actual_value,
+                       tt.name AS subject_team, pl.full_name AS subject_player,
+                       gp.match_id, gp.league, gp.season,
+                       th.name AS home, ta.name AS away, m.kickoff_utc
+                FROM v_graded_predictions gp
+                JOIN predictions p ON p.prediction_id = gp.prediction_id
+                JOIN prediction_grades g ON g.prediction_id = gp.prediction_id
+                JOIN matches m ON m.match_id = gp.match_id
+                JOIN teams th ON th.team_id = m.home_team_id
+                JOIN teams ta ON ta.team_id = m.away_team_id
+                LEFT JOIN teams tt ON tt.team_id = p.subject_team_id
+                LEFT JOIN players pl ON pl.player_id = p.subject_player_id
+                WHERE 1=1
+            """
+            params: list = []
+            if league:
+                query += " AND gp.league = %s"
+                params.append(league)
+            if season:
+                query += " AND gp.season = %s"
+                params.append(season)
+            if market:
+                query += " AND gp.market = %s"
+                params.append(market)
+            if outcome:
+                query += " AND gp.outcome = %s"
+                params.append(outcome)
+
+            cur.execute(f"SELECT COUNT(*) AS count FROM ({query}) sub", params)
+            count = cur.fetchone()["count"]
+
+            query += " ORDER BY m.kickoff_utc DESC LIMIT %s OFFSET %s"
+            cur.execute(query, params + [limit, offset])
+            rows = cur.fetchall()
+        return {"count": count, "predictions": rows}
     finally:
         put_conn(conn)
 
