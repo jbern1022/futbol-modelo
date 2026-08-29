@@ -21,7 +21,16 @@ function timeAgo(iso: string): string {
 
 async function getFreshness(): Promise<string | null> {
   try {
-    const res = await fetch(`${API_URL}/pipeline-status`, { cache: "no-store" });
+    // Short window, not the usual hour -- this text's whole purpose is
+    // an honest "how stale is the data right now" signal, so it can't
+    // lag reality by much itself. Since Footer renders on every page
+    // (layout.tsx) and Next.js uses the shortest revalidate time on a
+    // page as that page's own ISR interval, this 5-minute window is
+    // also the effective floor for every other page's fetches, even
+    // ones set to a full hour -- still a large improvement over the
+    // no-store this project used to run everywhere, just worth knowing
+    // this one number is doing double duty.
+    const res = await fetch(`${API_URL}/pipeline-status`, { next: { revalidate: 300 } });
     if (!res.ok) return null;
     const data: { jobs: PipelineJob[] } = await res.json();
     const successTimes = data.jobs

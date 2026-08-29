@@ -24,8 +24,10 @@ interface FixturesResponse {
 
 async function getFixtures(): Promise<FixturesResponse | null> {
   try {
+    // Fixtures/headline predictions only change on the once-a-day
+    // pipeline run -- an hour-old page view is still fully current.
     const res = await fetch(`${API_URL}/fixtures?days=21`, {
-      cache: "no-store",
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return null;
     return res.json();

@@ -24,7 +24,8 @@ interface Miss {
 
 async function getMisses(): Promise<Miss[]> {
   try {
-    const res = await fetch(`${API_URL}/misses?limit=30`, { cache: "no-store" });
+    // Grading runs once a night -- an hour-old list is still current.
+    const res = await fetch(`${API_URL}/misses?limit=30`, { next: { revalidate: 3600 } });
     if (!res.ok) return [];
     const data = await res.json();
     return data.misses || [];

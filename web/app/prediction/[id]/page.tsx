@@ -34,7 +34,9 @@ interface PredictionDetail {
 
 async function getPrediction(id: string): Promise<PredictionDetail | null> {
   try {
-    const res = await fetch(`${API_URL}/predictions/${id}`, { cache: "no-store" });
+    // A prediction only ever changes once, when it's graded (once a
+    // night) -- an hour-old cache is never meaningfully stale.
+    const res = await fetch(`${API_URL}/predictions/${id}`, { next: { revalidate: 3600 } });
     if (!res.ok) return null;
     return res.json();
   } catch {

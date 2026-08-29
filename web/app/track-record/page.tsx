@@ -25,7 +25,9 @@ interface CalibrationRow {
 
 async function getScorecard(): Promise<ScorecardRow[]> {
   try {
-    const res = await fetch(`${API_URL}/scorecard`, { cache: "no-store" });
+    // The API itself already caches this for 5 minutes; an hour here
+    // cuts requests reaching the API pod at all, not just its DB load.
+    const res = await fetch(`${API_URL}/scorecard`, { next: { revalidate: 3600 } });
     if (!res.ok) return [];
     const data = await res.json();
     return data.scorecard || [];
@@ -36,7 +38,7 @@ async function getScorecard(): Promise<ScorecardRow[]> {
 
 async function getCalibration(): Promise<CalibrationRow[]> {
   try {
-    const res = await fetch(`${API_URL}/calibration`, { cache: "no-store" });
+    const res = await fetch(`${API_URL}/calibration`, { next: { revalidate: 3600 } });
     if (!res.ok) return [];
     const data = await res.json();
     return data.calibration || [];

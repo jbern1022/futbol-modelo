@@ -31,7 +31,9 @@ function escapeXml(s: string): string {
 
 async function getRecentlyGraded(): Promise<FeedPrediction[]> {
   try {
-    const res = await fetch(`${API_URL}/predictions?limit=${FEED_SIZE}`, { cache: "no-store" });
+    // Grading runs once a night -- feed readers polling hourly won't
+    // ever see stale results.
+    const res = await fetch(`${API_URL}/predictions?limit=${FEED_SIZE}`, { next: { revalidate: 3600 } });
     if (!res.ok) return [];
     const data = await res.json();
     return data.predictions || [];

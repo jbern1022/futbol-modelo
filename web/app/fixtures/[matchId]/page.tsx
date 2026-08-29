@@ -36,8 +36,10 @@ interface SlateResponse {
 
 async function getSlate(matchId: string): Promise<SlateResponse | null> {
   try {
+    // Predictions lock before kickoff and grades land once a night --
+    // an hour-old cache never shows genuinely stale data.
     const res = await fetch(`${API_URL}/fixtures/${matchId}/slate`, {
-      cache: "no-store",
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return null;
     return res.json();
