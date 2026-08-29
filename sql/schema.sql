@@ -35,7 +35,13 @@ CREATE TABLE teams (
     -- external ids for ingestion joins
     fbref_id        TEXT UNIQUE,
     understat_id    TEXT UNIQUE,
-    api_football_id INT UNIQUE
+    api_football_id INT UNIQUE,
+    -- upsert_team()'s ON CONFLICT (name) DO NOTHING (src/ingestion/loader.py)
+    -- requires this constraint to function at all -- without it, every
+    -- team upsert throws "no unique or exclusion constraint matching
+    -- the ON CONFLICT specification". See sql/fix_duplicate_teams.sql
+    -- for the real incident this constraint's absence originally caused.
+    CONSTRAINT teams_name_unique UNIQUE (name)
 );
 
 CREATE TABLE players (
