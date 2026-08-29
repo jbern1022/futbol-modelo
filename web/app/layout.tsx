@@ -11,6 +11,11 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Futbol Modelo",
   description: DESCRIPTION,
+  alternates: {
+    types: {
+      "application/rss+xml": `${SITE_URL}/feed.xml`,
+    },
+  },
   openGraph: {
     title: "Futbol Modelo",
     description: DESCRIPTION,

@@ -66,6 +66,10 @@ export default async function Footer() {
         <a href="/api/docs" className="hover:underline">
           API docs
         </a>
+        {" "}&middot;{" "}
+        <a href="/feed.xml" className="hover:underline">
+          RSS
+        </a>
         {freshness && <> &middot; Predictions last generated {freshness}</>}
       </p>
     </footer>
