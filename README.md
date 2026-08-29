@@ -84,6 +84,10 @@ the only league with `player_match_stats` populated).
   the Track Record page — hit rate, calibration by decile, segmented
   by market and league.
 
+See [CLAIMS.md](CLAIMS.md) for where every claim on this page and the
+live site actually gets checked — tested, live-verified, or (honestly)
+neither yet.
+
 ## Pipeline health
 
 `src/ops/pipeline_run.py` tracks every real cron run (start, status,
@@ -96,7 +100,8 @@ a silently-stalled pipeline visible instead of quietly stale.
 
 ```
 sql/schema.sql                 # full schema incl. ledger triggers + views
-sql/*.sql                      # one-off migrations, applied by hand
+sql/migrations/                # numbered migrations, applied via scripts/migrate.py
+sql/*.sql                      # pre-2026-08-27 one-off scripts, applied by hand (history)
 src/models/dixon_coles.py      # match model
 src/models/props.py            # props model helpers
 src/predictions/generator.py   # slate builder + ledger writer
