@@ -3,6 +3,12 @@ import { marketLabel } from "@/lib/markets";
 import { leagueBadge, cleanStatement } from "@/lib/prediction-display";
 import { LocalDate } from "../local-date";
 
+// See web/app/page.tsx's identical comment -- without this, Next.js
+// statically prerenders this page at docker-host build time, which
+// has no network route to the cluster-internal API_URL, baking a dead
+// empty-data page into the deployed image.
+export const dynamic = "force-dynamic";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface Miss {

@@ -1,5 +1,19 @@
 import FixtureList from "./fixture-list";
 
+// Without this, Next.js statically prerenders this page at `docker
+// build` time on docker-host -- which has no network route to the
+// cluster-internal API_URL. A build-time fetch failure would get
+// permanently baked into the deployed image as this page's ISR
+// baseline (real incident, 2026-08-29: this exact thing happened,
+// serving a dead "could not reach the API" page from every fresh pod
+// until first successful runtime revalidation). Forcing dynamic
+// rendering keeps this page server-rendered per real request instead,
+// where the internal API is actually reachable -- the underlying
+// fetch()'s own `next: { revalidate }` caching below still works fine
+// on a dynamically-rendered route; only the route's own static HTML
+// generation is disabled.
+export const dynamic = "force-dynamic";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface Fixture {

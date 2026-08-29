@@ -1,4 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+"use client";
+
+import { useEffect, useState } from "react";
 
 interface PipelineJob {
   job_name: string;
@@ -19,33 +21,44 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-async function getFreshness(): Promise<string | null> {
-  try {
-    // Short window, not the usual hour -- this text's whole purpose is
-    // an honest "how stale is the data right now" signal, so it can't
-    // lag reality by much itself. Since Footer renders on every page
-    // (layout.tsx) and Next.js uses the shortest revalidate time on a
-    // page as that page's own ISR interval, this 5-minute window is
-    // also the effective floor for every other page's fetches, even
-    // ones set to a full hour -- still a large improvement over the
-    // no-store this project used to run everywhere, just worth knowing
-    // this one number is doing double duty.
-    const res = await fetch(`${API_URL}/pipeline-status`, { next: { revalidate: 300 } });
-    if (!res.ok) return null;
-    const data: { jobs: PipelineJob[] } = await res.json();
-    const successTimes = data.jobs
-      .filter((j) => j.job_name.startsWith("auto_slate:") && j.status === "success" && j.finished_at)
-      .map((j) => j.finished_at as string);
-    if (successTimes.length === 0) return null;
-    const latest = successTimes.reduce((a, b) => (a > b ? a : b));
-    return timeAgo(latest);
-  } catch {
-    return null;
-  }
+// Client-side fetch, not a server-rendered one -- Footer renders on
+// every page including ones Next.js statically prerenders at
+// docker-host build time, which has no network route to the
+// cluster-internal API. A server-side fetch here would bake a
+// permanent "no freshness data" state into those pages' static HTML
+// (real incident, 2026-08-29: this exact thing silently dropped the
+// "Predictions last generated Xh ago" text from every static page).
+// The visitor's own browser always has real internet access to the
+// public /api/pipeline-status proxy, so this sidesteps the problem
+// entirely instead of forcing every page in the app to render
+// dynamically just for one line of footer text.
+function useFreshness(): string | null {
+  const [freshness, setFreshness] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/pipeline-status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { jobs: PipelineJob[] } | null) => {
+        if (cancelled || !data) return;
+        const successTimes = data.jobs
+          .filter((j) => j.job_name.startsWith("auto_slate:") && j.status === "success" && j.finished_at)
+          .map((j) => j.finished_at as string);
+        if (successTimes.length === 0) return;
+        const latest = successTimes.reduce((a, b) => (a > b ? a : b));
+        setFreshness(timeAgo(latest));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return freshness;
 }
 
-export default async function Footer() {
-  const freshness = await getFreshness();
+export default function Footer() {
+  const freshness = useFreshness();
 
   return (
     <footer className="mt-auto border-t border-zinc-200 py-6 text-center text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-500">
