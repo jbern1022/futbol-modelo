@@ -22,22 +22,43 @@ interface FixturesResponse {
   fixtures: Fixture[];
 }
 
-async function getFixtures(): Promise<FixturesResponse | null> {
+// Predictions are immutable once locked and grades are append-only, so
+// the last successful response is always a safe thing to keep showing
+// -- an outage should degrade to "data from 2h ago," not an empty page
+// with a red error box. Module-level, so it survives across requests
+// for the lifetime of this server process (resets on redeploy, which
+// is fine -- a fresh pod fetching fresh data is the normal case this
+// exists to cover the *absence* of).
+let lastGood: { data: FixturesResponse; fetchedAt: number } | null = null;
+
+async function getFixtures(): Promise<{ data: FixturesResponse | null; stale: boolean; fetchedAt: number | null }> {
   try {
     // Fixtures/headline predictions only change on the once-a-day
     // pipeline run -- an hour-old page view is still fully current.
     const res = await fetch(`${API_URL}/fixtures?days=21`, {
       next: { revalidate: 3600 },
     });
-    if (!res.ok) return null;
-    return res.json();
+    if (!res.ok) throw new Error(`API returned ${res.status}`);
+    const data: FixturesResponse = await res.json();
+    lastGood = { data, fetchedAt: Date.now() };
+    return { data, stale: false, fetchedAt: lastGood.fetchedAt };
   } catch {
-    return null;
+    if (lastGood) return { data: lastGood.data, stale: true, fetchedAt: lastGood.fetchedAt };
+    return { data: null, stale: false, fetchedAt: null };
   }
 }
 
+function timeAgo(ms: number): string {
+  const mins = Math.floor((Date.now() - ms) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 export default async function Home() {
-  const data = await getFixtures();
+  const { data, stale, fetchedAt } = await getFixtures();
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
@@ -70,6 +91,14 @@ export default async function Home() {
             Could not reach the API at{" "}
             <code className="font-mono">{API_URL}</code>. Make sure the
             FastAPI backend is running.
+          </div>
+        )}
+
+        {data && stale && fetchedAt && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Showing data from {timeAgo(fetchedAt)} — the API is temporarily
+            unreachable. Predictions are locked before kickoff and grades are
+            permanent, so nothing below has changed since then.
           </div>
         )}
 
