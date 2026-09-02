@@ -7,6 +7,14 @@ can return NaN on a sparse data window, and json.dumps emits a literal
 is what's supposed to catch that before it reaches the INSERT. Runs
 against the live DB in an explicit transaction that's always rolled
 back -- skips cleanly without FUTBOL_DSN.
+
+persist_slate() calls conn.commit() internally, which would otherwise
+make this test's insert permanent before the fixture's own rollback()
+ever runs (a real bug this test used to have -- see Todoist).
+_CommitSuppressingConn proxies the real connection but no-ops commit(),
+so persist_slate() runs unmodified and unaware, and the fixture's
+rollback() at teardown is the only thing that actually ends the
+transaction.
 """
 import datetime
 import math
@@ -29,6 +37,21 @@ def conn():
     c.close()
 
 
+class _CommitSuppressingConn:
+    """Delegates everything to a real connection except commit(), which is
+    a no-op -- lets persist_slate() run exactly as it does in production
+    while leaving the test's own transaction open for a real rollback."""
+
+    def __init__(self, real_conn):
+        self._real = real_conn
+
+    def cursor(self, *args, **kwargs):
+        return self._real.cursor(*args, **kwargs)
+
+    def commit(self):
+        pass
+
+
 def test_context_persists_and_nan_is_sanitized(conn):
     cur = conn.cursor()
     cur.execute(
@@ -48,7 +71,7 @@ def test_context_persists_and_nan_is_sanitized(conn):
             context={"corners_for_r5": 5.2, "rest_days": 6, "xg_for_r5": float("nan")},
         )
     ]
-    persist_slate(conn, match_id, model_version_id, slate)
+    persist_slate(_CommitSuppressingConn(conn), match_id, model_version_id, slate)
 
     cur.execute(
         """SELECT context FROM futbol.predictions
