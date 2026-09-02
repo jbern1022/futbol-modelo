@@ -193,11 +193,11 @@ export default function PeteyWidget({
         </div>
       )}
 
-      <div className="flex gap-2">
-        <button onClick={() => { setMode("accuracy"); setResponse(null); }} className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === "accuracy" ? "bg-black text-white dark:bg-zinc-50 dark:text-black" : "border border-zinc-200 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300"}`}>
+      <div role="group" aria-label="Question type" className="flex gap-2">
+        <button onClick={() => { setMode("accuracy"); setResponse(null); }} aria-pressed={mode === "accuracy"} className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === "accuracy" ? "bg-black text-white dark:bg-zinc-50 dark:text-black" : "border border-zinc-200 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300"}`}>
           Prediction Accuracy
         </button>
-        <button onClick={() => { setMode("form"); setResponse(null); }} className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === "form" ? "bg-black text-white dark:bg-zinc-50 dark:text-black" : "border border-zinc-200 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300"}`}>
+        <button onClick={() => { setMode("form"); setResponse(null); }} aria-pressed={mode === "form"} className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === "form" ? "bg-black text-white dark:bg-zinc-50 dark:text-black" : "border border-zinc-200 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300"}`}>
           Team Recent Form
         </button>
       </div>

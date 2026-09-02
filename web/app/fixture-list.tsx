@@ -51,9 +51,10 @@ export default function FixtureList({ fixtures }: { fixtures: Fixture[] }) {
   return (
     <div>
       {leagues.length > 1 && (
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div role="group" aria-label="Filter fixtures by league" className="mt-6 flex flex-wrap gap-2">
           <button
             onClick={() => setSelected(null)}
+            aria-pressed={selected === null}
             className={`rounded-md px-3 py-1 text-xs font-medium uppercase tracking-wide ${
               selected === null
                 ? "bg-black text-white dark:bg-zinc-50 dark:text-black"
@@ -66,6 +67,7 @@ export default function FixtureList({ fixtures }: { fixtures: Fixture[] }) {
             <button
               key={l}
               onClick={() => setSelected(l)}
+              aria-pressed={selected === l}
               className={`rounded-md px-3 py-1 text-xs font-medium uppercase tracking-wide ${
                 selected === l
                   ? "bg-black text-white dark:bg-zinc-50 dark:text-black"
