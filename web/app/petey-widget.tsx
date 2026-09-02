@@ -111,15 +111,12 @@ export default function PeteyWidget({
     }
   }, [formLeague]);
 
-  async function handleAsk() {
+  async function ask(askMode: "accuracy" | "form", body: object) {
     setLoading(true);
     setError(null);
     setResponse(null);
     try {
-      const url = mode === "accuracy" ? "/api/ask" : "/api/ask/team-form";
-      const body = mode === "accuracy"
-        ? { market: effectiveMarket, league }
-        : { team, stat, games };
+      const url = askMode === "accuracy" ? "/api/ask" : "/api/ask/team-form";
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,12 +132,67 @@ export default function PeteyWidget({
     }
   }
 
+  async function handleAsk() {
+    const body = mode === "accuracy"
+      ? { market: effectiveMarket, league }
+      : { team, stat, games };
+    await ask(mode, body);
+  }
+
+  // "Common Questions" preset buttons (ADR-010): a one-click real example
+  // for the two modes that already exist, so a first-time visitor isn't
+  // staring at a blank form with no idea what Petey can answer. Fills the
+  // form's own state too, so the result stays consistent if they then
+  // tweak a dropdown and re-ask.
+  function askFormPreset() {
+    const exampleTeam = teams[0];
+    if (!exampleTeam) return;
+    setMode("form");
+    setTeam(exampleTeam);
+    setStat("corners");
+    setGames(10);
+    ask("form", { team: exampleTeam, stat: "corners", games: 10 });
+  }
+
+  function askAccuracyPreset() {
+    const exampleMarket = availableMarkets[0]?.value;
+    if (!exampleMarket) return;
+    setMode("accuracy");
+    setLeague("MLS");
+    setMarket(exampleMarket);
+    ask("accuracy", { market: exampleMarket, league: "MLS" });
+  }
+
   const canAsk =
     (mode === "accuracy" && availableMarkets.length > 0) ||
     (mode === "form" && team.trim().length > 0);
 
   return (
     <div>
+      {!response && !loading && (
+        <div className="mb-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Common Questions
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={askFormPreset}
+              disabled={teams.length === 0}
+              className="rounded-md border border-zinc-200 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              How&apos;s {teams[0] || "a team"} been playing lately?
+            </button>
+            <button
+              onClick={askAccuracyPreset}
+              disabled={availableMarkets.length === 0}
+              className="rounded-md border border-zinc-200 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              How accurate are your {(availableMarkets[0]?.label || "market").toLowerCase()} predictions?
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-2">
         <button onClick={() => { setMode("accuracy"); setResponse(null); }} className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === "accuracy" ? "bg-black text-white dark:bg-zinc-50 dark:text-black" : "border border-zinc-200 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300"}`}>
           Prediction Accuracy
