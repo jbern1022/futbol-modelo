@@ -275,6 +275,19 @@ CREATE TABLE prediction_grades (
     grader_version  TEXT NOT NULL
 );
 
+-- Append-only, same discipline as predictions above. The PRIMARY KEY
+-- already stops a second INSERT for the same prediction; this stops a
+-- raw UPDATE/DELETE from silently rewriting an existing grade instead.
+-- See sql/migrations/0007_lock_prediction_grades.sql.
+CREATE OR REPLACE FUNCTION forbid_grade_mutation() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'prediction_grades are immutable (ledger integrity)';
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_prediction_grades_no_update
+    BEFORE UPDATE OR DELETE ON prediction_grades
+    FOR EACH ROW EXECUTE FUNCTION forbid_grade_mutation();
+
 -- ---------- Season report views ----------
 
 -- Dedupes by natural key (earliest prediction_id per match/market/side/
