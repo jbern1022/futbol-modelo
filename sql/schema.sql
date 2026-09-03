@@ -182,6 +182,25 @@ CREATE TABLE shots (
     source_xg       NUMERIC(6,4)                   -- Understat's xG, our benchmark
 );
 
+-- Retention: rows older than the last 3 completed seasons per league
+-- get moved here by scripts/archive_old_shots.py, not deleted -- this
+-- data feeds the planned custom xG model. See
+-- sql/migrations/0009_shots_archive.sql.
+CREATE TABLE IF NOT EXISTS shots_archive (
+    shot_id         BIGINT PRIMARY KEY,
+    match_id        INT NOT NULL REFERENCES matches(match_id),
+    player_id       INT REFERENCES players(player_id),
+    team_id         INT REFERENCES teams(team_id),
+    minute          INT,
+    x               NUMERIC(6,4),
+    y               NUMERIC(6,4),
+    situation       TEXT,
+    body_part       TEXT,
+    result          TEXT,
+    source_xg       NUMERIC(6,4),
+    archived_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ---------- Model registry ----------
 
 CREATE TABLE model_versions (
