@@ -14,13 +14,14 @@ wired into a schedule.
 """
 import argparse
 import os
+import sys
 
 import psycopg2
-import requests
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from ops.ntfy import post_to_ntfy
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
-NTFY_URL = os.environ.get("NTFY_URL")
-NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 
 # Same dedup key as v_graded_predictions (a fixture slated twice
 # shouldn't double-count), extended with kickoff_utc so drift is
@@ -62,18 +63,6 @@ GROUP BY league, market
 HAVING COUNT(*) >= %s
 ORDER BY league, market
 """
-
-
-def post_to_ntfy(message: str) -> None:
-    if not NTFY_URL or not NTFY_TOPIC:
-        print("(NTFY_URL/NTFY_TOPIC not set -- skipping notification, printed above only)")
-        return
-    try:
-        requests.post(f"{NTFY_URL.rstrip('/')}/{NTFY_TOPIC}", data=message.encode("utf-8"),
-                      headers={"Title": "futbol-modelo: model drift detected"}, timeout=10)
-        print("Posted to ntfy.")
-    except Exception as e:
-        print(f"ntfy POST failed (non-fatal): {e}")
 
 
 def main() -> None:
@@ -118,7 +107,7 @@ def main() -> None:
             f"(n={n}, diff {drift:.1%})" for league, market, n, stated, realized, drift in flagged]
     message = "Model drift detected:\n" + "\n".join(lines)
     print(message)
-    post_to_ntfy(message)
+    post_to_ntfy(message, title="futbol-modelo: model drift detected")
 
 
 if __name__ == "__main__":

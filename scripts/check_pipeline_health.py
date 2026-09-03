@@ -13,14 +13,15 @@ them this just prints and exits, same as check_model_drift.py.
 """
 import argparse
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 
 import psycopg2
-import requests
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from ops.ntfy import post_to_ntfy
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
-NTFY_URL = os.environ.get("NTFY_URL")
-NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 
 # Every job_name the three real CronJobs (k8s/cronjobs.yaml) actually
 # write to pipeline_runs today. Kept as an explicit list, not a plain
@@ -40,19 +41,6 @@ FROM futbol.pipeline_runs
 WHERE job_name = ANY(%s) AND status = 'success'
 GROUP BY job_name
 """
-
-
-def post_to_ntfy(message: str) -> None:
-    if not NTFY_URL or not NTFY_TOPIC:
-        print("(NTFY_URL/NTFY_TOPIC not set -- skipping notification, printed above only)")
-        return
-    try:
-        requests.post(f"{NTFY_URL.rstrip('/')}/{NTFY_TOPIC}", data=message.encode("utf-8"),
-                      headers={"Title": "futbol-modelo: pipeline stale", "Priority": "high"},
-                      timeout=10)
-        print("Posted to ntfy.")
-    except Exception as e:
-        print(f"ntfy POST failed (non-fatal): {e}")
 
 
 def main() -> None:
@@ -97,7 +85,7 @@ def main() -> None:
             for job_name, last in stale]
     message = f"{len(stale)} pipeline job(s) stale (no success in {args.stale_after_hours}h):\n" + "\n".join(lines)
     print(message)
-    post_to_ntfy(message)
+    post_to_ntfy(message, title="futbol-modelo: pipeline stale", priority="high")
 
 
 if __name__ == "__main__":
