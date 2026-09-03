@@ -33,7 +33,7 @@ async function getRecentlyGraded(): Promise<FeedPrediction[]> {
   try {
     // Grading runs once a night -- feed readers polling hourly won't
     // ever see stale results.
-    const res = await fetch(`${API_URL}/predictions?limit=${FEED_SIZE}`, { next: { revalidate: 3600 } });
+    const res = await fetch(`${API_URL}/v1/predictions?limit=${FEED_SIZE}`, { next: { revalidate: 3600 } });
     if (!res.ok) return [];
     const data = await res.json();
     return data.predictions || [];

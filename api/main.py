@@ -7,14 +7,15 @@ ledger even in the event of a bug.
 Run locally:
     uvicorn api.main:app --reload --port 8000
 
-Endpoints:
-    GET /fixtures?league=MLS&status=scheduled&days=21
-    GET /fixtures/{match_id}/slate
-    GET /scorecard?league=MLS
-    GET /calibration?league=MLS
-    GET /teams?league=MLS
-    POST /ask  {"market": "CORNERS", "league": "MLS"}
-    POST /ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
+Endpoints (versioned under /v1 -- /health, /, and the docs/openapi
+routes are deliberately unversioned infra/meta endpoints):
+    GET /v1/fixtures?league=MLS&status=scheduled&days=21
+    GET /v1/fixtures/{match_id}/slate
+    GET /v1/scorecard?league=MLS
+    GET /v1/calibration?league=MLS
+    GET /v1/teams?league=MLS
+    POST /v1/ask  {"market": "CORNERS", "league": "MLS"}
+    POST /v1/ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
 """
 import csv
 import io
@@ -329,9 +330,9 @@ def public_docs():
 @app.get("/", response_model=RootResponse)
 def root():
     return {"service": "futbol-modelo API", "status": "ok",
-            "endpoints": ["/fixtures", "/fixtures/{match_id}/slate",
-                         "/scorecard", "/calibration", "/teams", "/ask",
-                         "/ask/team-form", "/pipeline-status"]}
+            "endpoints": ["/v1/fixtures", "/v1/fixtures/{match_id}/slate",
+                         "/v1/scorecard", "/v1/calibration", "/v1/teams", "/v1/ask",
+                         "/v1/ask/team-form", "/v1/pipeline-status"]}
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -348,7 +349,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/pipeline-status", response_model=PipelineStatusResponse)
+@app.get("/v1/pipeline-status", response_model=PipelineStatusResponse)
 def pipeline_status():
     """Latest run of each tracked job (auto_slate:*, auto_grade,
     nightly_refresh:*) -- backs the "last updated" freshness indicator."""
@@ -367,7 +368,7 @@ def pipeline_status():
     return {"jobs": rows}
 
 
-@app.get("/fixtures", response_model=FixturesResponse)
+@app.get("/v1/fixtures", response_model=FixturesResponse)
 def list_fixtures(
     league: Optional[str] = Query(None, description="EPL, SERIE_A, MLS, or WC"),
     status: str = Query("scheduled", description="scheduled or final"),
@@ -413,7 +414,7 @@ def list_fixtures(
         put_conn(conn)
 
 
-@app.get("/fixtures/{match_id}/slate", response_model=SlateResponse)
+@app.get("/v1/fixtures/{match_id}/slate", response_model=SlateResponse)
 def get_slate(match_id: int):
     conn = get_conn()
     try:
@@ -450,7 +451,7 @@ def get_slate(match_id: int):
         put_conn(conn)
 
 
-@app.get("/predictions/{prediction_id}", response_model=PredictionDetail)
+@app.get("/v1/predictions/{prediction_id}", response_model=PredictionDetail)
 def get_prediction(prediction_id: int):
     """Single-prediction permalink data -- statement, model version, lock
     timestamp, grade, and the fixture it belongs to, so every prediction
@@ -488,7 +489,7 @@ def get_prediction(prediction_id: int):
         put_conn(conn)
 
 
-@app.get("/predictions", response_model=PredictionLogResponse)
+@app.get("/v1/predictions", response_model=PredictionLogResponse)
 def list_predictions(
     league: Optional[str] = Query(None),
     season: Optional[str] = Query(None),
@@ -547,7 +548,7 @@ def list_predictions(
         put_conn(conn)
 
 
-@app.get("/misses", response_model=MissesResponse)
+@app.get("/v1/misses", response_model=MissesResponse)
 def biggest_misses(league: Optional[str] = Query(None), limit: int = Query(20, le=100)):
     """Highest-confidence predictions that missed, most confident first --
     the honesty-first counterpart to only ever showing hits."""
@@ -584,7 +585,7 @@ def biggest_misses(league: Optional[str] = Query(None), limit: int = Query(20, l
         put_conn(conn)
 
 
-@app.get("/export/predictions.csv")
+@app.get("/v1/export/predictions.csv")
 def export_predictions_csv(league: Optional[str] = Query(None)):
     """Every graded prediction we've ever made, with grades. Anyone can
     download this and recompute the track record themselves."""
@@ -636,7 +637,7 @@ def export_predictions_csv(league: Optional[str] = Query(None)):
         headers={"Content-Disposition": "attachment; filename=futbol-modelo-predictions.csv"})
 
 
-@app.get("/scorecard", response_model=ScorecardResponse)
+@app.get("/v1/scorecard", response_model=ScorecardResponse)
 def scorecard(league: Optional[str] = Query(None)):
     def compute():
         conn = get_conn()
@@ -656,7 +657,7 @@ def scorecard(league: Optional[str] = Query(None)):
     return _cached(f"scorecard:{league}", compute)
 
 
-@app.get("/calibration", response_model=CalibrationResponse)
+@app.get("/v1/calibration", response_model=CalibrationResponse)
 def calibration(league: Optional[str] = Query(None)):
     def compute():
         conn = get_conn()
@@ -681,7 +682,7 @@ class AskRequest(BaseModel):
     league: str
 
 
-@app.post("/ask", response_model=AskResponse)
+@app.post("/v1/ask", response_model=AskResponse)
 def ask_petey(req: AskRequest, request: Request):
     """
     Petey v1 — first real slice. Per ADR-002/ADR-008: Ollama never sees
@@ -766,7 +767,7 @@ def ask_petey(req: AskRequest, request: Request):
     return result
 
 
-@app.get("/teams", response_model=TeamsResponse)
+@app.get("/v1/teams", response_model=TeamsResponse)
 def list_teams(league: Optional[str] = Query(None)):
     """Team names for the frontend's searchable select (ADR-004) —
     real, known values only, no free-text team entry anywhere."""
@@ -817,7 +818,7 @@ class TeamFormRequest(BaseModel):
     games: int = 10
 
 
-@app.post("/ask/team-form", response_model=TeamFormResponse)
+@app.post("/v1/ask/team-form", response_model=TeamFormResponse)
 def ask_team_form(req: TeamFormRequest, request: Request):
     """
     Team recent-form question. Per ADR-006, backward-looking questions

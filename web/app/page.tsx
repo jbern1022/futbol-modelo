@@ -49,7 +49,7 @@ async function getFixtures(): Promise<{ data: FixturesResponse | null; stale: bo
   try {
     // Fixtures/headline predictions only change on the once-a-day
     // pipeline run -- an hour-old page view is still fully current.
-    const res = await fetch(`${API_URL}/fixtures?days=21`, {
+    const res = await fetch(`${API_URL}/v1/fixtures?days=21`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) throw new Error(`API returned ${res.status}`);

@@ -4,8 +4,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const league = searchParams.get("league");
   const url = league
-    ? `${BACKEND_URL}/export/predictions.csv?league=${encodeURIComponent(league)}`
-    : `${BACKEND_URL}/export/predictions.csv`;
+    ? `${BACKEND_URL}/v1/export/predictions.csv?league=${encodeURIComponent(league)}`
+    : `${BACKEND_URL}/v1/export/predictions.csv`;
   const res = await fetch(url);
   return new Response(res.body, {
     status: res.status,

@@ -92,7 +92,7 @@ neither yet.
 
 `src/ops/pipeline_run.py` tracks every real cron run (start, status,
 rows written, failure traceback) in `futbol.pipeline_runs`, exposed via
-`GET /pipeline-status` and shown on the site's footer as "Predictions
+`GET /v1/pipeline-status` and shown on the site's footer as "Predictions
 last generated Xh ago" — the freshness signal that's supposed to make
 a silently-stalled pipeline visible instead of quietly stale.
 

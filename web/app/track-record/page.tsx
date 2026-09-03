@@ -33,7 +33,7 @@ async function getScorecard(): Promise<ScorecardRow[]> {
   try {
     // The API itself already caches this for 5 minutes; an hour here
     // cuts requests reaching the API pod at all, not just its DB load.
-    const res = await fetch(`${API_URL}/scorecard`, { next: { revalidate: 3600 } });
+    const res = await fetch(`${API_URL}/v1/scorecard`, { next: { revalidate: 3600 } });
     if (!res.ok) return [];
     const data = await res.json();
     return data.scorecard || [];
@@ -44,7 +44,7 @@ async function getScorecard(): Promise<ScorecardRow[]> {
 
 async function getCalibration(): Promise<CalibrationRow[]> {
   try {
-    const res = await fetch(`${API_URL}/calibration`, { next: { revalidate: 3600 } });
+    const res = await fetch(`${API_URL}/v1/calibration`, { next: { revalidate: 3600 } });
     if (!res.ok) return [];
     const data = await res.json();
     return data.calibration || [];

@@ -27,7 +27,7 @@ export default async function Image({
   try {
     // Social crawlers hit this rarely and cache it themselves anyway;
     // an hour-old headline pick is never meaningfully stale.
-    const res = await fetch(`${API_URL}/fixtures/${matchId}/slate`, { next: { revalidate: 3600 } });
+    const res = await fetch(`${API_URL}/v1/fixtures/${matchId}/slate`, { next: { revalidate: 3600 } });
     if (res.ok) {
       const data = await res.json();
       home = data.fixture?.home ?? home;

@@ -43,7 +43,7 @@ treat a stale entry as a bug, same as any other.
 | Every real cron run is tracked (status, rows written, failure traceback) | `src/ops/pipeline_run.py`, `futbol.pipeline_runs` | **Live-verified** — repeatedly, this session (API-Football recovery, features-rebuild rollout) |
 | `team_match_features` is rebuilt after every ingestion batch | `scripts/rebuild_features.py`, last step of `futbol-nightly-refresh` | **Live-verified** 2026-08-28 — triggered a real run, confirmed the rebuild step executed and reported correct row counts after ingestion |
 | One bad fixture can't take an entire `auto_slate` batch (or the next league) down with it | per-fixture try/except in `scripts/auto_slate.py` | **Live-verified** 2026-08-28 — the exact real fixture that previously crashed the batch (Coventry vs Hull City) now produces a partial, valid slate instead |
-| The freshness footer ("Predictions last generated Xh ago") reflects reality, not a cached lie | `GET /pipeline-status`, `web/app/footer.tsx` | **Live-verified** — checked against real `pipeline_runs` rows this session |
+| The freshness footer ("Predictions last generated Xh ago") reflects reality, not a cached lie | `GET /v1/pipeline-status`, `web/app/footer.tsx` | **Live-verified** — checked against real `pipeline_runs` rows this session |
 
 ## Petey (LLM safety)
 
