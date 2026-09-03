@@ -16,6 +16,8 @@ routes are deliberately unversioned infra/meta endpoints):
     GET /v1/teams?league=MLS
     POST /v1/ask  {"market": "CORNERS", "league": "MLS"}
     POST /v1/ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
+    POST /v1/ask/head-to-head  {"team_a": "Seattle Sounders", "team_b": "LA Galaxy"}
+    POST /v1/ask/match-take  {"match_id": 4456}
 """
 import csv
 import io
@@ -332,7 +334,8 @@ def root():
     return {"service": "futbol-modelo API", "status": "ok",
             "endpoints": ["/v1/fixtures", "/v1/fixtures/{match_id}/slate",
                          "/v1/scorecard", "/v1/calibration", "/v1/teams", "/v1/ask",
-                         "/v1/ask/team-form", "/v1/pipeline-status"]}
+                         "/v1/ask/team-form", "/v1/ask/head-to-head",
+                         "/v1/ask/match-take", "/v1/pipeline-status"]}
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -914,3 +917,226 @@ def ask_team_form(req: TeamFormRequest, request: Request):
         noun = "game" if n_games == 1 else "games"
         result["disclaimer"] = f"Based on only {n_games} {noun} — treat this cautiously."
     return result
+
+
+class HeadToHeadRequest(BaseModel):
+    team_a: str
+    team_b: str
+
+
+class HeadToHeadResponse(BaseModel):
+    answer: str
+    n_games: int
+    team_a: Optional[str] = None
+    team_b: Optional[str] = None
+    team_a_wins: Optional[int] = None
+    team_b_wins: Optional[int] = None
+    draws: Optional[int] = None
+    small_sample: bool
+    disclaimer: Optional[str] = None
+
+
+@app.post("/v1/ask/head-to-head", response_model=HeadToHeadResponse)
+def ask_head_to_head(req: HeadToHeadRequest, request: Request):
+    """
+    Head-to-head record between two teams -- the 3rd ADR-010 preset.
+    All-time meetings, not a rolling window (unlike /ask/team-form):
+    head-to-head record is conventionally the full history. Same safety
+    pattern as every other Petey endpoint: Ollama only ever sees the
+    final computed record, never raw rows (ADR-002/003/008).
+    """
+    _enforce_rate_limit(request)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT th.name AS home, ta.name AS away,
+                          m.home_score, m.away_score
+                   FROM futbol.matches m
+                   JOIN futbol.teams th ON th.team_id = m.home_team_id
+                   JOIN futbol.teams ta ON ta.team_id = m.away_team_id
+                   WHERE m.status = 'final'
+                     AND ((th.name = %s AND ta.name = %s)
+                          OR (th.name = %s AND ta.name = %s))
+                   ORDER BY m.kickoff_utc DESC LIMIT 50""",
+                (req.team_a, req.team_b, req.team_b, req.team_a))
+            rows = cur.fetchall()
+    finally:
+        put_conn(conn)
+
+    if not rows:
+        return {
+            "answer": f"I don't have any past meetings between {req.team_a} and {req.team_b}.",
+            "n_games": 0,
+            "small_sample": True,
+        }
+
+    team_a_wins = team_b_wins = draws = 0
+    for row in rows:
+        home_score, away_score = row["home_score"], row["away_score"]
+        if home_score == away_score:
+            draws += 1
+        elif row["home"] == req.team_a:
+            if home_score > away_score:
+                team_a_wins += 1
+            else:
+                team_b_wins += 1
+        else:
+            if home_score > away_score:
+                team_b_wins += 1
+            else:
+                team_a_wins += 1
+
+    n_games = len(rows)
+    summary = (
+        f"Team A: {req.team_a}, Team B: {req.team_b}, "
+        f"Meetings: {n_games}, {req.team_a} wins: {team_a_wins}, "
+        f"{req.team_b} wins: {team_b_wins}, Draws: {draws}."
+    )
+    prompt = (
+        "You are Petey, a straightforward sports-analytics assistant. "
+        "Turn the following head-to-head record into ONE short, "
+        "plain-English sentence. State the numbers neutrally — do NOT "
+        "characterize either team as better, dominant, struggling, or "
+        "favored, since this is historical record only, not a "
+        "prediction. Do not add any numbers, teams, or facts not "
+        "present in the summary below. Do not speculate about future "
+        "matches.\n\n" + summary
+    )
+
+    try:
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            timeout=OLLAMA_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        answer = resp.json().get("response", "").strip()
+        if not answer or _contains_unsupported_judgment(answer):
+            raise ValueError("empty or unsupported-judgment response")
+    except Exception:
+        answer = (
+            f"In their last {n_games} meetings, {req.team_a} won "
+            f"{team_a_wins}, {req.team_b} won {team_b_wins}, and "
+            f"{draws} ended in a draw."
+        )
+
+    small_sample = n_games < 5
+    result = {
+        "answer": answer,
+        "team_a": req.team_a,
+        "team_b": req.team_b,
+        "n_games": n_games,
+        "team_a_wins": team_a_wins,
+        "team_b_wins": team_b_wins,
+        "draws": draws,
+        "small_sample": small_sample,
+    }
+    if small_sample:
+        noun = "meeting" if n_games == 1 else "meetings"
+        result["disclaimer"] = f"Based on only {n_games} {noun} — treat this cautiously."
+    return result
+
+
+class MatchTakeRequest(BaseModel):
+    match_id: int
+
+
+class MatchTakeResponse(BaseModel):
+    answer: str
+    match_id: int
+    home: Optional[str] = None
+    away: Optional[str] = None
+    statement: Optional[str] = None
+    probability: Optional[float] = None
+    small_sample: bool
+    disclaimer: Optional[str] = None
+
+
+@app.post("/v1/ask/match-take", response_model=MatchTakeResponse)
+def ask_match_take(req: MatchTakeRequest, request: Request):
+    """
+    "What's the model's take on this match?" -- the 4th and final
+    ADR-010 preset. Reuses the exact same headline-pick logic as
+    /v1/fixtures (highest-probability 1X2 prediction), phrased through
+    the same Ollama-sentence pattern as every other Petey endpoint.
+    Ollama only ever sees the final computed headline, never raw rows
+    (ADR-002/003/008).
+    """
+    _enforce_rate_limit(request)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT m.match_id, th.name AS home, ta.name AS away,
+                          headline.statement AS statement,
+                          headline.probability AS probability
+                   FROM futbol.matches m
+                   JOIN futbol.teams th ON th.team_id = m.home_team_id
+                   JOIN futbol.teams ta ON ta.team_id = m.away_team_id
+                   LEFT JOIN LATERAL (
+                       SELECT p.statement, p.probability
+                       FROM futbol.predictions p
+                       WHERE p.match_id = m.match_id AND p.market = '1X2'
+                       ORDER BY p.probability DESC
+                       LIMIT 1
+                   ) headline ON true
+                   WHERE m.match_id = %s""", (req.match_id,))
+            row = cur.fetchone()
+    finally:
+        put_conn(conn)
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+
+    if not row["statement"]:
+        return {
+            "answer": f"I don't have a slate yet for {row['home']} vs {row['away']}.",
+            "match_id": req.match_id,
+            "home": row["home"],
+            "away": row["away"],
+            "small_sample": True,
+        }
+
+    probability = float(row["probability"])
+    summary = (
+        f"Fixture: {row['home']} vs {row['away']}, "
+        f"Model's most confident pick: {row['statement']}, "
+        f"Stated confidence: {probability * 100:.1f}%."
+    )
+    prompt = (
+        "You are Petey, a straightforward sports-analytics assistant. "
+        "Turn the following into ONE short, plain-English sentence "
+        "describing the model's most confident prediction for this "
+        "match. State the confidence number neutrally — do NOT "
+        "characterize it as likely, unlikely, safe, or risky beyond "
+        "the number itself. Do not add any numbers, teams, or facts "
+        "not present in the summary below. Do not speculate beyond "
+        "what's stated.\n\n" + summary
+    )
+
+    try:
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            timeout=OLLAMA_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        answer = resp.json().get("response", "").strip()
+        if not answer or _contains_unsupported_judgment(answer):
+            raise ValueError("empty or unsupported-judgment response")
+    except Exception:
+        answer = (
+            f"For {row['home']} vs {row['away']}, the model's top pick is "
+            f"\"{row['statement']}\" at {probability * 100:.1f}% confidence."
+        )
+
+    return {
+        "answer": answer,
+        "match_id": req.match_id,
+        "home": row["home"],
+        "away": row["away"],
+        "statement": row["statement"],
+        "probability": round(probability, 4),
+        "small_sample": False,
+    }
