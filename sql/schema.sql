@@ -201,6 +201,27 @@ CREATE TABLE IF NOT EXISTS shots_archive (
     archived_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Storage half of the real bookmaker odds comparison feature -- one
+-- row per (match, bookmaker, market, selection), latest snapshot only
+-- (ON CONFLICT updates in place). See
+-- sql/migrations/0010_match_odds.sql and
+-- src/ingestion/api_football.py's fetch_and_store_odds().
+CREATE TABLE IF NOT EXISTS match_odds (
+    odds_id             BIGSERIAL PRIMARY KEY,
+    match_id            INT NOT NULL REFERENCES matches(match_id),
+    bookmaker_id        INT,
+    bookmaker_name      TEXT,
+    market              TEXT NOT NULL,
+    selection           TEXT NOT NULL,
+    decimal_odds        NUMERIC(8,3) NOT NULL,
+    implied_probability NUMERIC(6,5),
+    no_vig_probability  NUMERIC(6,5),
+    fetched_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (match_id, bookmaker_id, market, selection)
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_odds_match ON match_odds(match_id);
+
 -- ---------- Model registry ----------
 
 CREATE TABLE model_versions (

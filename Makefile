@@ -16,7 +16,7 @@ lint:
 # hints; running mypy against the whole untyped tree today would just
 # be noise.
 typecheck:
-	PYTHONPATH=src mypy --ignore-missing-imports scripts/generate_slate.py scripts/auto_slate.py scripts/auto_grade.py scripts/archive_old_shots.py scripts/check_model_drift.py scripts/check_pipeline_health.py scripts/daily_digest.py src/ops/ntfy.py api/judgment_filter.py
+	PYTHONPATH=src mypy --ignore-missing-imports scripts/generate_slate.py scripts/auto_slate.py scripts/auto_grade.py scripts/archive_old_shots.py scripts/check_model_drift.py scripts/check_pipeline_health.py scripts/daily_digest.py src/ops/ntfy.py src/ingestion/api_football.py api/judgment_filter.py
 
 test:
 	PYTHONPATH=src pytest

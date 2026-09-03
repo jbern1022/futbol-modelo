@@ -6,6 +6,11 @@ creating a second, parallel set of match rows.
 
     python -m ingestion.api_football backfill --league EPL --season 2025
     (API-Football uses the year the season STARTS, e.g. 2025 = 2025-26)
+
+    python -m ingestion.api_football odds --league MLS --days-ahead 7
+    (odds mode: MLS only for now -- the only league whose matches carry
+    an api-football:<fixture_id> external_ref to look odds up by; see
+    _api_football_fixture_id())
 """
 from __future__ import annotations
 
@@ -13,6 +18,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -95,6 +101,147 @@ def _get(session: requests.Session, endpoint: str, params: dict, attempts: int =
     raise RuntimeError(
         f"API-Football request to {endpoint} failed after {attempts} attempts"
     ) from last_err
+
+
+def normalize_match_winner_odds(response: list[dict]) -> list[dict]:
+    """Flatten API-Football match-winner odds into database-ready records."""
+    records = []
+    for fixture in response:
+        fixture_id = fixture.get("fixture", {}).get("id")
+        for bookmaker in fixture.get("bookmakers", []):
+            for bet in bookmaker.get("bets", []):
+                if bet.get("id") != 1:
+                    continue
+                for value in bet.get("values", []):
+                    try:
+                        decimal_odds = float(value["odd"])
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if fixture_id is None or decimal_odds <= 1:
+                        continue
+                    records.append({
+                        "fixture_id": fixture_id,
+                        "bookmaker_id": bookmaker.get("id"),
+                        "bookmaker_name": bookmaker.get("name"),
+                        "market": "1X2",
+                        "selection": value.get("value"),
+                        "decimal_odds": decimal_odds,
+                    })
+    return records
+
+
+def remove_overround(records: list[dict]) -> list[dict]:
+    """Add raw and no-vig implied probabilities to one bookmaker market."""
+    probabilities = []
+    for record in records:
+        probability = 1 / record["decimal_odds"]
+        probabilities.append(probability)
+        record["implied_probability"] = probability
+
+    total_probability = sum(probabilities)
+    if total_probability <= 0:
+        return records
+    for record in records:
+        record["no_vig_probability"] = record["implied_probability"] / total_probability
+    return records
+
+
+_API_FOOTBALL_REF_PATTERN = re.compile(r"^api-football:(\d+)$")
+
+
+def _api_football_fixture_id(external_ref: str | None) -> int | None:
+    """
+    Only matches created by backfill_primary() (MLS today) carry this
+    external_ref format -- EPL/SERIE_A/LA_LIGA matches come from
+    Understat/FBref via loader.py and have no stored mapping to an
+    API-Football fixture id at all, so odds can't be fetched for them
+    yet (same MLS-only phasing already used for player props -- the
+    only league with player_match_stats populated). Resolving that
+    for the other leagues is real, separate work: it would need its
+    own team+date fixture lookup against API-Football, similar to
+    backfill()'s stats lookup but for a league that never gets a
+    match_id from this module in the first place.
+    """
+    if not external_ref:
+        return None
+    m = _API_FOOTBALL_REF_PATTERN.match(external_ref)
+    return int(m.group(1)) if m else None
+
+
+def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
+    """
+    Storage half of the real bookmaker odds comparison feature (Track
+    Record UI display is separate, deferred work). Fetches
+    match-winner (1X2) odds for already-known, still-scheduled fixtures
+    in the next `days_ahead` days, strips each bookmaker's own
+    overround, and upserts into match_odds (latest snapshot per
+    match/bookmaker/selection, not a full time series -- see
+    sql/migrations/0010_match_odds.sql).
+
+    One real API call per matching fixture -- keep days_ahead modest
+    on a rate-limited API-Football tier; this does not batch across
+    fixtures the way the /fixtures listing endpoint does.
+    """
+    session = _session()
+    conn = psycopg2.connect(DSN)
+    stored = 0
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT m.match_id, m.external_ref, th.name, ta.name
+                   FROM futbol.matches m
+                   JOIN futbol.teams th ON th.team_id = m.home_team_id
+                   JOIN futbol.teams ta ON ta.team_id = m.away_team_id
+                   JOIN futbol.seasons s ON s.season_id = m.season_id
+                   JOIN futbol.leagues l ON l.league_id = s.league_id
+                   WHERE l.code = %s AND m.status = 'scheduled'
+                     AND m.kickoff_utc BETWEEN now() AND now() + (%s || ' days')::interval""",
+                (league_code, days_ahead))
+            fixtures = cur.fetchall()
+
+        log.info("%d scheduled %s fixture(s) in the next %d day(s)",
+                 len(fixtures), league_code, days_ahead)
+
+        for match_id, external_ref, home, away in fixtures:
+            fixture_id = _api_football_fixture_id(external_ref)
+            if fixture_id is None:
+                log.info("no API-Football fixture id for %s vs %s -- skipping odds", home, away)
+                continue
+
+            response = _get(session, "odds", {"fixture": fixture_id})
+            records = normalize_match_winner_odds(response)
+            if not records:
+                continue
+
+            # remove_overround normalizes probabilities within one
+            # bookmaker's own market -- grouping by bookmaker first so a
+            # multi-bookmaker response doesn't get treated as one market.
+            by_bookmaker: dict[int | None, list[dict]] = {}
+            for r in records:
+                by_bookmaker.setdefault(r["bookmaker_id"], []).append(r)
+
+            with conn.cursor() as cur:
+                for bookmaker_records in by_bookmaker.values():
+                    for r in remove_overround(bookmaker_records):
+                        cur.execute(
+                            """INSERT INTO futbol.match_odds
+                                 (match_id, bookmaker_id, bookmaker_name, market,
+                                  selection, decimal_odds, implied_probability, no_vig_probability)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                               ON CONFLICT (match_id, bookmaker_id, market, selection)
+                               DO UPDATE SET decimal_odds = EXCLUDED.decimal_odds,
+                                             implied_probability = EXCLUDED.implied_probability,
+                                             no_vig_probability = EXCLUDED.no_vig_probability,
+                                             fetched_at = now()""",
+                            (match_id, r["bookmaker_id"], r["bookmaker_name"], r["market"],
+                             r["selection"], r["decimal_odds"], r["implied_probability"],
+                             r["no_vig_probability"]))
+                        stored += 1
+            conn.commit()
+    finally:
+        conn.close()
+    log.info("done: %d odds record(s) stored/updated", stored)
+    return stored
 
 
 def _load_cache() -> dict:
@@ -460,14 +607,26 @@ def backfill(league_code: str, season_start_year: int):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["backfill"])
+    ap.add_argument("mode", choices=["backfill", "odds"])
     ap.add_argument("--league", required=True, choices=list(LEAGUE_SEARCH))
-    ap.add_argument("--season", required=True, type=int,
-                    help="Season START year, e.g. 2025 for the 2025-26 season")
+    ap.add_argument("--season", type=int,
+                    help="Season START year, e.g. 2025 for the 2025-26 season "
+                         "(required for backfill, unused for odds)")
     ap.add_argument("--primary", action="store_true",
                     help="Use API-Football as the sole source for future/unplayed seasons")
+    ap.add_argument("--days-ahead", type=int, default=7,
+                    help="odds mode only: fetch odds for fixtures within this many days (default 7)")
     args = ap.parse_args()
     from ops.pipeline_run import track_run
+
+    if args.mode == "odds":
+        with track_run(f"odds:{args.league}") as set_rows_written:
+            n = fetch_and_store_odds(args.league, args.days_ahead)
+            set_rows_written(n)
+        return
+
+    if args.season is None:
+        raise SystemExit("--season is required for backfill mode")
     job_name = f"nightly_refresh:{args.league}"
     with track_run(job_name) as set_rows_written:
         if args.league == "MLS" or args.primary:
