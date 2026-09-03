@@ -37,6 +37,8 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from api.judgment_filter import contains_unsupported_judgment as _contains_unsupported_judgment
+
 RO_DSN = os.environ.get(
     "FUTBOL_RO_DSN",
     "host=futbol-db dbname=futbol user=futbol_ro password=CHANGE_ME",
@@ -800,20 +802,6 @@ TEAM_FORM_STATS = {
     "fouls": "Fouls",
     "yellows": "Yellow Cards",
 }
-
-UNSUPPORTED_JUDGMENT_WORDS = [
-    "struggled", "struggling", "impressive", "poor", "weak", "strong",
-    "moderate", "excellent", "great", "terrible", "solid", "decent",
-    "underperformed", "outperformed", "dominant", "disappointing",
-    "steady", "typical", "consistent", "normal", "stable",
-    "high", "low", "good", "bad",
-]
-
-
-def _contains_unsupported_judgment(text: str) -> bool:
-    lower = text.lower()
-    return any(word in lower for word in UNSUPPORTED_JUDGMENT_WORDS)
-
 
 class TeamFormRequest(BaseModel):
     team: str
