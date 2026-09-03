@@ -42,6 +42,40 @@ class Inference:
         return abs(self.probability - (self.base_rate or 0.5))
 
 
+def log_degenerate_candidates(cur, match_id: int, candidates: list[Inference],
+                              verbose: bool = True) -> list[Inference]:
+    """
+    predictions.probability has a hard CHECK (0 < probability < 1) -- a
+    degenerate model output (e.g. a newly-promoted team with almost no
+    fitted history) can round to exactly 0.00000 or 1.00000. build_slate()
+    already guards against this reaching persist_slate (see its own
+    comment), but did so silently -- a real product question, raised
+    twice in Todoist, about whether a drop should be invisible. Records
+    each one in degenerate_prediction_skips and returns only the valid
+    candidates, so the caller passes that on to build_slate() instead of
+    the raw list. Uses the identical 0 < round(p, 5) < 1 condition as
+    build_slate()'s own filter -- that filter stays in place as a
+    redundant safety net for any other direct caller (e.g. the golden
+    slate test), it just never fires for anything routed through here.
+    """
+    valid, degenerate = [], []
+    for c in candidates:
+        (valid if 0 < round(c.probability, 5) < 1 else degenerate).append(c)
+
+    for c in degenerate:
+        cur.execute(
+            """INSERT INTO futbol.degenerate_prediction_skips
+                 (match_id, market, statement, side, line, subject_team_id,
+                  subject_player_id, raw_probability)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (match_id, c.market, c.statement, c.side, c.line,
+             c.subject_team_id, c.subject_player_id, c.probability))
+        if verbose:
+            print(f"  (dropped degenerate probability: {c.statement} -> {c.probability})")
+
+    return valid
+
+
 def build_slate(candidates: list[Inference],
                 band: tuple[float, float] = TARGET_BAND,
                 size: int = SLATE_SIZE) -> list[Inference]:

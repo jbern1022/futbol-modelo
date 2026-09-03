@@ -26,7 +26,8 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 
 from models.dixon_coles import DixonColes, derive_markets, knockout_extension
-from predictions.generator import Inference, build_slate, persist_slate, TARGET_BAND
+from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
+                                   persist_slate, TARGET_BAND)
 
 # Emission threshold for CORNERS/SOT candidates in build_props_inferences()
 # below -- distinct from generator.TARGET_BAND, which ranks/selects among
@@ -448,6 +449,7 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                 if verbose:
                     print(f"  (player props skipped: {e})")
 
+    candidates = log_degenerate_candidates(cur, match_id, candidates, verbose)
     slate = build_slate(candidates, band=TARGET_BAND, size=20)
 
     # Stable per league+code-version, NOT per fixture -- every fixture in

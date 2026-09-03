@@ -356,6 +356,25 @@ CREATE TABLE IF NOT EXISTS ingest_review (
     resolved    BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+-- Candidates build_slate() drops because probability rounded to exactly
+-- 0 or 1 (predictions.probability's CHECK would reject them) -- makes
+-- an otherwise-silent skip queryable. See
+-- sql/migrations/0008_degenerate_prediction_skips.sql.
+CREATE TABLE IF NOT EXISTS degenerate_prediction_skips (
+    skip_id            BIGSERIAL PRIMARY KEY,
+    match_id           INT NOT NULL REFERENCES matches(match_id),
+    market             TEXT NOT NULL,
+    statement          TEXT NOT NULL,
+    side               TEXT,
+    line               NUMERIC(6,2),
+    subject_team_id    INT REFERENCES teams(team_id),
+    subject_player_id  INT REFERENCES players(player_id),
+    raw_probability    DOUBLE PRECISION NOT NULL,
+    detected_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_degenerate_skips_match ON degenerate_prediction_skips(match_id);
+
 -- Pipeline run log (backing store for a freshness indicator / status page)
 CREATE TABLE IF NOT EXISTS pipeline_runs (
     run_id        BIGSERIAL PRIMARY KEY,
