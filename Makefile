@@ -1,4 +1,4 @@
-.PHONY: install lint test coverage features ingest slate grade review dq-check web-dev web-build
+.PHONY: install lint typecheck test coverage features ingest slate grade review dq-check web-dev web-build
 
 LEAGUE ?= MLS
 DAYS ?= 21
@@ -10,6 +10,13 @@ install:
 lint:
 	ruff check src scripts api
 	cd web && npm run lint
+
+# Scoped to the files that are actually type-hinted so far -- the real
+# nightly-pipeline scripts. Expand this list as more of scripts/ gets
+# hints; running mypy against the whole untyped tree today would just
+# be noise.
+typecheck:
+	PYTHONPATH=src mypy --ignore-missing-imports scripts/generate_slate.py scripts/auto_slate.py scripts/auto_grade.py
 
 test:
 	PYTHONPATH=src pytest
