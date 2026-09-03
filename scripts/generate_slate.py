@@ -14,6 +14,7 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -37,6 +38,7 @@ from predictions.generator import Inference, build_slate, persist_slate, TARGET_
 PROPS_OVER_BAND = (0.55, 0.80)
 PROPS_UNDER_BAND = (0.20, 0.45)
 
+lgb: Any
 try:
     import lightgbm as lgb
 except ImportError:
@@ -44,7 +46,7 @@ except ImportError:
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
-PROPS_MARKETS = {
+PROPS_MARKETS: dict[str, dict[str, Any]] = {
     "CORNERS": {"target_col": "corners", "lines": [3.5, 4.5, 5.5, 6.5],
                 "for_col": "corners_for_r5", "against_col": "corners_against_r5"},
     "SOT": {"target_col": "shots_on_target", "lines": [2.5, 3.5, 4.5, 5.5],
@@ -53,7 +55,7 @@ PROPS_MARKETS = {
 PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS"}
 
 
-def find_fixture(cur, league: str, home: str, away: str):
+def find_fixture(cur, league: str, home: str, away: str) -> tuple | None:
     cur.execute(
         """SELECT m.match_id, m.kickoff_utc, m.status, m.home_team_id, m.away_team_id
            FROM futbol.matches m
@@ -92,7 +94,7 @@ def fit_dixon_coles(cur, league: str) -> tuple[DixonColes, dict]:
     return dc, meta
 
 
-def current_form(cur, team_id: int, kickoff) -> dict:
+def current_form(cur, team_id: int, kickoff: datetime) -> dict:
     kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
     cur.execute(
         """SELECT tms.corners, tms.shots, tms.shots_on_target, tms.xg,
@@ -128,7 +130,7 @@ def current_form(cur, team_id: int, kickoff) -> dict:
     }
 
 
-def fit_props_model(cur, market: str):
+def fit_props_model(cur, market: str) -> tuple[Any, list[str], dict, dict]:
     spec = PROPS_MARKETS[market]
     features = ["corners_for_r5", "corners_against_r5", "shots_for_r5",
                "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"] \
@@ -195,8 +197,8 @@ def fit_props_model(cur, market: str):
     return model, features, calibrators, meta
 
 
-def build_props_inferences(model, features: dict, is_home: bool, team_id: int,
-                           market: str, team_name: str, calibrators: dict) -> list:
+def build_props_inferences(model: Any, features: dict, is_home: bool, team_id: int,
+                           market: str, team_name: str, calibrators: dict) -> list[Inference]:
     spec = PROPS_MARKETS[market]
     row = pd.DataFrame([{**features, "is_home": int(is_home)}])
     feat_cols = ["corners_for_r5", "corners_against_r5", "shots_for_r5",
@@ -261,7 +263,7 @@ def top_goal_threats(cur, team_id: int, n: int = 2) -> list:
     return [(pid, name) for pid, name, _ in cur.fetchall()]
 
 
-def likely_goalkeeper(cur, team_id: int):
+def likely_goalkeeper(cur, team_id: int) -> tuple[int, str] | None:
     cur.execute(
         """SELECT p.player_id, p.full_name, MAX(m.kickoff_utc) AS last_played
            FROM futbol.player_match_stats pms
@@ -275,7 +277,7 @@ def likely_goalkeeper(cur, team_id: int):
     return (row[0], row[1]) if row else None
 
 
-def fit_player_goals_model(cur):
+def fit_player_goals_model(cur) -> tuple[Any, list[str]]:
     features = ["p_shots_r5", "p_minutes_r5", "p_goals_r10", "p_key_passes_r5"]
     cur.execute(
         """SELECT f.p_shots_r5, f.p_minutes_r5, f.p_goals_r10, f.p_key_passes_r5,
@@ -296,7 +298,7 @@ def fit_player_goals_model(cur):
     return model, features
 
 
-def fit_player_saves_model(cur):
+def fit_player_saves_model(cur) -> tuple[Any, list[str]]:
     features = ["p_saves_r5", "p_minutes_r5", "shots_against_r5", "corners_against_r5"]
     cur.execute(
         """SELECT pf.p_saves_r5, pf.p_minutes_r5, tf.shots_against_r5, tf.corners_against_r5,
@@ -321,7 +323,8 @@ def fit_player_saves_model(cur):
     return model, features
 
 
-def build_player_goal_inference(model, features_list, form, player_id, player_name):
+def build_player_goal_inference(model: Any, features_list: list[str], form: dict,
+                                player_id: int, player_name: str) -> Inference | None:
     row = pd.DataFrame([form])
     mu = max(model.predict(row[features_list])[0], 0.02)
     p = float(1 - poisson.cdf(0, mu))
@@ -332,7 +335,9 @@ def build_player_goal_inference(model, features_list, form, player_id, player_na
                      subject_player_id=player_id, context=form)
 
 
-def build_player_saves_inference(model, features_list, form, player_id, player_name, line=3.5):
+def build_player_saves_inference(model: Any, features_list: list[str], form: dict,
+                                 player_id: int, player_name: str,
+                                 line: float = 3.5) -> Inference | None:
     row = pd.DataFrame([form])
     mu = max(model.predict(row[features_list])[0], 0.1)
     p = float(1 - poisson.cdf(np.floor(line), mu))
@@ -344,8 +349,8 @@ def build_player_saves_inference(model, features_list, form, player_id, player_n
 
 
 def generate_for_fixture(conn, cur, league: str, home: str, away: str,
-                         match_id: int, kickoff, home_id: int, away_id: int,
-                         verbose: bool = True):
+                         match_id: int, kickoff: datetime, home_id: int, away_id: int,
+                         verbose: bool = True) -> int | None:
     now = datetime.now(timezone.utc)
     kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
     if now >= kickoff_aware:
@@ -476,7 +481,7 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     return n
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--league", required=True)
     ap.add_argument("--home", required=True)

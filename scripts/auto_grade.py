@@ -9,10 +9,12 @@ CORNERS/SOT, which didn't exist when that scaffold was written.
 import os
 import sys
 from datetime import datetime, timezone
+from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import psycopg2
+import psycopg2.extensions
 
 from grading.grader import grade_prediction, GRADER_VERSION
 from ops.pipeline_run import track_run
@@ -33,7 +35,9 @@ TEAM_STAT_COLUMN = {"CORNERS": "corners", "SOT": "shots_on_target"}
 PLAYER_STAT_COLUMN = {"PLAYER_GOALS": "goals", "PLAYER_SAVES": "saves"}
 
 
-def fetch_observed(cur, market: str, match_id: int, subject_team_id, subject_player_id):
+def fetch_observed(cur: psycopg2.extensions.cursor, market: str, match_id: int,
+                   subject_team_id: int | None,
+                   subject_player_id: int | None) -> dict[str, float]:
     if market in TEAM_STAT_COLUMN and subject_team_id is not None:
         col = TEAM_STAT_COLUMN[market]
         cur.execute(
@@ -54,14 +58,14 @@ def fetch_observed(cur, market: str, match_id: int, subject_team_id, subject_pla
     return {"actual": float(row[0])}
 
 
-def main():
+def main() -> None:
     with track_run("auto_grade") as set_rows_written:
         conn = psycopg2.connect(DSN)
         graded, voided, skipped = 0, 0, 0
         with conn.cursor() as cur:
             cur.execute(UNGRADED_SQL)
             cols = [d[0] for d in cur.description]
-            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            rows: list[dict[str, Any]] = [dict(zip(cols, r)) for r in cur.fetchall()]
 
             for row in rows:
                 match = {"status": row["status"], "home_score": row["home_score"],

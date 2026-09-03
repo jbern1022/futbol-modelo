@@ -38,7 +38,7 @@ ORDER BY m.kickoff_utc;
 """
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--league", required=True)
     ap.add_argument("--days", type=int, default=7)
