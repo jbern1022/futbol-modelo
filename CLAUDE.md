@@ -115,8 +115,10 @@ this.
 
 Tracked in Todoist (project: futbol-modelo) — not duplicated here on
 purpose, since Todoist is the live source of truth. As of this file's
-writing, open items include: grammar fixes on the Lessons Learned page,
-verifying whether Dixon-Coles (1X2/Total Goals) needs the same
-calibration treatment corners/SOT just got, and three scoped
-UI-only Phase 2 pages (team pages, league standings, "Recently Graded"
-feed).
+writing (2026-09-03, after a session that closed out most of the
+project's small bounded tickets), open items include: the Track
+Record UI comparison for real bookmaker odds (the storage/ingestion
+half landed this session, MLS-only for now — see CLAIMS.md), grammar
+fixes on the Lessons Learned page (still untouched — nobody has
+pointed at a specific sentence yet), and three scoped UI-only Phase 2
+pages (team pages, league standings, "Recently Graded" feed).
