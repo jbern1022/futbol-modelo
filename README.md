@@ -108,6 +108,7 @@ src/predictions/generator.py   # slate builder + ledger writer
 src/grading/grader.py          # grading logic
 src/ingestion/                 # FBref / Understat / API-Football loaders
 src/ops/pipeline_run.py        # cron run tracking
+src/ops/ntfy.py                # shared ntfy alerting helper
 scripts/                       # generate_slate, auto_slate, auto_grade,
                                 # training scripts, data quality checks
 api/main.py                    # FastAPI backend (read-only DB role)
