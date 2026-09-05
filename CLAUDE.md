@@ -115,10 +115,11 @@ this.
 
 Tracked in Todoist (project: futbol-modelo) — not duplicated here on
 purpose, since Todoist is the live source of truth. As of this file's
-writing (2026-09-03, after a session that closed out most of the
-project's small bounded tickets), open items include: the Track
-Record UI comparison for real bookmaker odds (the storage/ingestion
-half landed this session, MLS-only for now — see CLAIMS.md), grammar
-fixes on the Lessons Learned page (still untouched — nobody has
-pointed at a specific sentence yet), and three scoped UI-only Phase 2
-pages (team pages, league standings, "Recently Graded" feed).
+writing (2026-09-05), the real bookmaker odds comparison ticket
+(ingestion, MLS/EPL/Serie A coverage, and the Track Record UI
+comparison) is fully closed — see CLAIMS.md. Remaining open items are
+mostly real infra decisions awaiting the user's go-ahead (registry/SHA
+tags, GitOps, NetworkPolicy, Sealed Secrets) and larger scoped-but-not-
+started builds (Petey v2, NBA/NFL). Grammar fixes on the Lessons
+Learned page are also still untouched — nobody has pointed at a
+specific sentence yet.
