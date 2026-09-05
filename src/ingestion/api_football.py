@@ -7,10 +7,15 @@ creating a second, parallel set of match rows.
     python -m ingestion.api_football backfill --league EPL --season 2025
     (API-Football uses the year the season STARTS, e.g. 2025 = 2025-26)
 
+    python -m ingestion.api_football link-fixtures --league EPL --season 2026
+    (one-time-per-season: stamps existing Understat/FBref match rows
+    with an api-football:<fixture_id> external_ref so odds mode can
+    look them up -- MLS already gets this for free from backfill_primary())
+
     python -m ingestion.api_football odds --league MLS --days-ahead 7
-    (odds mode: MLS only for now -- the only league whose matches carry
-    an api-football:<fixture_id> external_ref to look odds up by; see
-    _api_football_fixture_id())
+    (odds mode: works for any league whose matches carry an
+    api-football:<fixture_id> external_ref -- MLS via backfill_primary(),
+    EPL/SERIE_A/LA_LIGA via link-fixtures above; see _api_football_fixture_id())
 """
 from __future__ import annotations
 
@@ -151,21 +156,69 @@ _API_FOOTBALL_REF_PATTERN = re.compile(r"^api-football:(\d+)$")
 
 def _api_football_fixture_id(external_ref: str | None) -> int | None:
     """
-    Only matches created by backfill_primary() (MLS today) carry this
-    external_ref format -- EPL/SERIE_A/LA_LIGA matches come from
-    Understat/FBref via loader.py and have no stored mapping to an
-    API-Football fixture id at all, so odds can't be fetched for them
-    yet (same MLS-only phasing already used for player props -- the
-    only league with player_match_stats populated). Resolving that
-    for the other leagues is real, separate work: it would need its
-    own team+date fixture lookup against API-Football, similar to
-    backfill()'s stats lookup but for a league that never gets a
-    match_id from this module in the first place.
+    Matches get this external_ref format either from backfill_primary()
+    (MLS, automatic) or from a one-time link_fixture_ids() run
+    (EPL/SERIE_A/LA_LIGA, since those rows come from Understat/FBref via
+    loader.py and don't get a mapping to an API-Football fixture id for
+    free). A match with neither simply has no odds available yet.
     """
     if not external_ref:
         return None
     m = _API_FOOTBALL_REF_PATTERN.match(external_ref)
     return int(m.group(1)) if m else None
+
+
+def link_fixture_ids(league_code: str, season_start_year: int) -> int:
+    """
+    Populates external_ref on existing EPL/SERIE_A/LA_LIGA match rows
+    (created from Understat/FBref via loader.py, so they never got an
+    api-football:<fixture_id> ref the way backfill_primary() gives MLS
+    rows) so fetch_and_store_odds() has something to look odds up by.
+    Matches API-Football's fixture list onto the *existing* rows by
+    team + date, same technique backfill() already uses for stats --
+    this never creates match rows, only fills in a missing ref on ones
+    that already exist. Never overwrites an existing external_ref.
+    """
+    session = _session()
+    league_id = resolve_league_id(session, league_code)
+
+    conn = psycopg2.connect(DSN)
+    fixtures = _get(session, "fixtures", {"league": league_id, "season": season_start_year})
+    log.info("%d total fixtures (all statuses) from API-Football", len(fixtures))
+
+    linked, already_linked, skipped_team, skipped_match = 0, 0, 0, 0
+    with conn.cursor() as cur:
+        for fx in fixtures:
+            fixture_id = fx["fixture"]["id"]
+            date = fx["fixture"]["date"][:10]
+            home_api_id = fx["teams"]["home"]["id"]
+            away_api_id = fx["teams"]["away"]["id"]
+
+            home_id = resolve_team_id(cur, home_api_id, fx["teams"]["home"]["name"])
+            away_id = resolve_team_id(cur, away_api_id, fx["teams"]["away"]["name"])
+            if not home_id or not away_id:
+                skipped_team += 1
+                continue
+
+            match_id = find_match_id(cur, home_id, away_id, date, league_code)
+            if not match_id:
+                skipped_match += 1
+                continue
+
+            cur.execute(
+                """UPDATE futbol.matches SET external_ref = %s
+                   WHERE match_id = %s AND external_ref IS NULL""",
+                (f"api-football:{fixture_id}", match_id))
+            if cur.rowcount:
+                linked += 1
+            else:
+                already_linked += 1
+
+        conn.commit()
+    conn.close()
+    log.info("done: %d linked, %d already linked, %d skipped (team), %d skipped (match)",
+             linked, already_linked, skipped_team, skipped_match)
+    return linked
 
 
 def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
@@ -607,11 +660,11 @@ def backfill(league_code: str, season_start_year: int):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["backfill", "odds"])
+    ap.add_argument("mode", choices=["backfill", "link-fixtures", "odds"])
     ap.add_argument("--league", required=True, choices=list(LEAGUE_SEARCH))
     ap.add_argument("--season", type=int,
                     help="Season START year, e.g. 2025 for the 2025-26 season "
-                         "(required for backfill, unused for odds)")
+                         "(required for backfill and link-fixtures, unused for odds)")
     ap.add_argument("--primary", action="store_true",
                     help="Use API-Football as the sole source for future/unplayed seasons")
     ap.add_argument("--days-ahead", type=int, default=7,
@@ -626,7 +679,14 @@ def main():
         return
 
     if args.season is None:
-        raise SystemExit("--season is required for backfill mode")
+        raise SystemExit(f"--season is required for {args.mode} mode")
+
+    if args.mode == "link-fixtures":
+        with track_run(f"link_fixtures:{args.league}") as set_rows_written:
+            n = link_fixture_ids(args.league, args.season)
+            set_rows_written(n)
+        return
+
     job_name = f"nightly_refresh:{args.league}"
     with track_run(job_name) as set_rows_written:
         if args.league == "MLS" or args.primary:
