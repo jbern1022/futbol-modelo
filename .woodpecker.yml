@@ -1,0 +1,10 @@
+steps:
+  build:
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      repo: gitea.lab/bernal-labs/futbol-modelo
+      registry: gitea.lab
+      tags: [latest, "${CI_COMMIT_SHA:0:8}"]
+      username: { from_secret: registry_user }
+      password: { from_secret: registry_pass }
+    when: { branch: main, event: push }

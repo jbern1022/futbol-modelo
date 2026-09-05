@@ -1,0 +1,127 @@
+# The three CronJobs that actually run the pipeline in production.
+# Reconstructed from `kubectl get cronjob <name> -o yaml` on the live
+# cluster -- until now these existed only as ad-hoc `kubectl apply`
+# runs, not as anything checked into the repo. The three files this
+# replaces (cron-ingest-nightly.yaml, cron-grade-nightly.yaml,
+# cron-predict-prematch.yaml) described a different, defunct setup
+# (namespace `futbol`, registry `gitea.lab/bernal-labs`, an
+# `ingestion.loader matchday` entrypoint that isn't called anywhere in
+# the real jobs) -- harmless as history, actively misleading as a
+# guide to what's deployed. See CLAUDE.md's "verify against the real,
+# currently running code" lesson; this is exactly that lesson.
+#
+# Same manual deploy workflow as futbol-api/futbol-web (see CLAUDE.md):
+# build gitea.josephbernal.com/joe/futbol-modelo:latest on docker-host,
+# transfer, `k3s ctr images import` on the control-plane. imagePullPolicy:
+# Never here too.
+#
+# Schedules here are 12:xx UTC, taken from `kubectl get cronjob -o
+# jsonpath='{.spec.schedule}'` directly -- the live objects' own
+# last-applied-configuration annotation still said 8:xx, meaning
+# someone changed .spec.schedule out-of-band (kubectl edit/patch)
+# after the last `kubectl apply`, without updating the annotation.
+# `kubectl diff` catches this kind of drift; plain `kubectl get -o
+# yaml` skimming does not, since the annotation looks authoritative.
+#
+# futbol-nightly-refresh's last step (scripts/rebuild_features.py, see
+# "Orchestrate ingest -> features -> slate -> grade" in Todoist) runs
+# sql/features.sql right after ingestion -- previously nothing called
+# it at all, so team_match_features silently fell behind
+# team_match_stats every time ingestion actually wrote new rows (real
+# incident, twice: 2026-08-21 and again 2026-08-27). futbol-auto-slate
+# runs 15 minutes later and trains props models directly from
+# team_match_features, so this ordering matters.
+#
+#     kubectl apply -f k8s/cronjobs.yaml
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: futbol-nightly-refresh
+  namespace: default
+spec:
+  schedule: "0 12 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/hostname: k3s-control-plane
+          containers:
+          - name: refresh
+            image: gitea.josephbernal.com/joe/futbol-modelo:latest
+            imagePullPolicy: Never
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                python -m ingestion.api_football backfill --league MLS --season 2026 &&
+                python -m ingestion.api_football backfill --league EPL --season 2026 --primary &&
+                python -m ingestion.api_football backfill --league SERIE_A --season 2026 --primary &&
+                python scripts/rebuild_features.py
+            envFrom:
+            - secretRef:
+                name: futbol-secrets
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: futbol-auto-slate
+  namespace: default
+spec:
+  schedule: "15 12 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/hostname: k3s-control-plane
+          containers:
+          - name: auto-slate
+            image: gitea.josephbernal.com/joe/futbol-modelo:latest
+            imagePullPolicy: Never
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                python scripts/auto_slate.py --league MLS --days 21 &&
+                python scripts/auto_slate.py --league EPL --days 45 &&
+                python scripts/auto_slate.py --league SERIE_A --days 45
+            envFrom:
+            - secretRef:
+                name: futbol-secrets
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: futbol-auto-grade
+  namespace: default
+spec:
+  schedule: "30 12 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/hostname: k3s-control-plane
+          containers:
+          - name: auto-grade
+            image: gitea.josephbernal.com/joe/futbol-modelo:latest
+            imagePullPolicy: Never
+            command: ["python", "scripts/auto_grade.py"]
+            envFrom:
+            - secretRef:
+                name: futbol-secrets
