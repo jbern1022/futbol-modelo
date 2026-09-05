@@ -1,0 +1,10 @@
+# Installed separately, with --no-deps, in the Dockerfile -- nfl_data_py
+# declares pandas<2.0/numpy<2.0, which directly conflicts with the
+# pandas==3.0.3/numpy==2.5.1 the rest of this project already pins in
+# requirements.txt (confirmed: `pip install -r requirements.txt` alone
+# hits ResolutionImpossible over this). In practice nfl_data_py's own
+# code works fine against the modern pandas/numpy already installed --
+# verified locally against real 2024/2026 schedule data -- its pin is
+# just an overly conservative constraint from an unmaintained-looking
+# package, not a real incompatibility.
+nfl_data_py==0.3.3

@@ -36,6 +36,7 @@ CREATE TABLE teams (
     fbref_id        TEXT UNIQUE,
     understat_id    TEXT UNIQUE,
     api_football_id INT UNIQUE,
+    nfl_abbr        TEXT UNIQUE, -- nfl_data_py's own team_abbr, e.g. 'KC', 'SF'
     -- upsert_team()'s ON CONFLICT (name) DO NOTHING (src/ingestion/loader.py)
     -- requires this constraint to function at all -- without it, every
     -- team upsert throws "no unique or exclusion constraint matching

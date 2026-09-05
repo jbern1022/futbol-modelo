@@ -3,8 +3,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -M -d /app appuser
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-nfl.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --no-deps -r requirements-nfl.txt
 COPY --chown=appuser:appuser src/ src/
 COPY --chown=appuser:appuser scripts/ scripts/
 COPY --chown=appuser:appuser sql/ sql/
