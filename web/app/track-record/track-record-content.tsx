@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { marketLabel } from "@/lib/markets";
 import CalibrationSection from "./calibration-section";
+import MarketComparisonSection from "./market-comparison-section";
 import PredictionLog from "./prediction-log";
 
 interface ScorecardRow {
@@ -24,6 +25,19 @@ interface CalibrationRow {
   avg_stated_prob: number;
   realized_rate: number;
   n: number;
+}
+
+interface MarketComparisonRow {
+  league: string;
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  kickoff_utc: string;
+  status: string;
+  side: string;
+  model_probability: number;
+  market_probability: number;
+  n_bookmakers: number;
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -65,9 +79,11 @@ function FilterSelect({
 export default function TrackRecordContent({
   scorecard,
   calibration,
+  marketComparison,
 }: {
   scorecard: ScorecardRow[];
   calibration: CalibrationRow[];
+  marketComparison: MarketComparisonRow[];
 }) {
   const searchParams = useSearchParams();
   const [league, setLeague] = useState(() => searchParams.get("league") ?? "");
@@ -105,6 +121,11 @@ export default function TrackRecordContent({
   // narrows the "By market" table below, not the calibration cards.
   const filteredCalibration = calibration.filter(
     (r) => (!league || r.league === league) && (!market || r.market === market)
+  );
+  // Only 1X2 rows exist here -- the market filter would zero this
+  // section out for every other market, so it only respects league.
+  const filteredMarketComparison = marketComparison.filter(
+    (r) => !league || r.league === league
   );
 
   const totalPredictions = filteredScorecard.reduce((sum, r) => sum + r.n_predictions, 0);
@@ -184,6 +205,8 @@ export default function TrackRecordContent({
           <CalibrationSection calibration={filteredCalibration} />
         </>
       )}
+
+      <MarketComparisonSection comparison={filteredMarketComparison} />
 
       <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">Prediction log</h2>
       <PredictionLog league={league} season={season} market={market} />

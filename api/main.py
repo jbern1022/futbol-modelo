@@ -13,6 +13,7 @@ routes are deliberately unversioned infra/meta endpoints):
     GET /v1/fixtures/{match_id}/slate
     GET /v1/scorecard?league=MLS
     GET /v1/calibration?league=MLS
+    GET /v1/odds-comparison?league=MLS
     GET /v1/teams?league=MLS
     POST /v1/ask  {"market": "CORNERS", "league": "MLS"}
     POST /v1/ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
@@ -297,6 +298,24 @@ class CalibrationResponse(BaseModel):
     calibration: list[CalibrationRow]
 
 
+class MarketComparisonRow(BaseModel):
+    league: str
+    match_id: int
+    home_team: str
+    away_team: str
+    kickoff_utc: datetime
+    status: str
+    side: str
+    model_probability: float
+    market_probability: float
+    n_bookmakers: int
+
+
+class MarketComparisonResponse(BaseModel):
+    count: int
+    comparison: list[MarketComparisonRow]
+
+
 class AskResponse(BaseModel):
     answer: str
     n_predictions: int
@@ -335,7 +354,8 @@ def public_docs():
 def root():
     return {"service": "futbol-modelo API", "status": "ok",
             "endpoints": ["/v1/fixtures", "/v1/fixtures/{match_id}/slate",
-                         "/v1/scorecard", "/v1/calibration", "/v1/teams", "/v1/ask",
+                         "/v1/scorecard", "/v1/calibration", "/v1/odds-comparison",
+                         "/v1/teams", "/v1/ask",
                          "/v1/ask/team-form", "/v1/ask/head-to-head",
                          "/v1/ask/match-take", "/v1/pipeline-status"]}
 
@@ -680,6 +700,26 @@ def calibration(league: Optional[str] = Query(None)):
         finally:
             put_conn(conn)
     return _cached(f"calibration:{league}", compute)
+
+
+@app.get("/v1/odds-comparison", response_model=MarketComparisonResponse)
+def odds_comparison(league: Optional[str] = Query(None)):
+    def compute():
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                query = "SELECT * FROM futbol.v_market_comparison"
+                params = []
+                if league:
+                    query += " WHERE league = %s"
+                    params.append(league)
+                query += " ORDER BY kickoff_utc, match_id, side"
+                cur.execute(query, params)
+                rows = cur.fetchall()
+            return {"count": len(rows), "comparison": rows}
+        finally:
+            put_conn(conn)
+    return _cached(f"odds_comparison:{league}", compute)
 
 
 class AskRequest(BaseModel):

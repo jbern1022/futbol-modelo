@@ -29,6 +29,19 @@ interface CalibrationRow {
   n: number;
 }
 
+interface MarketComparisonRow {
+  league: string;
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  kickoff_utc: string;
+  status: string;
+  side: string;
+  model_probability: number;
+  market_probability: number;
+  n_bookmakers: number;
+}
+
 async function getScorecard(): Promise<ScorecardRow[]> {
   try {
     // The API itself already caches this for 5 minutes; an hour here
@@ -53,10 +66,22 @@ async function getCalibration(): Promise<CalibrationRow[]> {
   }
 }
 
+async function getMarketComparison(): Promise<MarketComparisonRow[]> {
+  try {
+    const res = await fetch(`${API_URL}/v1/odds-comparison`, { next: { revalidate: 3600 } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.comparison || [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function TrackRecordPage() {
-  const [scorecard, calibration] = await Promise.all([
+  const [scorecard, calibration, marketComparison] = await Promise.all([
     getScorecard(),
     getCalibration(),
+    getMarketComparison(),
   ]);
 
   const totalGraded = scorecard.length > 0;
@@ -101,7 +126,13 @@ export default async function TrackRecordPage() {
           </div>
         )}
 
-        {totalGraded && <TrackRecordContent scorecard={scorecard} calibration={calibration} />}
+        {totalGraded && (
+          <TrackRecordContent
+            scorecard={scorecard}
+            calibration={calibration}
+            marketComparison={marketComparison}
+          />
+        )}
       </main>
     </div>
   );
