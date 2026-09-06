@@ -40,6 +40,13 @@ LEAGUES = {
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
+# In-memory caches: avoids re-querying the same team/season on every
+# row during a multi-season backfill. Keyed by canonical name and
+# (league_id, label) respectively. Module-level so they persist across
+# load_understat / load_fbref calls within one process.
+_team_id_cache: dict[str, int] = {}
+_season_id_cache: dict[tuple[int, str], int] = {}
+
 
 # ------------------------------------------------------------------
 # Upsert helpers (idempotent by design)
@@ -54,19 +61,28 @@ def upsert_league(cur, code: str, name: str, is_international: bool = False) -> 
 
 
 def upsert_season(cur, league_id: int, label: str) -> int:
+    key = (league_id, label)
+    if key in _season_id_cache:
+        return _season_id_cache[key]
     cur.execute(
         """INSERT INTO futbol.seasons (league_id, label) VALUES (%s, %s)
            ON CONFLICT (league_id, label) DO UPDATE SET label = EXCLUDED.label
            RETURNING season_id""", (league_id, label))
-    return cur.fetchone()[0]
+    season_id = cur.fetchone()[0]
+    _season_id_cache[key] = season_id
+    return season_id
 
 
 def upsert_team(cur, canonical: str) -> int:
+    if canonical in _team_id_cache:
+        return _team_id_cache[canonical]
     cur.execute(
         """INSERT INTO futbol.teams (name) VALUES (%s)
-           ON CONFLICT (name) DO NOTHING""", (canonical,))
-    cur.execute("SELECT team_id FROM futbol.teams WHERE name = %s", (canonical,))
-    return cur.fetchone()[0]
+           ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+           RETURNING team_id""", (canonical,))
+    team_id = cur.fetchone()[0]
+    _team_id_cache[canonical] = team_id
+    return team_id
 
 
 def upsert_match(cur, season_id, home_id, away_id, kickoff, hg, ag, status, ext_ref) -> int:
@@ -147,12 +163,21 @@ def load_understat(conn, league_key: str, seasons: list[str]):
         # event-level shots (feeds the custom xG model in v3)
         shots = us.read_shot_events().reset_index()
         log.info("Understat shots: %d rows", len(shots))
+
+        # Batch-fetch all match_ids for the game_ids present in this shot
+        # dataset in one query instead of one SELECT per shot row (~15k
+        # queries -> 1 for a 5-season EPL backfill).
+        unique_game_ids = shots["game_id"].dropna().unique().tolist()
+        ext_refs = [f"understat:{gid}" for gid in unique_game_ids]
+        cur.execute(
+            "SELECT external_ref, match_id FROM futbol.matches"
+            " WHERE external_ref = ANY(%s)",
+            (ext_refs,))
+        _match_id_by_ref: dict[str, int] = {r[0]: r[1] for r in cur.fetchall()}
+
         for _, s in shots.iterrows():
-            cur.execute(
-                "SELECT match_id FROM futbol.matches WHERE external_ref = %s",
-                (f"understat:{s['game_id']}",))
-            row = cur.fetchone()
-            if not row:
+            match_id = _match_id_by_ref.get(f"understat:{s['game_id']}")
+            if match_id is None:
                 continue
             team = entities.resolve_team("understat", s["team"])
             tid = upsert_team(cur, team)
@@ -165,7 +190,7 @@ def load_understat(conn, league_key: str, seasons: list[str]):
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (match_id, player_id, minute, x, y, situation, result)
                    DO NOTHING""",
-                (row[0], pid, tid, _int(s.get("minute")), _num(s.get("location_x")),
+                (match_id, pid, tid, _int(s.get("minute")), _num(s.get("location_x")),
                  _num(s.get("location_y")), _clean(s.get("situation")),
                  _clean(s.get("body_part")), _clean(s.get("result")),
                  _num(s.get("xg"))))

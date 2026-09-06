@@ -2,7 +2,16 @@
 Secondary-market models ("props"): team corners, team shots,
 player shots, GK saves. One LightGBM regressor per market predicting
 the expected count, converted to over/under probabilities via a
-Poisson/negative-binomial layer, then calibrated with isotonic regression.
+distribution layer, then calibrated with isotonic regression.
+
+Distribution layer:
+  - TEAM_CORNERS and TEAM_SOT use a negative binomial (NB) CDF.
+    Both markets are overdispersed (variance > mean), so Poisson
+    underestimates tail probabilities. The dispersion parameter r is
+    fit via method of moments on out-of-fold residuals: r = μ²/(σ²-μ).
+    Falls back to Poisson if OOF variance ≤ mean (no overdispersion).
+  - All other markets use a Poisson CDF (adequate for player counts
+    and shots, which are closer to equidispersed).
 
 Why this shape:
   - Counts (corners, shots, saves) are naturally Poisson-ish.
@@ -18,7 +27,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-from scipy.stats import poisson
+from scipy.stats import nbinom, poisson
 from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import TimeSeriesSplit
 
@@ -69,12 +78,18 @@ LGB_PARAMS = dict(
 )
 
 
+# Markets where count variance exceeds the Poisson mean — NB CDF is used
+# instead of Poisson to avoid underestimating tail probabilities.
+_NB_MARKETS = {"TEAM_CORNERS", "TEAM_SOT"}
+
+
 @dataclass
 class PropsModel:
     market: str                                   # 'TEAM_CORNERS', 'PLAYER_SHOTS', ...
     features: list[str] = field(default_factory=lambda: TEAM_FEATURES)
     model: object = None
     calibrators: dict = field(default_factory=dict)   # line -> IsotonicRegression
+    nb_r: float | None = None                     # NB dispersion; None => Poisson
 
     # ---------- training ----------
 
@@ -98,10 +113,20 @@ class PropsModel:
         self.model = lgb.LGBMRegressor(**LGB_PARAMS)
         self.model.fit(X, y, categorical_feature=["league_code"])
 
-        # calibrate P(over line) per line
+        # Fit NB dispersion for overdispersed count markets via method of
+        # moments: var = μ + μ²/r  =>  r = μ²/(var-μ). Falls back to
+        # Poisson (self.nb_r = None) if OOF variance ≤ mean.
         mask = ~np.isnan(oof_mu)
+        if self.market in _NB_MARKETS:
+            mu_oof = oof_mu[mask]
+            y_oof = y[mask].astype(float)
+            mean_mu = float(np.mean(mu_oof))
+            var_y = float(np.var(y_oof))
+            self.nb_r = mean_mu**2 / (var_y - mean_mu) if var_y > mean_mu else None
+
+        # calibrate P(over line) per line
         for line in lines:
-            raw_p = 1 - poisson.cdf(np.floor(line), oof_mu[mask])
+            raw_p = self._raw_over(oof_mu[mask], line)
             actual = (y[mask] > line).astype(int)
             iso = IsotonicRegression(out_of_bounds="clip", y_min=0.01, y_max=0.99)
             iso.fit(raw_p, actual)
@@ -110,10 +135,18 @@ class PropsModel:
 
     # ---------- inference ----------
 
+    def _raw_over(self, mu: np.ndarray | float, line: float) -> np.ndarray | float:
+        """P(count > line) from the distribution layer (pre-calibration)."""
+        if self.market in _NB_MARKETS and self.nb_r is not None:
+            r = self.nb_r
+            p = r / (r + np.asarray(mu, dtype=float))  # NB success probability
+            return 1 - nbinom.cdf(int(np.floor(line)), r, p)
+        return 1 - poisson.cdf(np.floor(line), mu)
+
     def predict_over(self, X_row: pd.DataFrame, line: float) -> float:
         """Calibrated P(count > line) for one fixture row."""
         mu = float(self.model.predict(X_row)[0])
-        raw = float(1 - poisson.cdf(np.floor(line), mu))
+        raw = float(self._raw_over(mu, line))
         iso = self.calibrators.get(line)
         return float(iso.predict([raw])[0]) if iso else raw
 

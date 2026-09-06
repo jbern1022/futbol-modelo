@@ -16,6 +16,42 @@ export const dynamic = "force-dynamic";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+interface ScorecardRow {
+  league: string;
+  season: string;
+  market: string;
+  n_predictions: number;
+  hit_rate: number;
+  avg_confidence: number;
+}
+
+interface ScorecardStats {
+  totalPredictions: number;
+  bandHitRate: number | null; // weighted hit rate for 60–75% confidence band
+}
+
+async function getScorecardStats(): Promise<ScorecardStats | null> {
+  try {
+    const res = await fetch(`${API_URL}/v1/scorecard`, {
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return null;
+    const rows: ScorecardRow[] = await res.json();
+    const totalPredictions = rows.reduce((s, r) => s + r.n_predictions, 0);
+    const bandRows = rows.filter(
+      (r) => r.avg_confidence >= 0.6 && r.avg_confidence <= 0.75
+    );
+    const bandN = bandRows.reduce((s, r) => s + r.n_predictions, 0);
+    const bandHitRate =
+      bandN > 0
+        ? bandRows.reduce((s, r) => s + r.hit_rate * r.n_predictions, 0) / bandN
+        : null;
+    return { totalPredictions, bandHitRate };
+  } catch {
+    return null;
+  }
+}
+
 interface Fixture {
   match_id: number;
   league: string;
@@ -72,7 +108,10 @@ function timeAgo(ms: number): string {
 }
 
 export default async function Home() {
-  const { data, stale, fetchedAt } = await getFixtures();
+  const [{ data, stale, fetchedAt }, stats] = await Promise.all([
+    getFixtures(),
+    getScorecardStats(),
+  ]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
@@ -99,6 +138,32 @@ export default async function Home() {
         <p className="mt-2 text-zinc-600 dark:text-zinc-400">
           Calibrated soccer predictions across MLS, the Premier League, Serie A, and La Liga — generated and graded automatically, with every prediction locked before kickoff.
         </p>
+
+        <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
+          When we say 70%, it lands ~70%.{" "}
+          <a href="/track-record" className="underline underline-offset-2 hover:text-zinc-700 dark:hover:text-zinc-300">
+            Calibrated predictions, verified publicly.
+          </a>
+        </p>
+
+        {stats && (
+          <div className="mt-6 flex flex-wrap gap-4">
+            <div className="rounded-lg border border-zinc-200 bg-white px-5 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+              <p className="text-xs text-zinc-500">Graded predictions</p>
+              <p className="text-xl font-semibold text-black dark:text-zinc-50">
+                {stats.totalPredictions.toLocaleString()}
+              </p>
+            </div>
+            {stats.bandHitRate !== null && (
+              <div className="rounded-lg border border-zinc-200 bg-white px-5 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+                <p className="text-xs text-zinc-500">Hit rate · 60–75% confidence band</p>
+                <p className="text-xl font-semibold text-black dark:text-zinc-50">
+                  {(stats.bandHitRate * 100).toFixed(1)}%
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {!data && (
           <div className="mt-10 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
