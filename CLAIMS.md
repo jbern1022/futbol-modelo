@@ -35,6 +35,7 @@ treat a stale entry as a bug, same as any other.
 | Isotonic calibration is fit on out-of-fold predictions only, never on the model's own training folds | `props.py`'s `fit_props_model` | **Live-verified** — corners and SOT retrains this session confirmed real logloss improvement (+0.03984 for SOT) after the fix landed; not re-verified per retrain going forward |
 | Rolling features (`team_match_features`) never leak future information into a match's own row | `sql/features.sql`, as-of joins | **Tested** — `tests/test_features_no_leakage.py` |
 | Player markets are MLS-only (the only league with `player_match_stats` populated) | `PROPS_LEAGUES` in `scripts/generate_slate.py` | **Code path only** — true as written, no test pins this list |
+| NFL power ratings (margin + total via ridge regression) predict MONEYLINE/SPREAD/TOTAL_POINTS against real market lines | `src/models/nfl_power_ratings.py`, `scripts/generate_nfl_slate.py` | **Live-verified** 2026-09-06 — 17 real Week 1 2026 fixtures slated, 102 predictions written into the ledger against nflverse's real, free market lines. **Explicitly NOT calibrated**: probabilities come from a Normal-approximation on the model's own residual std dev, not isotonic-on-out-of-fold like the soccer props models — there's no graded NFL history yet to calibrate against before a single 2026 game has been played. Revisit once a real number of weeks are graded. |
 
 ## The pipeline
 

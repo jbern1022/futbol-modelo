@@ -2,14 +2,15 @@
 
 ![coverage](coverage.svg)
 
-Calibrated soccer prediction system, live at
+Calibrated sports prediction system, live at
 [futbol.josephbernal.com](https://futbol.josephbernal.com). Covers MLS
 (primary league, full player props), the Premier League, Serie A, and La
-Liga, plus a World Cup knockout-stage module. Every prediction is locked
-into an append-only ledger before kickoff and graded automatically after
-the match — hits and misses alike, published either way. The season-end
-calibration curve is the product: does a stated 60–75% confidence band
-actually realize 60–75%?
+Liga, plus a World Cup knockout-stage module -- and, as of the 2026
+season, a narrow NFL vertical slice (moneyline/spread/total only, see
+below). Every prediction is locked into an append-only ledger before
+kickoff and graded automatically after the match — hits and misses
+alike, published either way. The season-end calibration curve is the
+product: does a stated 60–75% confidence band actually realize 60–75%?
 
 The site also runs **Petey**, an Ollama-backed Q&A feature that answers
 questions about the data without ever writing its own SQL or seeing raw
@@ -73,6 +74,17 @@ Markets live today: `1X2`, `BTTS`, `TOTAL_GOALS`, `CORNERS`, `SOT`,
 `PLAYER_GOALS`, `PLAYER_SAVES` (player markets are MLS-only for now —
 the only league with `player_match_stats` populated).
 
+**NFL match model — `src/models/nfl_power_ratings.py`, `scripts/generate_nfl_slate.py`**
+Ridge-regression power ratings (margin and total, independently fit) —
+NFL's multimodal, 3/7-point-clustered margin distribution is exactly
+why Dixon-Coles' Poisson machinery doesn't transfer to this sport.
+Predicts `MONEYLINE`, `SPREAD`, `TOTAL_POINTS` against the real market
+lines [nflverse](https://github.com/nflverse) bundles free into its
+schedule data. Deliberately not calibrated yet — there's no graded NFL
+history to calibrate against before a season has actually been played;
+same treatment the soccer props models got, just not possible on day
+one. See `CLAIMS.md`.
+
 ## The ledger discipline (non-negotiable)
 
 - `predictions` is INSERT-only; a trigger rejects UPDATE/DELETE.
@@ -102,15 +114,16 @@ a silently-stalled pipeline visible instead of quietly stale.
 sql/schema.sql                 # full schema incl. ledger triggers + views
 sql/migrations/                # numbered migrations, applied via scripts/migrate.py
 sql/*.sql                      # pre-2026-08-27 one-off scripts, applied by hand (history)
-src/models/dixon_coles.py      # match model
+src/models/dixon_coles.py      # soccer match model
 src/models/props.py            # props model helpers
+src/models/nfl_power_ratings.py # NFL match model
 src/predictions/generator.py   # slate builder + ledger writer
 src/grading/grader.py          # grading logic
-src/ingestion/                 # FBref / Understat / API-Football loaders
+src/ingestion/                 # FBref / Understat / API-Football / nflverse loaders
 src/ops/pipeline_run.py        # cron run tracking
 src/ops/ntfy.py                # shared ntfy alerting helper
-scripts/                       # generate_slate, auto_slate, auto_grade,
-                                # training scripts, data quality checks
+scripts/                       # generate_slate, generate_nfl_slate, auto_slate,
+                                # auto_grade, training scripts, data quality checks
 api/main.py                    # FastAPI backend (read-only DB role)
 web/                           # Next.js frontend
 k8s/                           # real, live-matching Deployment/CronJob manifests
