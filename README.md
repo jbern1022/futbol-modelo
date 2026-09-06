@@ -6,8 +6,8 @@ Calibrated sports prediction system, live at
 [futbol.josephbernal.com](https://futbol.josephbernal.com). Covers MLS
 (primary league, full player props), the Premier League, Serie A, and La
 Liga, plus a World Cup knockout-stage module -- and, as of the 2026
-season, a narrow NFL vertical slice (moneyline/spread/total only, see
-below). Every prediction is locked into an append-only ledger before
+season, narrow NFL and NBA vertical slices (NFL: moneyline/spread/total;
+NBA: total points only so far, see below). Every prediction is locked into an append-only ledger before
 kickoff and graded automatically after the match — hits and misses
 alike, published either way. The season-end calibration curve is the
 product: does a stated 60–75% confidence band actually realize 60–75%?
@@ -85,6 +85,15 @@ history to calibrate against before a season has actually been played;
 same treatment the soccer props models got, just not possible on day
 one. See `CLAIMS.md`.
 
+**NBA match model — `src/models/nba_power_ratings.py`, `scripts/generate_nba_slate.py`**
+Ridge-regression power ratings, total-points only (no moneyline/spread
+in this sport's scope). `nba_api` carries no bookmaker data, so there's
+no real market line to predict against — candidate lines are spaced
+around the model's own prediction and only published when genuinely
+confident, the same treatment soccer's corners/SOT already use for
+count-based markets with no market-line source. Player points props
+not built yet. Also not calibrated yet. See `CLAIMS.md`.
+
 ## The ledger discipline (non-negotiable)
 
 - `predictions` is INSERT-only; a trigger rejects UPDATE/DELETE.
@@ -117,13 +126,14 @@ sql/*.sql                      # pre-2026-08-27 one-off scripts, applied by hand
 src/models/dixon_coles.py      # soccer match model
 src/models/props.py            # props model helpers
 src/models/nfl_power_ratings.py # NFL match model
+src/models/nba_power_ratings.py # NBA match model
 src/predictions/generator.py   # slate builder + ledger writer
 src/grading/grader.py          # grading logic
-src/ingestion/                 # FBref / Understat / API-Football / nflverse loaders
+src/ingestion/                 # FBref / Understat / API-Football / nflverse / nba_api loaders
 src/ops/pipeline_run.py        # cron run tracking
 src/ops/ntfy.py                # shared ntfy alerting helper
-scripts/                       # generate_slate, generate_nfl_slate, auto_slate,
-                                # auto_grade, training scripts, data quality checks
+scripts/                       # generate_slate, generate_nfl_slate, generate_nba_slate,
+                                # auto_slate, auto_grade, training scripts, data quality checks
 api/main.py                    # FastAPI backend (read-only DB role)
 web/                           # Next.js frontend
 k8s/                           # real, live-matching Deployment/CronJob manifests
