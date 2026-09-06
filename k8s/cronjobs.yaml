@@ -63,6 +63,7 @@ spec:
                 python -m ingestion.api_football backfill --league EPL --season 2026 --primary &&
                 python -m ingestion.api_football backfill --league SERIE_A --season 2026 --primary &&
                 python -m ingestion.nfl_data backfill --season 2026 &&
+                python -m ingestion.nba_data backfill --season 2026-27 &&
                 python scripts/rebuild_features.py
             envFrom:
             - secretRef:
@@ -96,7 +97,8 @@ spec:
                 python scripts/auto_slate.py --league MLS --days 21 &&
                 python scripts/auto_slate.py --league EPL --days 45 &&
                 python scripts/auto_slate.py --league SERIE_A --days 45 &&
-                python scripts/generate_nfl_slate.py --season 2026 --days-ahead 14
+                python scripts/generate_nfl_slate.py --season 2026 --days-ahead 14 &&
+                python scripts/generate_nba_slate.py --season 2026-27 --days-ahead 45
             envFrom:
             - secretRef:
                 name: futbol-secrets
