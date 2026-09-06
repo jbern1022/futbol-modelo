@@ -15,10 +15,12 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/hostname: k3s-control-plane
+      imagePullSecrets:
+      - name: gitea-registry
       containers:
       - name: futbol-api
         image: gitea.josephbernal.com/joe/futbol-api:latest
-        imagePullPolicy: Never
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
         env:
@@ -71,10 +73,12 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/hostname: k3s-control-plane
+      imagePullSecrets:
+      - name: gitea-registry
       containers:
       - name: futbol-web
         image: gitea.josephbernal.com/joe/futbol-web:latest
-        imagePullPolicy: Never
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
         env:

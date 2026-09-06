@@ -19,39 +19,48 @@ self-managed Kubernetes cluster. Live at https://futbol.josephbernal.com.
 what another one does — `docker-host` has no `npm`/`psql` installed;
 the Mac has the full toolchain.
 
-## Real deploy workflow (frontend or API)
+## Real deploy workflow (frontend, API, or CronJob image)
 
 ```bash
-# On docker-host, in the repo:
+# On docker-host, in the repo (ops/deploy.sh handles build + push + rollout):
 git pull
-docker build --provenance=false -t gitea.josephbernal.com/joe/futbol-web:latest web/
-docker save gitea.josephbernal.com/joe/futbol-web:latest -o futbol-web.tar
-scp futbol-web.tar joe@192.168.4.63:~/
-
-# On the control-plane:
-sudo k3s ctr images import ~/futbol-web.tar
-sudo kubectl delete pod -l app=futbol-web   # forces pull of the fresh image
-sudo kubectl get pods -l app=futbol-web
+./ops/deploy.sh futbol-web    <sha>   # Next.js frontend
+./ops/deploy.sh futbol-api    <sha>   # FastAPI backend
+./ops/deploy.sh futbol-modelo <sha>   # all three CronJobs
 ```
 
-Same pattern for `futbol-api` with `Dockerfile.api` and `requirements-api.txt`.
-`imagePullPolicy: Never` everywhere — images are locally imported, not
-pulled from a registry. **A stale `.tar` file reused without rebuilding
-is a real, easy mistake — always confirm the image hash actually changed
-before trusting a deploy worked.**
+Images are pushed to the Gitea registry (`gitea.josephbernal.com/joe/`)
+and pulled by k3s via `imagePullPolicy: IfNotPresent`. `<sha>` is the
+short digest you use for the image tag (e.g. `abc1234`); the script also
+tags `:latest`. Rollouts use `kubectl set image` + `kubectl rollout
+status` for Deployments and `kubectl patch cronjob` for CronJobs.
 
-**The three CronJobs (`k8s/cronjobs.yaml`) need this same image workflow,
-but if a change also edits a CronJob's `command`/`args`, `schedule`, or
-anything else in the manifest itself, that also needs its own
-`kubectl apply -f k8s/cronjobs.yaml`.** The image rebuild alone only
-updates what code is *inside* the container; it does not touch the
-live CronJob object's spec. Real mistake made 2026-08-28: added a new
-step to `futbol-nightly-refresh`'s command chain, rebuilt and deployed
-the image, triggered a real run to verify — and it silently ran the
+**One-time setup** (already done once per cluster — only needed again if
+the secret is deleted):
+```bash
+kubectl create secret docker-registry gitea-registry \
+  --docker-server=gitea.josephbernal.com \
+  --docker-username=joe \
+  --docker-password=<GITEA_TOKEN>
+docker login gitea.josephbernal.com   # on docker-host
+```
+
+**Old workflow (now retired):** Previously images were `docker save`d to
+`.tar`, `scp`d to the control-plane, and `k3s ctr images import`ed with
+`imagePullPolicy: Never`. This required kubectl debug node workarounds
+since the Mac has no SSH key on the control-plane. Don't use this path.
+
+**If a CronJob change also edits `command`/`args`, `schedule`, or
+anything else in the manifest itself, run `kubectl apply -f
+k8s/cronjobs.yaml` separately.** `ops/deploy.sh futbol-modelo` only
+patches the image reference — it does not touch the live CronJob
+object's spec. Real mistake made 2026-08-28: added a new step to
+`futbol-nightly-refresh`'s command chain, rebuilt and deployed the
+image, triggered a real run to verify — and it silently ran the
 *old* three-step command, because the live CronJob object still had
 the old `args`. No error, no warning, just quietly wrong. Verify by
 checking the actual CronJob object's spec matches the repo, not just
-that the image imported cleanly.
+that the image updated cleanly.
 
 ## Schema changes
 

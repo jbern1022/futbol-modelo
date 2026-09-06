@@ -52,10 +52,12 @@ spec:
           restartPolicy: Never
           nodeSelector:
             kubernetes.io/hostname: k3s-control-plane
+          imagePullSecrets:
+          - name: gitea-registry
           containers:
           - name: refresh
             image: gitea.josephbernal.com/joe/futbol-modelo:latest
-            imagePullPolicy: Never
+            imagePullPolicy: IfNotPresent
             command: ["/bin/sh", "-c"]
             args:
               - |
@@ -89,10 +91,12 @@ spec:
           restartPolicy: Never
           nodeSelector:
             kubernetes.io/hostname: k3s-control-plane
+          imagePullSecrets:
+          - name: gitea-registry
           containers:
           - name: auto-slate
             image: gitea.josephbernal.com/joe/futbol-modelo:latest
-            imagePullPolicy: Never
+            imagePullPolicy: IfNotPresent
             command: ["/bin/sh", "-c"]
             args:
               - |
@@ -123,10 +127,12 @@ spec:
           restartPolicy: Never
           nodeSelector:
             kubernetes.io/hostname: k3s-control-plane
+          imagePullSecrets:
+          - name: gitea-registry
           containers:
           - name: auto-grade
             image: gitea.josephbernal.com/joe/futbol-modelo:latest
-            imagePullPolicy: Never
+            imagePullPolicy: IfNotPresent
             command: ["python", "scripts/auto_grade.py"]
             envFrom:
             - secretRef:

@@ -33,6 +33,7 @@ WHERE g.prediction_id IS NULL AND m.status = 'final';
 
 TEAM_STAT_COLUMN = {"CORNERS": "corners", "SOT": "shots_on_target"}
 PLAYER_STAT_COLUMN = {"PLAYER_GOALS": "goals", "PLAYER_SAVES": "saves"}
+NFL_PLAYER_STAT_COLUMN = {"PLAYER_PASS_YARDS": "passing_yards", "PLAYER_RUSH_YARDS": "rushing_yards"}
 
 
 def fetch_observed(cur: psycopg2.extensions.cursor, market: str, match_id: int,
@@ -48,6 +49,12 @@ def fetch_observed(cur: psycopg2.extensions.cursor, market: str, match_id: int,
         col = PLAYER_STAT_COLUMN[market]
         cur.execute(
             f"SELECT {col} FROM futbol.player_match_stats "
+            f"WHERE match_id = %s AND player_id = %s",
+            (match_id, subject_player_id))
+    elif market in NFL_PLAYER_STAT_COLUMN and subject_player_id is not None:
+        col = NFL_PLAYER_STAT_COLUMN[market]
+        cur.execute(
+            f"SELECT {col} FROM futbol.player_match_stats_nfl "
             f"WHERE match_id = %s AND player_id = %s",
             (match_id, subject_player_id))
     else:
@@ -72,7 +79,8 @@ def main() -> None:
                          "away_score": row["away_score"]}
                 pred = {"market": row["market"], "side": row["side"], "line": row["line"]}
 
-                needs_stats = row["market"] in TEAM_STAT_COLUMN or row["market"] in PLAYER_STAT_COLUMN
+                needs_stats = (row["market"] in TEAM_STAT_COLUMN or row["market"] in PLAYER_STAT_COLUMN
+                               or row["market"] in NFL_PLAYER_STAT_COLUMN)
                 if needs_stats:
                     stats = fetch_observed(cur, row["market"], row["match_id"],
                                            row["subject_team_id"], row["subject_player_id"])
