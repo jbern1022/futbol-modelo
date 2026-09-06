@@ -1,7 +1,7 @@
 """
 NFL slate generator -- the vertical-slice equivalent of generate_slate.py
-for NFL: MONEYLINE, SPREAD, TOTAL_POINTS only, no player props (see the
-NFL scope-guard ticket). Reuses build_slate()/persist_slate()/
+for NFL: MONEYLINE, SPREAD, TOTAL_POINTS, and player props (QB passing
+yards, RB rushing yards). Reuses build_slate()/persist_slate()/
 log_degenerate_candidates() from src/predictions/generator.py unchanged
 -- those are already market/sport-agnostic.
 
@@ -14,11 +14,20 @@ odds-comparison feature which needed a paid API. A game with no
 published line yet (sportsbooks don't line every future week
 immediately) is simply skipped -- there's nothing to predict against.
 
-The model itself (src/models/nfl_power_ratings.py) is NOT calibrated:
-Normal-approximation probabilities only, since there's no graded NFL
-history yet to calibrate against. Revisit once a real number of weeks
-have been graded, same as the corners/SOT calibration fix -- just not
-possible on day one for a brand new sport.
+Player props have no market line at all (nfl_data_py's schedule data
+covers game-level lines only) -- candidate lines are spaced around a
+recency-weighted rolling average instead, same self-generated-line
+treatment as NBA's player points and totals. WHO gets a prediction is
+decided by the real current depth chart (nfl_player_props.py's
+current_depth_chart()), not by rolling-stat presence alone -- a flat
+history window can't tell a healthy committee back from an injured
+starter nearly as fast as this week's actual depth chart can.
+
+The models themselves are NOT calibrated: Normal-approximation
+probabilities only, since there's no graded NFL history yet to
+calibrate against. Revisit once a real number of weeks have been
+graded, same as the corners/SOT calibration fix -- just not possible
+on day one for a brand new sport.
 """
 import argparse
 import json
@@ -32,11 +41,20 @@ import nfl_data_py as nfl
 import pandas as pd
 import psycopg2
 
+from models.nfl_player_props import candidate_lines as player_candidate_lines
+from models.nfl_player_props import current_depth_chart, prob_over as player_prob_over
+from models.nfl_player_props import rolling_yardage_stats
 from models.nfl_power_ratings import NFLPowerRatings
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
+
+# Same thresholds generate_slate.py's build_props_inferences() already
+# uses for corners/SOT -- one confidence bar for every count-based
+# market this project self-generates a line for.
+PROPS_OVER_BAND = (0.55, 0.80)
+PROPS_UNDER_BAND = (0.20, 0.45)
 
 TRAINING_SQL = """
 SELECT th.name AS home, ta.name AS away, m.home_score, m.away_score
@@ -51,7 +69,8 @@ WHERE l.code = 'NFL' AND m.status = 'final'
 
 UPCOMING_SQL = """
 SELECT m.match_id, m.external_ref, th.name AS home, ta.name AS away,
-       th.team_id AS home_id, ta.team_id AS away_id, m.kickoff_utc
+       th.team_id AS home_id, ta.team_id AS away_id,
+       th.nfl_abbr AS home_abbr, ta.nfl_abbr AS away_abbr, m.kickoff_utc
 FROM futbol.matches m
 JOIN futbol.teams th ON th.team_id = m.home_team_id
 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
@@ -62,7 +81,8 @@ WHERE l.code = 'NFL' AND s.label = %s
   AND m.status = 'scheduled'
   AND m.kickoff_utc BETWEEN now() AND now() + (%s || ' days')::interval
   AND p.prediction_id IS NULL
-GROUP BY m.match_id, m.external_ref, th.name, ta.name, th.team_id, ta.team_id, m.kickoff_utc
+GROUP BY m.match_id, m.external_ref, th.name, ta.name, th.team_id, ta.team_id,
+         th.nfl_abbr, ta.nfl_abbr, m.kickoff_utc
 ORDER BY m.kickoff_utc
 """
 
@@ -135,6 +155,40 @@ def build_candidates(model: NFLPowerRatings, home: str, away: str, home_id: int,
     return candidates
 
 
+STAT_COLUMN_BY_MARKET = {"QB": ("PLAYER_PASS_YARDS", "passing_yards"),
+                         "RB": ("PLAYER_RUSH_YARDS", "rushing_yards")}
+
+
+def build_player_candidates(cur, depth_chart: dict, team_abbr: str,
+                            kickoff: datetime) -> list[Inference]:
+    candidates = []
+    for position, (market, column) in STAT_COLUMN_BY_MARKET.items():
+        for nfl_player_id in depth_chart.get((team_abbr, position), []):
+            cur.execute("SELECT player_id, full_name FROM futbol.players WHERE nfl_player_id = %s",
+                       (nfl_player_id,))
+            row = cur.fetchone()
+            if not row:
+                continue  # never appeared in an ingested box score -- no history to predict from
+            player_id, player_name = row
+
+            stats = rolling_yardage_stats(cur, player_id, column, kickoff)
+            if stats is None:
+                continue
+            context = {"avg_yards": stats["avg_yards"], "sigma": stats["sigma"],
+                      "n_games": stats["n_games"]}
+            for line in player_candidate_lines(stats["avg_yards"], stats["sigma"]):
+                p = player_prob_over(stats["avg_yards"], stats["sigma"], line)
+                if PROPS_OVER_BAND[0] <= p <= PROPS_OVER_BAND[1]:
+                    candidates.append(Inference(market, f"{player_name} over {line}",
+                                                line, "over", p, subject_player_id=player_id,
+                                                context=context))
+                elif PROPS_UNDER_BAND[0] <= p <= PROPS_UNDER_BAND[1]:
+                    candidates.append(Inference(market, f"{player_name} under {line}",
+                                                line, "under", 1 - p, subject_player_id=player_id,
+                                                context=context))
+    return candidates
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", type=int, required=True)
@@ -171,22 +225,29 @@ def main() -> None:
                  f"(next {args.days_ahead} days)")
 
             lines_by_game_id = _market_lines(args.season)
+            depth_chart = current_depth_chart(args.season)
 
-            for match_id, external_ref, home, away, home_id, away_id, kickoff in fixtures:
+            for (match_id, external_ref, home, away, home_id, away_id,
+                home_abbr, away_abbr, kickoff) in fixtures:
                 if not external_ref:
                     print(f"  SKIP {home} vs {away}: no external_ref")
                     continue
                 game_id = external_ref.split(":", 1)[1]
                 lines = lines_by_game_id.get(game_id, {})
                 spread_line, total_line = lines.get("spread_line"), lines.get("total_line")
-                if (spread_line is None or pd.isna(spread_line)) and \
-                   (total_line is None or pd.isna(total_line)):
-                    print(f"  SKIP {home} vs {away}: no market line published yet")
-                    continue
+                has_market_line = not ((spread_line is None or pd.isna(spread_line)) and
+                                       (total_line is None or pd.isna(total_line)))
 
                 try:
-                    candidates = build_candidates(model, home, away, home_id, away_id,
-                                                  spread_line, total_line)
+                    candidates = (build_candidates(model, home, away, home_id, away_id,
+                                                   spread_line, total_line)
+                                 if has_market_line else [])
+                    candidates += build_player_candidates(cur, depth_chart, home_abbr, kickoff)
+                    candidates += build_player_candidates(cur, depth_chart, away_abbr, kickoff)
+                    if not candidates:
+                        print(f"  SKIP {home} vs {away}: no market line and no player "
+                             f"prop candidates")
+                        continue
                     candidates = log_degenerate_candidates(cur, match_id, candidates)
                     slate = build_slate(candidates, band=TARGET_BAND, size=20)
                     n = persist_slate(conn, match_id, model_version_id, slate)

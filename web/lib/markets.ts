@@ -10,6 +10,8 @@ export const MARKET_LABELS: Record<string, string> = {
   SPREAD: "Spread",
   TOTAL_POINTS: "Total Points",
   PLAYER_POINTS: "Player Points",
+  PLAYER_PASS_YARDS: "Passing Yards",
+  PLAYER_RUSH_YARDS: "Rushing Yards",
 };
 
 export function marketLabel(market: string): string {

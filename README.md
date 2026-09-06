@@ -85,6 +85,17 @@ history to calibrate against before a season has actually been played;
 same treatment the soccer props models got, just not possible on day
 one. See `CLAIMS.md`.
 
+**NFL player props — `src/models/nfl_player_props.py`**
+QB passing yards and RB rushing yards, predicted against candidate
+lines spaced around a recency-weighted rolling average (no market line
+exists for individual player props). WHO gets a prediction is decided
+by nflverse's real, published weekly depth chart, not by rolling-stat
+presence alone — deliberately combines two real signals (current depth
+chart rank + weighted recent performance) rather than either one
+alone, since a flat history window can't tell a healthy committee back
+from an injured starter nearly as fast as the actual depth chart can.
+See `CLAIMS.md`.
+
 **NBA match model — `src/models/nba_power_ratings.py`, `src/models/nba_player_points.py`, `scripts/generate_nba_slate.py`**
 Ridge-regression power ratings for `TOTAL_POINTS`, plus a rolling-average
 model for `PLAYER_POINTS` (no moneyline/spread in this sport's scope).
@@ -127,6 +138,7 @@ sql/*.sql                      # pre-2026-08-27 one-off scripts, applied by hand
 src/models/dixon_coles.py      # soccer match model
 src/models/props.py            # props model helpers
 src/models/nfl_power_ratings.py # NFL match model
+src/models/nfl_player_props.py # NFL player props (passing/rushing yards)
 src/models/nba_power_ratings.py # NBA match model (totals)
 src/models/nba_player_points.py # NBA player points props
 src/predictions/generator.py   # slate builder + ledger writer

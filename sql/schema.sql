@@ -54,7 +54,8 @@ CREATE TABLE players (
     fbref_id        TEXT UNIQUE,
     understat_id    TEXT UNIQUE,
     api_football_id INT UNIQUE,
-    nba_player_id   BIGINT UNIQUE
+    nba_player_id   BIGINT UNIQUE,
+    nfl_player_id   TEXT UNIQUE -- nflverse's gsis_id, e.g. '00-0034857'
 );
 
 -- ---------- Facts ----------
@@ -167,6 +168,9 @@ CREATE TABLE player_match_stats_nfl (
     receiving_tds       INT,
     tackles             INT,                         -- defense
     sacks               NUMERIC(3,1),                 -- defense; half-sacks are real
+    snap_pct            NUMERIC(5,2),                 -- share of offensive snaps -- the
+                                                       -- real usage signal a rolling
+                                                       -- yardage average alone can't see
     PRIMARY KEY (match_id, player_id)
 );
 
@@ -270,6 +274,7 @@ CREATE TABLE predictions (
                         -- equivalent, SPREAD is a handicap on signed
                         -- margin, not an O/U on a count
                         'MONEYLINE', 'SPREAD', 'TOTAL_POINTS',
+                        'PLAYER_PASS_YARDS', 'PLAYER_RUSH_YARDS',
                         -- NBA (live)
                         'PLAYER_POINTS')),
     subject_team_id INT REFERENCES teams(team_id),
