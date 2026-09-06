@@ -53,7 +53,8 @@ CREATE TABLE players (
     position        TEXT,                          -- GK/DF/MF/FW
     fbref_id        TEXT UNIQUE,
     understat_id    TEXT UNIQUE,
-    api_football_id INT UNIQUE
+    api_football_id INT UNIQUE,
+    nba_player_id   BIGINT UNIQUE
 );
 
 -- ---------- Facts ----------
@@ -169,6 +170,19 @@ CREATE TABLE player_match_stats_nfl (
     PRIMARY KEY (match_id, player_id)
 );
 
+-- NBA player points props' only feature source -- a rolling window
+-- over these rows, computed live at slate-generation time (see
+-- scripts/generate_nba_slate.py), not a persisted/trained model.
+CREATE TABLE player_match_stats_nba (
+    match_id   INT NOT NULL REFERENCES matches(match_id),
+    player_id  INT NOT NULL REFERENCES players(player_id),
+    team_id    INT NOT NULL REFERENCES teams(team_id),
+    minutes    NUMERIC(5,1),
+    points     INT,
+    PRIMARY KEY (match_id, player_id)
+);
+CREATE INDEX idx_player_match_stats_nba_player ON player_match_stats_nba (player_id);
+
 -- Event-level shots (Understat) — feeds the custom xG model later (v3)
 CREATE TABLE shots (
     shot_id         BIGSERIAL PRIMARY KEY,
@@ -251,12 +265,13 @@ CREATE TABLE predictions (
                         -- soccer (live)
                         '1X2', 'BTTS', 'TOTAL_GOALS', 'CORNERS', 'SOT',
                         'PLAYER_GOALS', 'PLAYER_SAVES',
-                        -- NFL/NBA (schema prep only -- nothing writes these
-                        -- yet; neither sport has a draw, so 1X2 doesn't
-                        -- apply, MONEYLINE is the 2-way equivalent, SPREAD
-                        -- is a handicap on signed margin, not an O/U on a
-                        -- count)
-                        'MONEYLINE', 'SPREAD', 'TOTAL_POINTS')),
+                        -- NFL (live) -- neither NFL nor NBA has a draw,
+                        -- so 1X2 doesn't apply; MONEYLINE is the 2-way
+                        -- equivalent, SPREAD is a handicap on signed
+                        -- margin, not an O/U on a count
+                        'MONEYLINE', 'SPREAD', 'TOTAL_POINTS',
+                        -- NBA (live)
+                        'PLAYER_POINTS')),
     subject_team_id INT REFERENCES teams(team_id),
     subject_player_id INT REFERENCES players(player_id),
     statement       TEXT NOT NULL,   -- human-readable: 'Inter over 5.5 corners'

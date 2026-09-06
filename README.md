@@ -85,14 +85,15 @@ history to calibrate against before a season has actually been played;
 same treatment the soccer props models got, just not possible on day
 one. See `CLAIMS.md`.
 
-**NBA match model — `src/models/nba_power_ratings.py`, `scripts/generate_nba_slate.py`**
-Ridge-regression power ratings, total-points only (no moneyline/spread
-in this sport's scope). `nba_api` carries no bookmaker data, so there's
-no real market line to predict against — candidate lines are spaced
-around the model's own prediction and only published when genuinely
-confident, the same treatment soccer's corners/SOT already use for
-count-based markets with no market-line source. Player points props
-not built yet. Also not calibrated yet. See `CLAIMS.md`.
+**NBA match model — `src/models/nba_power_ratings.py`, `src/models/nba_player_points.py`, `scripts/generate_nba_slate.py`**
+Ridge-regression power ratings for `TOTAL_POINTS`, plus a rolling-average
+model for `PLAYER_POINTS` (no moneyline/spread in this sport's scope).
+`nba_api` carries no bookmaker data, so neither market has a real line
+to predict against — candidate lines are spaced around a prediction
+(team total, or a player's own rolling scoring average and volatility)
+and only published when genuinely confident, the same treatment
+soccer's corners/SOT already use for count-based markets with no
+market-line source. Not calibrated yet. See `CLAIMS.md`.
 
 ## The ledger discipline (non-negotiable)
 
@@ -126,7 +127,8 @@ sql/*.sql                      # pre-2026-08-27 one-off scripts, applied by hand
 src/models/dixon_coles.py      # soccer match model
 src/models/props.py            # props model helpers
 src/models/nfl_power_ratings.py # NFL match model
-src/models/nba_power_ratings.py # NBA match model
+src/models/nba_power_ratings.py # NBA match model (totals)
+src/models/nba_player_points.py # NBA player points props
 src/predictions/generator.py   # slate builder + ledger writer
 src/grading/grader.py          # grading logic
 src/ingestion/                 # FBref / Understat / API-Football / nflverse / nba_api loaders

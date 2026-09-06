@@ -9,6 +9,7 @@ export const MARKET_LABELS: Record<string, string> = {
   MONEYLINE: "Moneyline",
   SPREAD: "Spread",
   TOTAL_POINTS: "Total Points",
+  PLAYER_POINTS: "Player Points",
 };
 
 export function marketLabel(market: string): string {

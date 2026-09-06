@@ -13,6 +13,10 @@ completed-games endpoint needed, unlike NFL where schedules and
 results were also one call but via a different package (nfl_data_py).
 
     python -m ingestion.nba_data backfill --season 2026-27
+    python -m ingestion.nba_data backfill-players --season 2026-27
+    (backfill-players: per-player minutes/points box scores, feeding
+    the PLAYER_POINTS market -- run backfill() for the same season
+    first, rows are matched onto existing match external_refs)
 """
 from __future__ import annotations
 
@@ -21,7 +25,7 @@ import logging
 import os
 
 import psycopg2
-from nba_api.stats.endpoints import scheduleleaguev2
+from nba_api.stats.endpoints import leaguegamelog, scheduleleaguev2
 
 log = logging.getLogger("nba_data")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -118,12 +122,90 @@ def backfill(season: str) -> int:
     return created
 
 
+def _resolve_or_create_player(cur, nba_player_id: int, player_name: str) -> int:
+    cur.execute("SELECT player_id FROM futbol.players WHERE nba_player_id = %s", (nba_player_id,))
+    row = cur.fetchone()
+    if row:
+        return row[0]
+    cur.execute(
+        """INSERT INTO futbol.players (full_name, nba_player_id) VALUES (%s, %s)
+           RETURNING player_id""", (player_name, nba_player_id))
+    return cur.fetchone()[0]
+
+
+def backfill_player_stats(season: str, date_from: str | None = None) -> int:
+    """
+    Per-player, per-game box scores (minutes, points only -- the entire
+    feature set player points props needs, see generate_nba_slate.py's
+    rolling-average query). Regular season only, same phasing as
+    backfill(). Requires the matches this season's games already exist
+    (run backfill() first) -- rows with no matching external_ref are
+    skipped rather than creating a match row with no schedule context.
+
+    date_from: nba_api's MM/DD/YYYY format. Omit for a full-season pull
+    (slow -- ~26k rows/season, each a handful of DB round trips); the
+    CronJob passes a short recent window instead, since the whole point
+    of running this nightly is just keeping rolling stats current, not
+    re-ingesting the whole season every night.
+    """
+    gl = leaguegamelog.LeagueGameLog(season=season, player_or_team_abbreviation="P",
+                                     date_from_nullable=date_from or "")
+    df = gl.get_data_frames()[0]
+    df = df[df["GAME_ID"].str.startswith(REGULAR_SEASON_PREFIX)]
+    log.info("%d player-game rows for %s from nba_api", len(df), season)
+
+    conn = psycopg2.connect(DSN)
+    stored, skipped_no_match = 0, 0
+    with conn.cursor() as cur:
+        for _, row in df.iterrows():
+            ext_ref = f"nba:{row['GAME_ID']}"
+            cur.execute("SELECT match_id FROM futbol.matches WHERE external_ref = %s", (ext_ref,))
+            match = cur.fetchone()
+            if not match:
+                skipped_no_match += 1
+                continue
+            match_id = match[0]
+
+            team_id = _team_id(cur, row["TEAM_ID"])
+            player_id = _resolve_or_create_player(cur, row["PLAYER_ID"], row["PLAYER_NAME"])
+
+            cur.execute(
+                """INSERT INTO futbol.player_match_stats_nba
+                     (match_id, player_id, team_id, minutes, points)
+                   VALUES (%s,%s,%s,%s,%s)
+                   ON CONFLICT (match_id, player_id)
+                   DO UPDATE SET minutes = EXCLUDED.minutes, points = EXCLUDED.points""",
+                (match_id, player_id, team_id, row["MIN"], row["PTS"]))
+            stored += 1
+            if stored % 500 == 0:
+                conn.commit()
+                log.info("progress: %d/%d player-game rows processed", stored, len(df))
+
+        conn.commit()
+    conn.close()
+    log.info("done: %d player-game rows stored, %d skipped (no matching match)",
+             stored, skipped_no_match)
+    return stored
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["backfill"])
+    ap.add_argument("mode", choices=["backfill", "backfill-players"])
     ap.add_argument("--season", required=True, help="e.g. 2026-27")
+    ap.add_argument("--days-back", type=int,
+                    help="backfill-players only: only pull the last N days "
+                         "(fast, for a nightly cron); omit for a full-season pull")
     args = ap.parse_args()
+    from datetime import datetime, timedelta
     from ops.pipeline_run import track_run
+
+    if args.mode == "backfill-players":
+        date_from = (datetime.now() - timedelta(days=args.days_back)).strftime("%m/%d/%Y") \
+            if args.days_back else None
+        with track_run(f"nba_backfill_players:{args.season}") as set_rows_written:
+            n = backfill_player_stats(args.season, date_from=date_from)
+            set_rows_written(n)
+        return
 
     with track_run(f"nba_backfill:{args.season}") as set_rows_written:
         n = backfill(args.season)

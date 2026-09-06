@@ -1,18 +1,19 @@
 """
 NBA slate generator -- the vertical-slice equivalent of
-generate_nfl_slate.py for NBA: TOTAL_POINTS only for now (player points
-props are a separate, not-yet-built increment -- see the NBA scope-guard
-ticket). Reuses build_slate()/persist_slate()/log_degenerate_candidates()
-from src/predictions/generator.py unchanged.
+generate_nfl_slate.py for NBA: TOTAL_POINTS and PLAYER_POINTS, the two
+markets the scope-guard ticket actually asks for. Reuses
+build_slate()/persist_slate()/log_degenerate_candidates() from
+src/predictions/generator.py unchanged.
 
     python scripts/generate_nba_slate.py --season 2026-27 --days-ahead 14
 
-Unlike NFL/soccer, there's no free real market total line for NBA
-(nba_api carries no bookmaker data) -- evaluates several candidate
-lines spaced around the model's own predicted total and only publishes
-the ones landing in a genuinely confident band, exactly like
-generate_slate.py's corners/SOT treatment (same PROPS_OVER_BAND/
-PROPS_UNDER_BAND thresholds). See nba_power_ratings.py's candidate_lines().
+Unlike NFL/soccer, there's no free real market line for NBA at all
+(nba_api carries no bookmaker data) -- both markets evaluate several
+candidate lines spaced around a prediction and only publish the ones
+landing in a genuinely confident band, exactly like generate_slate.py's
+corners/SOT treatment (same PROPS_OVER_BAND/PROPS_UNDER_BAND
+thresholds). See nba_power_ratings.py's candidate_lines() and
+nba_player_points.py's candidate_lines().
 """
 import argparse
 import json
@@ -25,6 +26,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import pandas as pd
 import psycopg2
 
+from models.nba_player_points import (RECENT_ROSTER_SQL, ROSTER_LOOKBACK_GAMES,
+                                       candidate_lines as player_candidate_lines,
+                                       prob_over as player_prob_over, rolling_points_stats)
 from models.nba_power_ratings import NBAPowerRatings
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
@@ -49,7 +53,8 @@ WHERE l.code = 'NBA' AND m.status = 'final'
 """
 
 UPCOMING_SQL = """
-SELECT m.match_id, th.name AS home, ta.name AS away, m.kickoff_utc
+SELECT m.match_id, th.name AS home, ta.name AS away, m.kickoff_utc,
+       m.home_team_id, m.away_team_id
 FROM futbol.matches m
 JOIN futbol.teams th ON th.team_id = m.home_team_id
 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
@@ -60,7 +65,7 @@ WHERE l.code = 'NBA' AND s.label = %s
   AND m.status = 'scheduled'
   AND m.kickoff_utc BETWEEN now() AND now() + (%s || ' days')::interval
   AND p.prediction_id IS NULL
-GROUP BY m.match_id, th.name, ta.name, m.kickoff_utc
+GROUP BY m.match_id, th.name, ta.name, m.kickoff_utc, m.home_team_id, m.away_team_id
 ORDER BY m.kickoff_utc
 """
 
@@ -83,6 +88,28 @@ def fit_model(cur, season: str) -> tuple[NBAPowerRatings, dict]:
     model = NBAPowerRatings(alpha=5.0).fit(df)
     meta = {"alpha": 5.0, "n_games": len(df), "seasons": seasons}
     return model, meta
+
+
+def build_player_candidates(cur, team_id: int, kickoff: datetime) -> list[Inference]:
+    cur.execute(RECENT_ROSTER_SQL, (team_id, team_id, kickoff, ROSTER_LOOKBACK_GAMES, team_id))
+    candidates = []
+    for player_id, player_name in cur.fetchall():
+        stats = rolling_points_stats(cur, player_id, kickoff)
+        if stats is None:
+            continue
+        context = {"avg_points": stats["avg_points"], "sigma": stats["sigma"],
+                  "n_games": stats["n_games"]}
+        for line in player_candidate_lines(stats["avg_points"], stats["sigma"]):
+            p = player_prob_over(stats["avg_points"], stats["sigma"], line)
+            if PROPS_OVER_BAND[0] <= p <= PROPS_OVER_BAND[1]:
+                candidates.append(Inference("PLAYER_POINTS", f"{player_name} over {line}",
+                                            line, "over", p, subject_player_id=player_id,
+                                            context=context))
+            elif PROPS_UNDER_BAND[0] <= p <= PROPS_UNDER_BAND[1]:
+                candidates.append(Inference("PLAYER_POINTS", f"{player_name} under {line}",
+                                            line, "under", 1 - p, subject_player_id=player_id,
+                                            context=context))
+    return candidates
 
 
 def main() -> None:
@@ -118,7 +145,7 @@ def main() -> None:
             print(f"{len(fixtures)} upcoming NBA fixture(s) without a slate "
                  f"(next {args.days_ahead} days)")
 
-            for match_id, home, away, kickoff in fixtures:
+            for match_id, home, away, kickoff, home_id, away_id in fixtures:
                 try:
                     context = {"predicted_total": model.predicted_total(home, away),
                               "sigma_total": model.sigma_total}
@@ -135,6 +162,10 @@ def main() -> None:
                             # same reasoning as generate_slate.py's props.
                             candidates.append(Inference("TOTAL_POINTS", f"Under {line}",
                                                         line, "under", 1 - p, context=context))
+
+                    candidates += build_player_candidates(cur, home_id, kickoff)
+                    candidates += build_player_candidates(cur, away_id, kickoff)
+
                     candidates = log_degenerate_candidates(cur, match_id, candidates)
                     slate = build_slate(candidates, band=TARGET_BAND, size=20)
                     n = persist_slate(conn, match_id, model_version_id, slate)

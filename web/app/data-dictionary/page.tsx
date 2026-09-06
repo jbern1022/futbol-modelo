@@ -15,11 +15,11 @@ interface Table {
 const TABLES: Table[] = [
   {
     name: "leagues",
-    description: "One row per competition. sport distinguishes soccer from the planned NFL/NBA expansion.",
+    description: "One row per competition. sport distinguishes soccer from the live NFL/NBA vertical slices.",
     columns: [
-      { name: "code", type: "text", note: "'EPL', 'SERIE_A', 'MLS', 'LA_LIGA', 'WC'" },
+      { name: "code", type: "text", note: "'EPL', 'SERIE_A', 'MLS', 'LA_LIGA', 'WC', 'NFL', 'NBA'" },
       { name: "is_international", type: "boolean", note: "true only for World Cup" },
-      { name: "sport", type: "text", note: "'soccer' | 'basketball' | 'football' — every league is 'soccer' today; the other two exist for the planned NFL/NBA build" },
+      { name: "sport", type: "text", note: "'soccer' | 'basketball' | 'football' — all three are live" },
     ],
   },
   {
@@ -31,9 +31,11 @@ const TABLES: Table[] = [
   },
   {
     name: "teams / players",
-    description: "Shared entity tables across every league and (eventually) every sport. External ids exist purely for de-duplicating the same real-world team/player across three independent data sources.",
+    description: "Shared entity tables across every league and sport. External ids exist purely for de-duplicating the same real-world team/player across independent data sources.",
     columns: [
       { name: "fbref_id / understat_id / api_football_id", type: "text/text/int", note: "Nullable — a team only has an id for the sources that actually cover it. Name-based aliasing (src/ingestion/entities.py) resolves the same team across sources when ids don't overlap." },
+      { name: "teams.nfl_abbr / teams.nba_team_id", type: "text/bigint", note: "Same per-source-id pattern, one column per new sport's data source (nflverse, nba_api)" },
+      { name: "players.nba_player_id", type: "bigint", note: "nba_api's own numeric player id" },
       { name: "players.position", type: "text", note: "'GK'/'DF'/'MF'/'FW' — free text from the source, not an enum" },
     ],
   },
@@ -59,10 +61,18 @@ const TABLES: Table[] = [
   },
   {
     name: "team_match_stats_nfl / player_match_stats_nfl",
-    description: "Empty as of this writing — schema prep only, ahead of the actual NFL ingestion adapter. Column list is a best-effort standard box-score set matching nflverse/nfl_data_py's shape; expect adjustment once real data starts flowing.",
+    description: "Still empty — the live NFL ingestion adapter (src/ingestion/nfl_data.py) populates matches directly (schedule, scores) but doesn't need box-score detail for the current MONEYLINE/SPREAD/TOTAL_POINTS model, so these tables are unused schema prep for now. Column list is a best-effort standard box-score set matching nflverse/nfl_data_py's shape; expect adjustment if a future model needs this detail.",
     columns: [
       { name: "team_match_stats_nfl", type: "table", note: "total/passing/rushing yards, turnovers, sacks, penalties, first downs, third-down conversions, time of possession" },
       { name: "player_match_stats_nfl", type: "table", note: "position, passing/rushing/receiving stat lines, defensive tackles/sacks (sacks is NUMERIC(3,1) — half-sacks are real)" },
+    ],
+  },
+  {
+    name: "player_match_stats_nba",
+    description: "Live and populated — the only feature source for PLAYER_POINTS props. Minutes and points only, deliberately minimal for this vertical slice; a rolling window over these rows (computed live at slate-generation time, not a trained model) is the entire feature set.",
+    columns: [
+      { name: "minutes", type: "numeric(5,1)", note: "Whole minutes as reported by nba_api" },
+      { name: "points", type: "int", note: "" },
     ],
   },
   {
@@ -85,7 +95,7 @@ const TABLES: Table[] = [
     name: "predictions",
     description: "The immutable ledger. INSERT-only (a trigger rejects UPDATE/DELETE outright); another trigger rejects any row locked at or after its match's kickoff.",
     columns: [
-      { name: "market", type: "text", note: "CHECK-constrained: '1X2','BTTS','TOTAL_GOALS','CORNERS','SOT','PLAYER_GOALS','PLAYER_SAVES' (soccer, live) plus 'MONEYLINE','SPREAD','TOTAL_POINTS' (NFL/NBA, schema prep only — nothing writes these yet)" },
+      { name: "market", type: "text", note: "CHECK-constrained: '1X2','BTTS','TOTAL_GOALS','CORNERS','SOT','PLAYER_GOALS','PLAYER_SAVES' (soccer, live) plus 'MONEYLINE','SPREAD','TOTAL_POINTS' (NFL, live) plus 'TOTAL_POINTS','PLAYER_POINTS' (NBA, live -- NBA has no moneyline/spread market by design, see the scope-guard ticket)" },
       { name: "side", type: "text", note: "Semantics depend on market: 'home'/'draw'/'away' for 1X2, 'yes'/'no' for BTTS, 'over'/'under' for line markets, 'home'/'away' for SPREAD/MONEYLINE (which team the prediction concerns)" },
       { name: "line", type: "numeric", note: "NULL where not applicable (1X2, BTTS, MONEYLINE); the threshold for O/U markets; the signed spread for SPREAD" },
       { name: "probability", type: "numeric", note: "CHECK-constrained to the open interval (0,1) — never exactly 0 or 1" },

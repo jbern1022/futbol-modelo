@@ -24,17 +24,20 @@ export default function HowItWorksPage() {
             <span className="font-semibold text-black dark:text-zinc-50">1.</span>
             <span>
               <strong className="text-black dark:text-zinc-50">Pulls fresh match data</strong>{" "}
-              across four leagues (MLS, Premier League, Serie A, La Liga).
+              across soccer (MLS, Premier League, Serie A, La Liga), the NFL, and
+              the NBA.
             </span>
           </li>
           <li className="flex gap-3">
             <span className="font-semibold text-black dark:text-zinc-50">2.</span>
             <span>
               <strong className="text-black dark:text-zinc-50">Generates predictions</strong>{" "}
-              using two model families — a Dixon-Coles statistical model for match
-              outcomes, and gradient-boosted models (LightGBM) for player and team
-              props (corners, shots on target, goalscorers, saves). Every model had
-              to prove it beats a naive baseline before being allowed to ship.
+              using a model built for each sport — a Dixon-Coles statistical model
+              for soccer match outcomes, gradient-boosted models (LightGBM) for
+              soccer player and team props (corners, shots on target, goalscorers,
+              saves), and power-ratings models for NFL (moneyline/spread/total) and
+              NBA (total points and player points). Every model had to prove it
+              beats a naive baseline before being allowed to ship.
             </span>
           </li>
           <li className="flex gap-3">
