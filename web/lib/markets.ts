@@ -6,6 +6,9 @@ export const MARKET_LABELS: Record<string, string> = {
   SOT: "Shots on Target",
   PLAYER_GOALS: "Anytime Goalscorer",
   PLAYER_SAVES: "Goalkeeper Saves",
+  MONEYLINE: "Moneyline",
+  SPREAD: "Spread",
+  TOTAL_POINTS: "Total Points",
 };
 
 export function marketLabel(market: string): string {

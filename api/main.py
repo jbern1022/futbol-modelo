@@ -419,7 +419,7 @@ def list_fixtures(
                 LEFT JOIN LATERAL (
                     SELECT p.statement, p.probability
                     FROM futbol.predictions p
-                    WHERE p.match_id = m.match_id AND p.market = '1X2'
+                    WHERE p.match_id = m.match_id AND p.market IN ('1X2', 'MONEYLINE')
                     ORDER BY p.probability DESC
                     LIMIT 1
                 ) headline ON true
