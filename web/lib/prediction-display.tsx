@@ -65,12 +65,21 @@ export function outcomeBadge(outcome: string | null) {
 // display label, derived from probability, not a stored field.
 export function roleBadge(probability: number) {
   let label: string | null = null;
-  if (probability > 0.8) label = "Anchor";
-  else if (probability >= 0.6 && probability <= 0.75) label = "Bold pick";
-  else if (probability < 0.45) label = "Long shot";
-  if (!label) return null;
+  let style: string;
+  if (probability > 0.8) {
+    label = "Anchor";
+    style = "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300";
+  } else if (probability >= 0.6 && probability <= 0.75) {
+    label = "Bold pick";
+    style = "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300";
+  } else if (probability < 0.45) {
+    label = "Long shot";
+    style = "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300";
+  } else {
+    return null;
+  }
   return (
-    <span className="ml-2 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+    <span className={`ml-2 rounded px-2 py-0.5 text-xs font-medium ${style}`}>
       {label}
     </span>
   );

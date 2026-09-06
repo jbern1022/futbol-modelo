@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ThemeToggle from "./theme-toggle";
+import NavLinks from "./nav-links";
 import AskPeteyDrawer from "./ask-petey-drawer";
 import Footer from "./footer";
+
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 const SITE_URL = "https://futbol.josephbernal.com";
 const DESCRIPTION = "Calibrated soccer prediction system — live fixtures and prediction slates.";
@@ -47,12 +52,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className={`h-full antialiased ${geistSans.variable} ${geistMono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col font-sans">
-        <header className="flex justify-end px-4 py-2">
+        <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-100 dark:border-zinc-800">
+          <NavLinks />
           <ThemeToggle />
         </header>
         <AskPeteyDrawer />
