@@ -63,6 +63,7 @@ spec:
                 python -m ingestion.api_football backfill --league EPL --season 2026 --primary &&
                 python -m ingestion.api_football backfill --league SERIE_A --season 2026 --primary &&
                 python -m ingestion.nfl_data backfill --season 2026 &&
+                python -m ingestion.nfl_data backfill-players --season 2026 &&
                 python -m ingestion.nba_data backfill --season 2026-27 &&
                 python -m ingestion.nba_data backfill-players --season 2026-27 --days-back 3 &&
                 python scripts/rebuild_features.py
