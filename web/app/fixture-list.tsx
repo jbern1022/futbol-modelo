@@ -31,6 +31,7 @@ const LEAGUE_COLORS: Record<string, string> = {
   SERIE_A: "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300",
   LA_LIGA: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
   NFL: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  NBA: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
   WC: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
 };
 
