@@ -35,12 +35,37 @@ def _tau(x: int, y: int, lam: float, mu: float, rho: float) -> float:
     return 1.0
 
 
+def _tau_vec(x: np.ndarray, y: np.ndarray, lam: np.ndarray, mu: np.ndarray, rho: float) -> np.ndarray:
+    """Array form of _tau, element-wise over a whole match dataset.
+
+    nll() (inside fit()'s SLSQP loop) previously called scalar _tau() via a
+    Python-level list comprehension, once per match, on every optimizer
+    iteration -- the actual hot path fit() runs hundreds of times per fit.
+    Same four cases as _tau, just as boolean masks over the whole array
+    instead of a branch per element. See tests/test_dixon_coles_tau_vec.py
+    for the element-wise equivalence proof against _tau, and
+    tests/test_dixon_coles_smoke.py::test_fit_matches_pre_vectorization_snapshot
+    for proof this doesn't change what fit() actually converges to.
+    """
+    tau = np.ones_like(lam, dtype=float)
+    m00 = (x == 0) & (y == 0)
+    m01 = (x == 0) & (y == 1)
+    m10 = (x == 1) & (y == 0)
+    m11 = (x == 1) & (y == 1)
+    tau = np.where(m00, 1 - lam * mu * rho, tau)
+    tau = np.where(m01, 1 + lam * rho, tau)
+    tau = np.where(m10, 1 + mu * rho, tau)
+    tau = np.where(m11, 1 - rho, tau)
+    return tau
+
+
 class DixonColes:
     def __init__(self, xi: float = 0.0018):
         """xi ~0.0018/day halves a match's weight in ~13 months."""
         self.xi = xi
         self.teams: list[str] = []
         self.params: np.ndarray | None = None
+        self._idx: dict[str, int] = {}
 
     # ---------- fitting ----------
 
@@ -57,6 +82,7 @@ class DixonColes:
         self.teams = sorted(set(df["home"]) | set(df["away"]))
         n = len(self.teams)
         idx = {t: i for i, t in enumerate(self.teams)}
+        self._idx = idx  # cached for rates() -- rebuilding this dict per inference call was wasted work
 
         home_i = df["home"].map(idx).to_numpy()
         away_i = df["away"].map(idx).to_numpy()
@@ -73,10 +99,7 @@ class DixonColes:
             gamma, rho = p[2 * n], p[2 * n + 1]
             lam = np.exp(atk[home_i] + dfn[away_i] + gamma)   # home goal rate
             mu = np.exp(atk[away_i] + dfn[home_i])            # away goal rate
-            tau = np.array([
-                _tau(x, y, l, m, rho)
-                for x, y, l, m in zip(hg, ag, lam, mu)
-            ])
+            tau = _tau_vec(hg, ag, lam, mu, rho)
             tau = np.clip(tau, 1e-10, None)
             ll = w * (
                 np.log(tau)
@@ -97,7 +120,12 @@ class DixonColes:
 
     def rates(self, home: str, away: str) -> tuple[float, float, float]:
         n = len(self.teams)
-        idx = {t: i for i, t in enumerate(self.teams)}
+        # _idx is populated by fit(), but tests (and any other caller) may
+        # set .teams directly without going through fit() -- rebuild rather
+        # than trust a cache that could be stale or never populated.
+        if home not in self._idx or away not in self._idx:
+            self._idx = {t: i for i, t in enumerate(self.teams)}
+        idx = self._idx
         p = self.params
         atk, dfn = p[:n], p[n:2 * n]
         gamma, rho = p[2 * n], p[2 * n + 1]
