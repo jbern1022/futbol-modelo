@@ -151,7 +151,7 @@ export default async function Home() {
             <div className="rounded-lg border border-zinc-200 bg-white px-5 py-3 dark:border-zinc-800 dark:bg-zinc-900">
               <p className="text-xs text-zinc-500">Graded predictions</p>
               <p className="text-xl font-semibold text-black dark:text-zinc-50">
-                {stats.totalPredictions.toLocaleString()}
+                {stats.totalPredictions.toLocaleString("en-US")}
               </p>
             </div>
             {stats.bandHitRate !== null && (

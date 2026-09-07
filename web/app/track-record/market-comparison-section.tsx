@@ -1,5 +1,7 @@
 "use client";
 
+import { LocalDate } from "../local-date";
+
 interface MarketComparisonRow {
   league: string;
   match_id: number;
@@ -66,10 +68,7 @@ export default function MarketComparisonSection({
                     {row.home_team} vs {row.away_team}
                     <div className="text-xs text-zinc-400">
                       {row.league} &middot;{" "}
-                      {new Date(row.kickoff_utc).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      <LocalDate date={row.kickoff_utc} options={{ month: "short", day: "numeric" }} />
                     </div>
                   </td>
                   <td className="px-4 py-2 text-zinc-500">
