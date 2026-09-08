@@ -10,6 +10,8 @@ import argparse
 import os
 import sys
 
+from typing import Any
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import numpy as np
@@ -19,6 +21,7 @@ from scipy.stats import poisson
 from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 
+lgb: Any
 try:
     import lightgbm as lgb
 except ImportError:

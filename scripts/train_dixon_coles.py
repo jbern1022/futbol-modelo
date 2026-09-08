@@ -62,6 +62,7 @@ def walk_forward(df: pd.DataFrame, holdout: str, xi: float) -> dict:
             model = DixonColes(xi=xi).fit(
                 past.rename(columns=str).assign(date=pd.to_datetime(past.date)))
             refit_at = row.date + timedelta(days=7)
+        assert model is not None  # first iteration always sets it (refit_at starts None)
         try:
             mk = derive_markets(model.predict(row.home, row.away))
         except KeyError:      # promoted team with no history yet

@@ -16,6 +16,8 @@ import argparse
 import os
 import sys
 
+from typing import Any
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import numpy as np
@@ -23,6 +25,7 @@ import pandas as pd
 import psycopg2
 from scipy.stats import poisson
 
+lgb: Any
 try:
     import lightgbm as lgb
 except ImportError:
