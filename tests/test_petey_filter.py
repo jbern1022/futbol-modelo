@@ -58,11 +58,12 @@ def test_valid_nested_or_inside_and():
 
 
 def test_numeric_value_coerced_to_string():
-    # kickoff_date comparisons, etc. -- numbers are allowed in the JSON,
-    # stored as strings internally since every allowlisted field is
-    # text/date, never compared as a raw number.
-    node = validate_filter({"field": "kickoff_date", "op": ">", "value": 2025})
-    assert node == FilterCondition(field="kickoff_date", op=">", value="2025")
+    # numbers are allowed in the JSON, stored as strings internally
+    # since every allowlisted field is text/date, never compared as a
+    # raw number. team has no value allowlist, so this isolates the
+    # coercion behavior from the separate per-field value checks.
+    node = validate_filter({"field": "team", "op": ">", "value": 2025})
+    assert node == FilterCondition(field="team", op=">", value="2025")
 
 
 # ---------- rejected: field/operator allowlist ----------
@@ -77,6 +78,99 @@ def test_rejects_field_targeting_a_different_table():
     # a real column" gets through if it isn't explicitly listed.
     with pytest.raises(FilterValidationError):
         validate_filter({"field": "prediction_id", "op": "=", "value": "1"})
+
+
+# ---------- rejected: per-field value allowlist ----------
+# Found necessary through live testing against real Ollama output, not
+# hypothetically -- both of the next two are transcripts of actual bugs
+# a first-draft prompt produced.
+
+def test_rejects_market_code_in_the_wrong_field():
+    # real live bug: asked "shots on target hits in Serie A", got back
+    # {"field": "side", "op": "=", "value": "SOT"} -- SOT is a market
+    # code, not a valid side. Structurally fine (allowlisted field,
+    # allowlisted op, string value) but semantically nonsense -- would
+    # have silently compiled to a query that just finds zero rows.
+    with pytest.raises(FilterValidationError, match="not valid for field 'side'"):
+        validate_filter({"field": "side", "op": "=", "value": "SOT"})
+
+
+def test_rejects_invented_market_value():
+    # real live bug: an off-topic question ("what's the weather like")
+    # got back {"field": "market", "op": "=", "value": "weather"}.
+    with pytest.raises(FilterValidationError, match="not valid for field 'market'"):
+        validate_filter({"field": "market", "op": "=", "value": "weather"})
+
+
+def test_market_value_is_case_normalized():
+    # enum-like fields shouldn't depend on Ollama matching case exactly.
+    node = validate_filter({"field": "market", "op": "=", "value": "corners"})
+    assert node.value == "CORNERS"
+
+
+def test_league_value_is_case_normalized():
+    node = validate_filter({"field": "league", "op": "=", "value": "mls"})
+    assert node.value == "MLS"
+
+
+def test_outcome_value_is_case_normalized():
+    node = validate_filter({"field": "outcome", "op": "=", "value": "HIT"})
+    assert node.value == "hit"
+
+
+def test_rejects_invalid_outcome_value():
+    with pytest.raises(FilterValidationError, match="not valid for field 'outcome'"):
+        validate_filter({"field": "outcome", "op": "=", "value": "voided"})
+
+
+def test_rejects_invalid_league_value():
+    with pytest.raises(FilterValidationError, match="not valid for field 'league'"):
+        validate_filter({"field": "league", "op": "=", "value": "PREMIER_LEAGUE"})
+
+
+def test_team_field_has_no_value_allowlist():
+    # team names are open-ended -- any string passes structural
+    # validation (the query just returns zero rows for a nonexistent
+    # team, which is correct/honest behavior, not a bug to prevent).
+    node = validate_filter({"field": "team", "op": "=", "value": "Some Made Up FC"})
+    assert node.value == "Some Made Up FC"
+
+
+def test_kickoff_date_accepts_iso_format():
+    node = validate_filter({"field": "kickoff_date", "op": ">=", "value": "2026-01-01"})
+    assert node.value == "2026-01-01"
+
+
+def test_kickoff_date_rejects_non_iso_format():
+    with pytest.raises(FilterValidationError, match="not a valid date"):
+        validate_filter({"field": "kickoff_date", "op": "=", "value": "January 1st"})
+
+
+def test_kickoff_date_rejects_sql_injection_shaped_value():
+    with pytest.raises(FilterValidationError, match="not a valid date"):
+        validate_filter({"field": "kickoff_date", "op": "=", "value": "2026-01-01'; DROP TABLE x; --"})
+
+
+def test_season_accepts_bare_year():
+    node = validate_filter({"field": "season", "op": "=", "value": "2025"})
+    assert node.value == "2025"
+
+
+def test_season_accepts_split_year():
+    node = validate_filter({"field": "season", "op": "=", "value": "2025-26"})
+    assert node.value == "2025-26"
+
+
+def test_season_rejects_relative_phrase():
+    # real live bug: "this season" was Ollama's literal proposed value.
+    with pytest.raises(FilterValidationError, match="not a valid season"):
+        validate_filter({"field": "season", "op": "=", "value": "this season"})
+
+
+def test_season_rejects_nonsense_small_integer():
+    # real live bug: another question produced season="1".
+    with pytest.raises(FilterValidationError, match="not a valid season"):
+        validate_filter({"field": "season", "op": "=", "value": "1"})
 
 
 def test_rejects_operator_not_on_allowlist():
@@ -149,14 +243,14 @@ def test_rejects_excessive_nesting_depth():
 
 
 def test_rejects_too_many_conditions():
-    conditions = [{"field": "market", "op": "=", "value": f"M{i}"} for i in range(20)]
+    conditions = [{"field": "team", "op": "=", "value": f"Team{i}"} for i in range(20)]
     with pytest.raises(FilterValidationError, match="too many conditions"):
         validate_filter({"and": conditions})
 
 
 def test_allows_exactly_the_condition_limit():
     from petey_filter import MAX_CONDITIONS
-    conditions = [{"field": "market", "op": "=", "value": f"M{i}"} for i in range(MAX_CONDITIONS)]
+    conditions = [{"field": "team", "op": "=", "value": f"Team{i}"} for i in range(MAX_CONDITIONS)]
     validate_filter({"and": conditions})  # should not raise
 
 
@@ -208,7 +302,7 @@ def test_adversarial_value_is_never_interpolated_into_sql_text():
 
 def test_adversarial_value_via_validate_and_compile_end_to_end():
     payload = "x' OR '1'='1"
-    sql, params = validate_and_compile({"field": "outcome", "op": "=", "value": payload})
+    sql, params = validate_and_compile({"field": "team", "op": "=", "value": payload})
     assert payload not in sql
     assert params == [payload]
 

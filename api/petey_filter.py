@@ -15,11 +15,52 @@ unit-testable, no DB import at module load time.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# Real season labels are either a bare year (MLS: "2025") or a
+# hyphenated split-year (EPL/SERIE_A/LA_LIGA: "2025-26") -- found
+# necessary the same way as the other value checks: live-tested
+# questions like "this season" / "this year" produced values like
+# "this season", "1", and ">= '0'" for the season field, none of which
+# would ever match a real row, silently returning wrong (usually empty)
+# results instead of a clear rejection.
+_SEASON = re.compile(r"^\d{4}(-\d{2})?$")
 
 ALLOWED_FIELDS = {"market", "league", "team", "season", "side", "outcome", "kickoff_date"}
 ALLOWED_OPERATORS = {"=", ">", "<", ">=", "<="}
 ALLOWED_BOOL_OPS = {"and", "or"}
+
+# Per-field value allowlists for the fields with a fixed, known domain --
+# found necessary through live testing against real Ollama output, not
+# hypothetically: a first-draft prompt put "SOT" (a market code) in the
+# "side" field, and separately invented market="weather" for an
+# off-topic question. Checking field/operator alone let both through --
+# neither is a structurally invalid filter, they just query nonsense and
+# silently return zero rows instead of surfacing the real problem. team
+# and kickoff_date have no fixed enum (team names are open-ended; date
+# format is checked separately, not against a value set).
+#
+# Sourced from predictions.market's own CHECK constraint (sql/schema.sql)
+# and futbol.leagues -- kept in sync by hand, matching this project's
+# existing "the two must be kept in sync by hand; nothing enforces this
+# automatically" pattern for schema.sql vs. migrations.
+ALLOWED_MARKET_VALUES = {
+    "1X2", "BTTS", "TOTAL_GOALS", "CORNERS", "SOT", "PLAYER_GOALS", "PLAYER_SAVES",
+    "MONEYLINE", "SPREAD", "TOTAL_POINTS", "PLAYER_PASS_YARDS", "PLAYER_RUSH_YARDS",
+    "PLAYER_POINTS",
+}
+ALLOWED_LEAGUE_VALUES = {"EPL", "LA_LIGA", "MLS", "NBA", "NFL", "SERIE_A", "WC"}
+ALLOWED_SIDE_VALUES = {"over", "under", "home", "draw", "away", "yes", "no"}
+ALLOWED_OUTCOME_VALUES = {"hit", "miss"}  # v_graded_predictions already excludes 'void'
+
+FIELD_VALUE_ALLOWLISTS: dict[str, set[str]] = {
+    "market": ALLOWED_MARKET_VALUES,
+    "league": ALLOWED_LEAGUE_VALUES,
+    "side": ALLOWED_SIDE_VALUES,
+    "outcome": ALLOWED_OUTCOME_VALUES,
+}
 
 # Bounds on the shape of a filter tree, independent of any single
 # field/operator check -- without these, a proposal like nested "and"s
@@ -94,11 +135,39 @@ def validate_filter(node: object, *, _depth: int = 0, _count: list[int] | None =
     if isinstance(value, bool) or not isinstance(value, (str, int, float)):
         raise FilterValidationError("value must be a string or number")
 
+    value_str = str(value)
+    allowed_values = FIELD_VALUE_ALLOWLISTS.get(field)
+    if allowed_values is not None:
+        # Case-normalized: these are enum-like columns (market/league/
+        # side/outcome codes), not free text, so "corners" and "CORNERS"
+        # should both work rather than depending on Ollama matching case
+        # exactly. Normalize to the canonical (uppercase-in-schema) form.
+        normalized = value_str.upper() if field in ("market", "league") else value_str.lower()
+        canonical = {v.upper() if field in ("market", "league") else v.lower(): v
+                     for v in allowed_values}
+        if normalized not in canonical:
+            raise FilterValidationError(
+                f"value '{value}' is not valid for field '{field}' "
+                f"-- must be one of {sorted(allowed_values)}")
+        value_str = canonical[normalized]
+    elif field == "kickoff_date" and not _ISO_DATE.match(value_str):
+        # No fixed value set (it's a date, not an enum), but still worth
+        # rejecting garbage here rather than letting Postgres's implicit
+        # text->date cast throw a DB-level error later for something
+        # validation could have caught cleanly.
+        raise FilterValidationError(
+            f"value '{value}' is not a valid date for field 'kickoff_date' "
+            "-- must be YYYY-MM-DD")
+    elif field == "season" and not _SEASON.match(value_str):
+        raise FilterValidationError(
+            f"value '{value}' is not a valid season for field 'season' "
+            "-- must be a year (2025) or split-year (2025-26)")
+
     _count[0] += 1
     if _count[0] > MAX_CONDITIONS:
         raise FilterValidationError(f"too many conditions (max {MAX_CONDITIONS})")
 
-    return FilterCondition(field=field, op=op, value=str(value))
+    return FilterCondition(field=field, op=op, value=value_str)
 
 
 def compile_to_sql(node: FilterNode) -> tuple[str, list[str]]:
