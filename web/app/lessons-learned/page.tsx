@@ -188,6 +188,53 @@ export default function LessonsLearnedPage() {
               happened.
             </p>
           </section>
+
+          <section id="mls-xg-data-gap">
+            <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
+              Building the model was the easy part
+            </h2>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+              The <a href="/custom-xg" className="underline hover:no-underline">custom xG model</a>{" "}
+              shipped for EPL, Serie A, and La Liga &mdash; the leagues with
+              real shot-level data behind them. MLS, the league this whole
+              exercise was partly meant to stop depending on a third party
+              for, isn&apos;t in it. Not because building the model for MLS
+              is hard &mdash; the code doesn&apos;t care which league&apos;s
+              rows it trains on &mdash; but because the shots themselves
+              don&apos;t exist anywhere accessible. Understat, the only
+              source already wired into this project with real shot
+              coordinates, has never covered MLS.
+            </p>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+              So the actual question became: is there any other real source
+              for MLS shot coordinates, free or otherwise? Checked directly
+              rather than assumed. Every provider that publishes aggregate
+              xG at an affordable tier &mdash; the same API already used for
+              fixtures and odds, plus two of its closest alternatives &mdash;
+              turned out to publish only that: a single number per shot or
+              per match, never the underlying coordinates a model can
+              actually train on. The one real exception is StatsBomb&apos;s
+              free, open-data GitHub release, which does include genuine
+              MLS shot data (2023 season) with defender positions at the
+              moment of each shot &mdash; richer than what this project has
+              for any league right now. But it&apos;s a one-time historical
+              release, not a live feed, so it can prove the model works on
+              MLS shots without being able to generate a single live
+              prediction from it. Actual live shot-coordinate data, for any
+              league, turned out to be gated behind enterprise sales
+              contacts industry-wide &mdash; not a tier this project is
+              going to reach for a portfolio site.
+            </p>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+              Shipping the model for three leagues and explicitly not for a
+              fourth felt like the more honest move than either quietly
+              dropping the idea or holding the whole feature back on a gap
+              that isn&apos;t closing anytime soon. The absence is the
+              finding: sometimes the real blocker on a feature isn&apos;t
+              the code, it&apos;s that the data it needs was never free to
+              begin with.
+            </p>
+          </section>
         </div>
 
         <p className="mt-10 text-zinc-600 dark:text-zinc-400">

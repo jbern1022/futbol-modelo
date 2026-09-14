@@ -203,17 +203,27 @@ export default function CustomXgPage() {
         </div>
 
         <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">
-          What&apos;s next
+          What&apos;s next &mdash; and what isn&apos;t
         </h2>
         <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-          Two real, separate pieces of follow-up work, not attempted here:
-          closing the feature gap would need richer shot-context data than
-          any public source currently provides to this project, and
-          extending this model to MLS &mdash; the whole reason to build a
-          custom xG model instead of depending on Understat in the first
-          place &mdash; needs a new MLS shot-event ingestion pipeline,
-          since Understat doesn&apos;t cover MLS and nothing else currently
-          supplies shot coordinates for it.
+          Closing the feature gap would need richer shot-context data
+          (defender positions at the moment of the shot, most likely) than
+          any source currently wired into this project provides.
+        </p>
+        <p className="mt-4 text-zinc-600 dark:text-zinc-400">
+          Extending this model to MLS &mdash; the actual reason to build a
+          custom xG model instead of depending on Understat &mdash; is a
+          deliberate non-goal for now, not an oversight. Researched every
+          realistic option: every shot-coordinate data source found either
+          doesn&apos;t cover MLS (Understat), is a one-time static historical
+          release rather than a live feed (StatsBomb&apos;s free open data has
+          real MLS shot coordinates, just for the 2023 season only), or
+          requires enterprise/quote-only pricing (Sportradar&apos;s Soccer
+          Extended API). Full writeup on the{" "}
+          <a href="/lessons-learned#mls-xg-data-gap" className="underline hover:no-underline">
+            Lessons Learned
+          </a>{" "}
+          page.
         </p>
 
         <a href="/how-it-works" className="mt-8 inline-block rounded-md border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900">
