@@ -7,6 +7,16 @@ export default function ThemeToggle() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // One-time read of DOM state an inline script already set before
+    // hydration (flash-of-wrong-theme prevention) -- has to happen in
+    // an effect, not during render, since it must run only after
+    // mount to avoid a server/client markup mismatch (document doesn't
+    // exist during SSR). This is exactly the "synchronizing with an
+    // external system" case React's own docs say an effect is for
+    // (https://react.dev/learn/you-might-not-need-an-effect), not the
+    // "derived state" anti-pattern react-hooks/set-state-in-effect
+    // otherwise (correctly, elsewhere) guards against.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     setIsDark(document.documentElement.classList.contains("dark"));
   }, []);

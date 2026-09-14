@@ -48,10 +48,18 @@ export default function PredictionLog({
 
   // Any filter change (including the parent's league/season/market)
   // resets to page one -- staying on offset=200 after switching leagues
-  // would silently show an empty or wrong page.
-  useEffect(() => {
+  // would silently show an empty or wrong page. Adjusted during render
+  // (React's own recommended pattern for "reset state when a prop
+  // changes": https://react.dev/learn/you-might-not-need-an-effect
+  // #adjusting-some-state-when-a-prop-changes) rather than in a
+  // separate effect -- avoids an extra render pass and the
+  // react-hooks/set-state-in-effect lint warning that pattern trips.
+  const [prevFilterKey, setPrevFilterKey] = useState([league, season, market, outcome]);
+  const filterKey = [league, season, market, outcome];
+  if (filterKey.some((v, i) => v !== prevFilterKey[i])) {
+    setPrevFilterKey(filterKey);
     setOffset(0);
-  }, [league, season, market, outcome]);
+  }
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -63,6 +71,15 @@ export default function PredictionLog({
     params.set("offset", String(offset));
 
     let cancelled = false;
+    // Textbook cancelled-flag data-fetching effect -- the same shape
+    // React's own docs use for this exact case
+    // (https://react.dev/learn/synchronizing-with-effects#fetching-data),
+    // including setting a loading flag synchronously before the async
+    // call starts. react-hooks/set-state-in-effect flags this pattern
+    // categorically; the "real" fix would be migrating to Suspense/the
+    // use() hook, a materially bigger change (parent needs a Suspense
+    // boundary, loading UX model changes) than this lint pass warrants.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetch(`/api/predictions?${params.toString()}`)
       .then((res) => res.json())
