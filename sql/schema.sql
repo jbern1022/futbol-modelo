@@ -46,6 +46,20 @@ CREATE TABLE teams (
     CONSTRAINT teams_name_unique UNIQUE (name)
 );
 
+-- Weather-as-a-feature prerequisite: city-level venue coordinates,
+-- sourced from API-Football's venue.city geocoded via Open-Meteo (no
+-- key required). See sql/migrations/0021_team_venues.sql and
+-- scripts/backfill_team_venues.py.
+CREATE TABLE IF NOT EXISTS team_venues (
+    team_id     INT PRIMARY KEY REFERENCES teams(team_id),
+    venue_name  TEXT,
+    city        TEXT,
+    country     TEXT,
+    latitude    NUMERIC(8,5),
+    longitude   NUMERIC(8,5),
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE players (
     player_id       SERIAL PRIMARY KEY,
     full_name       TEXT NOT NULL,
