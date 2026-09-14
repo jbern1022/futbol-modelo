@@ -36,6 +36,8 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import StreamingResponse
+from prometheus_client import Counter, Histogram
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
 from api.judgment_filter import contains_unsupported_judgment as _contains_unsupported_judgment
@@ -108,6 +110,48 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+# Default HTTP request-count/latency metrics (per-route, per-status) plus
+# the /metrics endpoint itself. Excluded from OpenAPI since it's infra,
+# not part of the public API surface.
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+OLLAMA_REQUEST_SECONDS = Histogram(
+    "petey_ollama_request_seconds",
+    "Latency of Ollama /api/generate calls made by Petey endpoints",
+    ["endpoint"],
+)
+OLLAMA_REQUESTS_TOTAL = Counter(
+    "petey_ollama_requests_total",
+    "Petey requests to Ollama, by outcome",
+    ["endpoint", "outcome"],  # outcome: success | fallback
+)
+
+
+def _ask_ollama(prompt: str, *, endpoint: str) -> Optional[str]:
+    """Call Ollama for one Petey endpoint, recording latency and the
+    success/fallback outcome. Returns None on any failure (timeout,
+    network error, empty response, or unsupported-judgment language) --
+    callers fall back to their own templated, still-honest answer per
+    ADR-005."""
+    start = time.monotonic()
+    try:
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            timeout=OLLAMA_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        answer = resp.json().get("response", "").strip()
+        if not answer or _contains_unsupported_judgment(answer):
+            raise ValueError("empty or unsupported-judgment response")
+    except Exception:
+        OLLAMA_REQUESTS_TOTAL.labels(endpoint=endpoint, outcome="fallback").inc()
+        return None
+    finally:
+        OLLAMA_REQUEST_SECONDS.labels(endpoint=endpoint).observe(time.monotonic() - start)
+    OLLAMA_REQUESTS_TOTAL.labels(endpoint=endpoint, outcome="success").inc()
+    return answer
 
 
 DB_POOL = psycopg2.pool.ThreadedConnectionPool(
@@ -777,27 +821,16 @@ def ask_petey(req: AskRequest, request: Request):
         "in the summary below. Do not speculate.\n\n" + summary
     )
 
-    try:
-        resp = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            timeout=OLLAMA_TIMEOUT_SECONDS,
-        )
-        resp.raise_for_status()
-        answer = resp.json().get("response", "").strip()
-        if not answer or _contains_unsupported_judgment(answer):
-            raise ValueError("empty or unsupported-judgment response")
-    except Exception:
-        # Broad catch is deliberate here: Ollama is an external, unreliable
-        # service (homelab hardware, not a guaranteed API), and ADR-005
-        # requires graceful behavior under ANY failure mode — network,
-        # malformed response, timeout, or anything else — never a raw
-        # 500 or a hang. The real number is still returned either way.
-        answer = (
-            f"{row['market']} predictions in {row['league']} have hit "
-            f"{hit_rate * 100:.1f}% of the time across {n} graded "
-            f"predictions."
-        )
+    # Broad catch inside _ask_ollama is deliberate: Ollama is an external,
+    # unreliable service (homelab hardware, not a guaranteed API), and
+    # ADR-005 requires graceful behavior under ANY failure mode — network,
+    # malformed response, timeout, or anything else — never a raw 500 or
+    # a hang. The real number is still returned either way.
+    answer = _ask_ollama(prompt, endpoint="ask") or (
+        f"{row['market']} predictions in {row['league']} have hit "
+        f"{hit_rate * 100:.1f}% of the time across {n} graded "
+        f"predictions."
+    )
 
     result = {
         "answer": answer,
@@ -916,21 +949,10 @@ def ask_team_form(req: TeamFormRequest, request: Request):
         + summary
     )
 
-    try:
-        resp = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            timeout=OLLAMA_TIMEOUT_SECONDS,
-        )
-        resp.raise_for_status()
-        answer = resp.json().get("response", "").strip()
-        if not answer or _contains_unsupported_judgment(answer):
-            raise ValueError("empty or unsupported-judgment response")
-    except Exception:
-        answer = (
-            f"{req.team} has averaged {avg:.1f} {stat_label.lower()} per "
-            f"game over their last {n_games} matches."
-        )
+    answer = _ask_ollama(prompt, endpoint="ask_team_form") or (
+        f"{req.team} has averaged {avg:.1f} {stat_label.lower()} per "
+        f"game over their last {n_games} matches."
+    )
 
     small_sample = n_games < 5
     result = {
@@ -1032,22 +1054,11 @@ def ask_head_to_head(req: HeadToHeadRequest, request: Request):
         "matches.\n\n" + summary
     )
 
-    try:
-        resp = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            timeout=OLLAMA_TIMEOUT_SECONDS,
-        )
-        resp.raise_for_status()
-        answer = resp.json().get("response", "").strip()
-        if not answer or _contains_unsupported_judgment(answer):
-            raise ValueError("empty or unsupported-judgment response")
-    except Exception:
-        answer = (
-            f"In their last {n_games} meetings, {req.team_a} won "
-            f"{team_a_wins}, {req.team_b} won {team_b_wins}, and "
-            f"{draws} ended in a draw."
-        )
+    answer = _ask_ollama(prompt, endpoint="ask_head_to_head") or (
+        f"In their last {n_games} meetings, {req.team_a} won "
+        f"{team_a_wins}, {req.team_b} won {team_b_wins}, and "
+        f"{draws} ended in a draw."
+    )
 
     small_sample = n_games < 5
     result = {
@@ -1143,21 +1154,10 @@ def ask_match_take(req: MatchTakeRequest, request: Request):
         "what's stated.\n\n" + summary
     )
 
-    try:
-        resp = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            timeout=OLLAMA_TIMEOUT_SECONDS,
-        )
-        resp.raise_for_status()
-        answer = resp.json().get("response", "").strip()
-        if not answer or _contains_unsupported_judgment(answer):
-            raise ValueError("empty or unsupported-judgment response")
-    except Exception:
-        answer = (
-            f"For {row['home']} vs {row['away']}, the model's top pick is "
-            f"\"{row['statement']}\" at {probability * 100:.1f}% confidence."
-        )
+    answer = _ask_ollama(prompt, endpoint="ask_match_take") or (
+        f"For {row['home']} vs {row['away']}, the model's top pick is "
+        f"\"{row['statement']}\" at {probability * 100:.1f}% confidence."
+    )
 
     return {
         "answer": answer,

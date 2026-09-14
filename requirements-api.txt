@@ -3,3 +3,5 @@ uvicorn==0.51.0
 psycopg2-binary==2.9.12
 requests==2.34.2
 pydantic==2.13.4
+prometheus-client==0.26.0
+prometheus-fastapi-instrumentator==8.1.0
