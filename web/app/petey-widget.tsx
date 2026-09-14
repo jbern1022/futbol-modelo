@@ -34,7 +34,7 @@ interface FixtureOption {
   n_predictions: number;
 }
 
-type Mode = "accuracy" | "form" | "h2h" | "match-take";
+type Mode = "accuracy" | "form" | "h2h" | "match-take" | "query";
 
 interface AskResponse {
   answer: string;
@@ -83,6 +83,8 @@ export default function PeteyWidget({
 
   const [teamA, setTeamA] = useState("");
   const [teamB, setTeamB] = useState("");
+
+  const [question, setQuestion] = useState("");
 
   const [fixtures, setFixtures] = useState<FixtureOption[]>([]);
   const [matchId, setMatchId] = useState<number | "">("");
@@ -154,6 +156,7 @@ export default function PeteyWidget({
     form: "/api/ask/team-form",
     h2h: "/api/ask/head-to-head",
     "match-take": "/api/ask/match-take",
+    query: "/api/ask/query",
   };
 
   async function ask(askMode: Mode, body: object) {
@@ -181,6 +184,7 @@ export default function PeteyWidget({
     if (mode === "accuracy") body = { market: effectiveMarket, league };
     else if (mode === "form") body = { team, stat, games };
     else if (mode === "h2h") body = { team_a: teamA, team_b: teamB };
+    else if (mode === "query") body = { question };
     else body = { match_id: matchId };
     await ask(mode, body);
   }
@@ -230,7 +234,8 @@ export default function PeteyWidget({
     (mode === "accuracy" && availableMarkets.length > 0) ||
     (mode === "form" && team.trim().length > 0) ||
     (mode === "h2h" && teamA.trim().length > 0 && teamB.trim().length > 0 && teamA !== teamB) ||
-    (mode === "match-take" && matchId !== "");
+    (mode === "match-take" && matchId !== "") ||
+    (mode === "query" && question.trim().length > 0 && question.trim().length <= 500);
 
   // n_predictions backs "accuracy", n_games backs both "form" and "h2h" --
   // whichever is present is this response's count. "match-take" has no
@@ -299,6 +304,9 @@ export default function PeteyWidget({
         </button>
         <button onClick={() => { setMode("match-take"); setResponse(null); }} aria-pressed={mode === "match-take"} className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === "match-take" ? "bg-black text-white dark:bg-zinc-50 dark:text-black" : "border border-zinc-200 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300"}`}>
           Match Take
+        </button>
+        <button onClick={() => { setMode("query"); setResponse(null); }} aria-pressed={mode === "query"} className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === "query" ? "bg-black text-white dark:bg-zinc-50 dark:text-black" : "border border-zinc-200 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300"}`}>
+          Ask Your Own Question
         </button>
       </div>
 
@@ -457,6 +465,27 @@ export default function PeteyWidget({
               <p className="mt-1 text-xs text-zinc-500">No upcoming fixtures with a slate yet.</p>
             )}
           </div>
+        </div>
+      )}
+
+      {mode === "query" && (
+        <div className="mt-4">
+          <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Your question
+          </label>
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder='e.g. "How accurate are corners predictions in MLS?" or "Show me predictions that missed in the EPL"'
+            maxLength={500}
+            rows={2}
+            className={`mt-1 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-black dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 ${compact ? "w-full" : "w-full max-w-xl"}`}
+          />
+          <p className="mt-1 text-xs text-zinc-500">
+            Petey can answer questions about a market, league, team, season, or outcome --
+            not every phrasing works yet, and it will say so plainly rather than guess.
+            {" "}{question.length}/500
+          </p>
         </div>
       )}
 
