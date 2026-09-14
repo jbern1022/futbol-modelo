@@ -289,6 +289,18 @@ def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
                             (match_id, r["bookmaker_id"], r["bookmaker_name"], r["market"],
                              r["selection"], r["decimal_odds"], r["implied_probability"],
                              r["no_vig_probability"]))
+                        # Always appended, never upserted -- match_odds
+                        # above only ever holds the latest snapshot, so
+                        # this is the only place opening-vs-closing line
+                        # movement actually survives (migration 0019).
+                        cur.execute(
+                            """INSERT INTO futbol.match_odds_history
+                                 (match_id, bookmaker_id, bookmaker_name, market,
+                                  selection, decimal_odds, implied_probability, no_vig_probability)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                            (match_id, r["bookmaker_id"], r["bookmaker_name"], r["market"],
+                             r["selection"], r["decimal_odds"], r["implied_probability"],
+                             r["no_vig_probability"]))
                         stored += 1
             conn.commit()
     finally:

@@ -242,6 +242,47 @@ CREATE TABLE IF NOT EXISTS match_odds (
 
 CREATE INDEX IF NOT EXISTS idx_match_odds_match ON match_odds(match_id);
 
+-- Append-only odds history (match_odds itself upserts, latest snapshot
+-- only) -- opening/closing-line movement analysis. See
+-- sql/migrations/0019_match_odds_history.sql.
+CREATE TABLE IF NOT EXISTS match_odds_history (
+    odds_history_id      BIGSERIAL PRIMARY KEY,
+    match_id             INT NOT NULL REFERENCES matches(match_id),
+    bookmaker_id          INT,
+    bookmaker_name        TEXT,
+    market                TEXT NOT NULL,
+    selection             TEXT NOT NULL,
+    decimal_odds          NUMERIC(8,3) NOT NULL,
+    implied_probability   NUMERIC(6,5),
+    no_vig_probability    NUMERIC(6,5),
+    fetched_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_odds_history_match
+    ON match_odds_history(match_id, bookmaker_id, market, selection, fetched_at);
+
+CREATE OR REPLACE VIEW v_odds_movement AS
+SELECT
+    o.match_id, o.bookmaker_id, o.bookmaker_name, o.market, o.selection,
+    o.decimal_odds AS opening_odds, o.no_vig_probability AS opening_probability,
+    o.fetched_at AS opening_fetched_at,
+    c.decimal_odds AS closing_odds, c.no_vig_probability AS closing_probability,
+    c.fetched_at AS closing_fetched_at
+FROM (
+    SELECT DISTINCT ON (match_id, bookmaker_id, market, selection)
+        match_id, bookmaker_id, bookmaker_name, market, selection,
+        decimal_odds, no_vig_probability, fetched_at
+    FROM match_odds_history
+    ORDER BY match_id, bookmaker_id, market, selection, fetched_at ASC
+) o
+JOIN (
+    SELECT DISTINCT ON (match_id, bookmaker_id, market, selection)
+        match_id, bookmaker_id, market, selection,
+        decimal_odds, no_vig_probability, fetched_at
+    FROM match_odds_history
+    ORDER BY match_id, bookmaker_id, market, selection, fetched_at DESC
+) c USING (match_id, bookmaker_id, market, selection);
+
 -- ---------- Model registry ----------
 
 CREATE TABLE model_versions (
