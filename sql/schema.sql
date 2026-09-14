@@ -446,6 +446,36 @@ JOIN match_odds mo ON mo.match_id = m.match_id AND LOWER(mo.selection) = p.side
 WHERE p.rn = 1
 GROUP BY l.code, m.match_id, th.name, ta.name, m.kickoff_utc, m.status, p.side, p.probability;
 
+-- Petey v2 (docs/petey-spec.md, ADR-003): the one fixed, safe base query
+-- the JSON filter compiler is ever allowed to add a WHERE clause to.
+-- Per-prediction, not pre-aggregated -- Petey computes n/avg_confidence/
+-- hit_rate over whatever this filters down to, same never-show-Ollama-
+-- raw-rows pattern /v1/ask already uses. See sql/migrations/0017_petey_v2.sql.
+CREATE OR REPLACE VIEW v_petey_predictions AS
+SELECT
+    gp.prediction_id,
+    gp.market,
+    gp.league,
+    gp.season,
+    gp.side,
+    gp.probability,
+    gp.outcome,
+    t.name AS team,
+    m.kickoff_utc::date AS kickoff_date
+FROM v_graded_predictions gp
+JOIN matches m ON m.match_id = gp.match_id
+LEFT JOIN teams t ON t.team_id = gp.subject_team_id;
+
+-- Logs every free-text Petey question alongside the JSON filter Ollama
+-- proposed for it, per the spec's self-improving FAQ loop.
+CREATE TABLE IF NOT EXISTS petey_queries (
+    query_id     SERIAL PRIMARY KEY,
+    raw_text     TEXT NOT NULL,
+    compiled_filter JSONB,          -- NULL if validation rejected Ollama's proposal
+    rejected_reason TEXT,           -- set iff compiled_filter IS NULL
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Ingest review queue (entity-resolution items needing human eyes)
 CREATE TABLE IF NOT EXISTS ingest_review (
     review_id   SERIAL PRIMARY KEY,
