@@ -126,6 +126,68 @@ export default function LessonsLearnedPage() {
               believed the last time someone looked.
             </p>
           </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
+              A step that assumed the step before it had finished
+            </h2>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+              The nightly pipeline is three stages &mdash; ingest, build
+              features, generate the slate &mdash; run as separate scheduled
+              jobs, each one just trusting that the last one was done in
+              time. For weeks, the feature-rebuild step silently fell behind
+              the raw stats it was supposed to be built from, and nobody
+              noticed, because ingestion itself happened to be paused for an
+              unrelated reason at the same time &mdash; so the gap never
+              actually showed up as wrong-looking output. It had to be
+              caught by hand, twice, before the real cause was clear: a
+              rebuild script that was correctly written and correctly
+              documented as needing to run after every ingestion batch,
+              wired into nothing that actually called it that way. Timing
+              that happens to line up isn&apos;t the same thing as a
+              dependency that&apos;s actually enforced.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
+              A safety filter with a word hiding inside another word
+            </h2>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+              Petey&apos;s judgment-word filter &mdash; the one built to
+              catch the model editorializing with words like
+              &ldquo;struggled&rdquo; or &ldquo;steady&rdquo; &mdash; used
+              plain substring matching. It worked, until a real stat
+              category came up whose name happened to contain a banned word
+              as a substring: &ldquo;yellow&rdquo; (cards) contains
+              &ldquo;low,&rdquo; and &ldquo;allowed&rdquo; does too. Every
+              answer that legitimately used either word got silently
+              rerouted to the generic fallback sentence instead of Ollama&apos;s
+              real phrasing &mdash; not broken, exactly, just quietly worse,
+              for exactly the questions that should have worked best. The
+              fix was switching to word-boundary matching. The lesson was
+              narrower than it sounds: a safety filter is itself code, and
+              code that filters on substrings will eventually flag the
+              wrong substring.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
+              A database rename the running site never heard about
+            </h2>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+              A column rename landed cleanly in the code, and the migration
+              ran cleanly against the live database. The site went down
+              anyway. The database change was real and correct; the running
+              API and frontend containers were still the old images, built
+              before the rename, still expecting the old column names. A
+              migration being correct says nothing about whether the thing
+              actually serving traffic has been rebuilt to match it &mdash;
+              those are two separate steps, and only one of them had
+              happened.
+            </p>
+          </section>
         </div>
 
         <p className="mt-10 text-zinc-600 dark:text-zinc-400">
