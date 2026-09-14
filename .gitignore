@@ -6,3 +6,4 @@ __pycache__/
 /models/
 .coverage
 .pytest_cache/
+.futbol-secrets-backup.yaml
