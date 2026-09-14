@@ -56,6 +56,26 @@ spec:
   - port: 8000
     targetPort: 8000
 ---
+# Separate from futbol-api-svc (ClusterIP, used internally by futbol-web)
+# so the metrics/health surface can be reached from outside the cluster
+# (the docker-host Prometheus instance) via NodePort. Same read-only API,
+# just externally routable without going through Cloudflare/NPM -- fine
+# for a read-only public-data API, but bypasses that layer, so keep this
+# to scraping, not general traffic.
+apiVersion: v1
+kind: Service
+metadata:
+  name: futbol-api-metrics-svc
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: futbol-api
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30800
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
