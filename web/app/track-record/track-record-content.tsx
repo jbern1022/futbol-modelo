@@ -160,12 +160,12 @@ export default function TrackRecordContent({
           <table className="w-full text-left text-sm">
             <thead className="border-b border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
               <tr>
-                <th className="px-4 py-2 font-medium">League</th>
-                <th className="px-4 py-2 font-medium">Season</th>
-                <th className="px-4 py-2 font-medium">Market</th>
-                <th className="px-4 py-2 font-medium text-right">N</th>
-                <th className="px-4 py-2 font-medium text-right">Stated</th>
-                <th className="px-4 py-2 font-medium text-right">Realized</th>
+                <th scope="col" className="px-4 py-2 font-medium">League</th>
+                <th scope="col" className="px-4 py-2 font-medium">Season</th>
+                <th scope="col" className="px-4 py-2 font-medium">Market</th>
+                <th scope="col" className="px-4 py-2 font-medium text-right">N</th>
+                <th scope="col" className="px-4 py-2 font-medium text-right">Stated</th>
+                <th scope="col" className="px-4 py-2 font-medium text-right">Realized</th>
               </tr>
             </thead>
             <tbody>
@@ -177,7 +177,7 @@ export default function TrackRecordContent({
                   <td className="px-4 py-2 text-right text-zinc-500">
                     {row.n_predictions}
                     {row.n_predictions < 5 && (
-                      <span title="Small sample -- treat this cautiously" className="ml-1 text-amber-600 dark:text-amber-400">
+                      <span title="Small sample -- treat this cautiously" className="ml-1 text-amber-700 dark:text-amber-400">
                         &#9888;
                       </span>
                     )}
@@ -195,7 +195,7 @@ export default function TrackRecordContent({
         </div>
       )}
       <p className="mt-2 text-xs text-zinc-400">
-        <span className="text-amber-600 dark:text-amber-400">&#9888;</span> marks a market with
+        <span className="text-amber-700 dark:text-amber-400">&#9888;</span> marks a market with
         fewer than 5 graded predictions -- treat those numbers cautiously.
       </p>
 

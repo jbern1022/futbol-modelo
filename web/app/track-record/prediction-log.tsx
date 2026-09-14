@@ -116,10 +116,10 @@ export default function PredictionLog({
           <table className="w-full text-left text-sm">
             <thead className="border-b border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
               <tr>
-                <th className="px-4 py-2 font-medium">Prediction</th>
-                <th className="px-4 py-2 font-medium">Fixture</th>
-                <th className="px-4 py-2 font-medium text-right">Stated</th>
-                <th className="px-4 py-2 font-medium text-right">Actual</th>
+                <th scope="col" className="px-4 py-2 font-medium">Prediction</th>
+                <th scope="col" className="px-4 py-2 font-medium">Fixture</th>
+                <th scope="col" className="px-4 py-2 font-medium text-right">Stated</th>
+                <th scope="col" className="px-4 py-2 font-medium text-right">Actual</th>
               </tr>
             </thead>
             <tbody className={loading ? "opacity-50" : ""}>

@@ -42,12 +42,12 @@ export default function MarketComparisonSection({
         <table className="w-full text-left text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
             <tr>
-              <th className="px-4 py-2 font-medium">Fixture</th>
-              <th className="px-4 py-2 font-medium">Outcome</th>
-              <th className="px-4 py-2 font-medium text-right">Model</th>
-              <th className="px-4 py-2 font-medium text-right">Market</th>
-              <th className="px-4 py-2 font-medium text-right">Diff</th>
-              <th className="px-4 py-2 font-medium text-right">Books</th>
+              <th scope="col" className="px-4 py-2 font-medium">Fixture</th>
+              <th scope="col" className="px-4 py-2 font-medium">Outcome</th>
+              <th scope="col" className="px-4 py-2 font-medium text-right">Model</th>
+              <th scope="col" className="px-4 py-2 font-medium text-right">Market</th>
+              <th scope="col" className="px-4 py-2 font-medium text-right">Diff</th>
+              <th scope="col" className="px-4 py-2 font-medium text-right">Books</th>
             </tr>
           </thead>
           <tbody>
