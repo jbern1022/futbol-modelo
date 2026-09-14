@@ -330,6 +330,7 @@ CREATE TABLE predictions (
                         -- margin, not an O/U on a count
                         'MONEYLINE', 'SPREAD', 'TOTAL_POINTS',
                         'PLAYER_PASS_YARDS', 'PLAYER_RUSH_YARDS',
+                        'PLAYER_RECEIVING_YARDS', 'PLAYER_RECEPTIONS', 'PLAYER_ANYTIME_TD',
                         -- NBA (live)
                         'PLAYER_POINTS')),
     subject_team_id INT REFERENCES teams(team_id),

@@ -1,5 +1,6 @@
 """
-NFL player props -- QB passing yards, RB rushing yards. Combines two
+NFL player props -- QB passing/RB rushing/WR+TE receiving yards,
+receptions, and anytime-TD. Combines two
 real signals rather than a single rolling average (see the design
 discussion that preceded this file): a depth-chart gate decides WHO
 gets a prediction at all, and a recency-weighted rolling average over
@@ -21,13 +22,23 @@ is a fact, not an inference from history.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime
 
 from scipy.stats import norm
 
 MIN_GAMES = 4           # fewer than this and recency-weighting has nothing to weight
 ROLLING_WINDOW = 8       # most recent N games
-FALLBACK_SIGMA = 15.0    # floor -- passing/rushing yards are noisier than NBA points
+# Floor sigma, per stat -- NOT one constant across every column. Yards
+# and receptions are on wildly different scales (a player might average
+# 60 receiving yards but 5 receptions); a single 15.0 floor tuned for
+# yardage would make the receptions model nearly useless (sigma of 15
+# catches on a stat that rarely exceeds 12 flattens every prediction
+# toward "anything is plausible"). Caught before it shipped, not after.
+FALLBACK_SIGMA_BY_COLUMN = {
+    "passing_yards": 15.0, "rushing_yards": 15.0, "receiving_yards": 15.0,
+    "receptions": 2.0,
+}
 # Exponential recency weights, most recent game first -- roughly halves
 # the influence of a game every 2 games back, so a real role or
 # game-plan change shows up in 2-3 weeks instead of needing the whole
@@ -48,12 +59,28 @@ LIMIT %s
 # backfields are common enough that the primary backup is worth a
 # prediction too; QB does not, since an NFL backup QB who actually
 # plays meaningful snaps means the starter is hurt (a real, rarer
-# in-week event this snapshot won't reliably catch anyway).
-DEPTH_RANKS_BY_POSITION = {"QB": ("1",), "RB": ("1", "2")}
+# in-week event this snapshot won't reliably catch anyway). WR goes to
+# '3' -- verified directly against a live depth chart: every team lists
+# a real WR1/WR2/WR3, and 3-receiver sets are base personnel in the
+# modern NFL, not a rotational exception the way RB3 would be. TE stays
+# at '1' only -- TE2 snaps are mostly blocking/2-TE run sets, not
+# receiving usage worth a prediction.
+DEPTH_RANKS_BY_POSITION = {
+    "QB": ("1",), "RB": ("1", "2"), "WR": ("1", "2", "3"), "TE": ("1",),
+}
+
+_YARDAGE_COLUMNS = ("passing_yards", "rushing_yards", "receiving_yards")
+# receptions is a small-count discrete stat (typically 0-12), more
+# naturally Poisson than Normal -- reusing the Normal framework here
+# anyway (rather than a second model shape) matches this file's
+# existing approach for every other stat, and FALLBACK_SIGMA already
+# exists as a safety net against a too-narrow Normal fit; flagged
+# explicitly as an approximation, not asserted to be the ideal model.
+_COUNT_COLUMNS = ("receptions",)
 
 
 def rolling_yardage_stats(cur, player_id: int, column: str, before: datetime) -> dict | None:
-    if column not in ("passing_yards", "rushing_yards"):
+    if column not in _YARDAGE_COLUMNS + _COUNT_COLUMNS:
         raise ValueError(f"unexpected column: {column!r}")
     cur.execute(ROLLING_YARDAGE_SQL.format(column=column), (player_id, before, ROLLING_WINDOW))
     rows = [r[0] for r in cur.fetchall()]
@@ -64,7 +91,7 @@ def rolling_yardage_stats(cur, player_id: int, column: str, before: datetime) ->
     total_weight = sum(weights)
     weighted_avg = sum(w * v for w, v in zip(weights, rows)) / total_weight
     weighted_var = sum(w * (v - weighted_avg) ** 2 for w, v in zip(weights, rows)) / total_weight
-    sigma = max(weighted_var ** 0.5, FALLBACK_SIGMA)
+    sigma = max(weighted_var ** 0.5, FALLBACK_SIGMA_BY_COLUMN[column])
     return {"avg_yards": weighted_avg, "sigma": sigma, "n_games": len(rows)}
 
 
@@ -85,6 +112,40 @@ def candidate_lines(avg_yards: float, sigma: float,
         if line > 0:
             lines.append(line)
     return lines
+
+
+# PLAYER_ANYTIME_TD -- genuinely different mechanic from the yardage
+# over/under markets above: "will this player score at least one TD",
+# not a line to beat. Modeled as a Poisson process (standard treatment
+# for anytime-TD markets in real sports analytics): a recency-weighted
+# rolling TD rate gives lambda (expected TDs this game), and
+# P(>=1 TD) = 1 - exp(-lambda) is the Poisson survival function at 0.
+TD_ROLLING_SQL = """
+SELECT (COALESCE(rushing_tds, 0) + COALESCE(receiving_tds, 0)) AS tds
+FROM futbol.player_match_stats_nfl pms
+JOIN futbol.matches m ON m.match_id = pms.match_id
+WHERE pms.player_id = %s AND m.status = 'final'
+  AND (rushing_tds IS NOT NULL OR receiving_tds IS NOT NULL)
+  AND m.kickoff_utc < %s
+ORDER BY m.kickoff_utc DESC
+LIMIT %s
+"""
+
+
+def rolling_td_rate(cur, player_id: int, before: datetime) -> dict | None:
+    cur.execute(TD_ROLLING_SQL, (player_id, before, ROLLING_WINDOW))
+    rows = [r[0] for r in cur.fetchall()]
+    if len(rows) < MIN_GAMES:
+        return None
+
+    weights = [RECENCY_DECAY ** i for i in range(len(rows))]
+    total_weight = sum(weights)
+    lam = sum(w * v for w, v in zip(weights, rows)) / total_weight
+    return {"lambda": lam, "n_games": len(rows)}
+
+
+def prob_anytime_td(lam: float) -> float:
+    return 1.0 - math.exp(-lam)
 
 
 def current_depth_chart(season: int) -> dict[tuple[str, str], list[str]]:

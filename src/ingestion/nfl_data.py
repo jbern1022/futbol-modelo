@@ -7,10 +7,11 @@ no NFL-specific matches columns needed.
 
     python -m ingestion.nfl_data backfill --season 2026
     python -m ingestion.nfl_data backfill-players --season 2026
-    (backfill-players: QB/RB weekly box scores + snap share, feeding
-    the PLAYER_PASS_YARDS/PLAYER_RUSH_YARDS markets -- run backfill()
-    for the same season first, rows are matched onto existing match
-    external_refs via a schedule-derived (week, team) -> game_id lookup)
+    (backfill-players: QB/RB/WR/TE weekly box scores + snap share,
+    feeding the PLAYER_PASS_YARDS/PLAYER_RUSH_YARDS/PLAYER_RECEIVING_YARDS/
+    PLAYER_RECEPTIONS/PLAYER_ANYTIME_TD markets -- run backfill() for the
+    same season first, rows are matched onto existing match external_refs
+    via a schedule-derived (week, team) -> game_id lookup)
 
 nfl_data_py pins pandas<2.0/numpy<2.0, which conflicts with this
 project's pandas==3.0.3/numpy==2.5.1 -- installed separately with
@@ -153,15 +154,43 @@ def _game_id_by_team_week(season_start_year: int) -> dict[tuple[int, str], str]:
     return lookup
 
 
+STAT_COLUMNS = ["passing_yards", "passing_tds", "rushing_yards", "rushing_tds",
+                "receptions", "receiving_yards", "receiving_tds", "targets"]
+
+# QB/RB/WR/TE -- expanded from the original QB/RB-only scope (passing
+# and rushing yards) to also feed receptions/receiving-yards/anytime-TD
+# props. Kickers/defense excluded -- out of scope, no props planned.
+INGESTED_POSITIONS = ["QB", "RB", "WR", "TE"]
+
+
+def _weekly_stats_url(season_start_year: int) -> str:
+    return (f"https://github.com/nflverse/nflverse-data/releases/download/"
+            f"stats_player/stats_player_week_{season_start_year}.parquet")
+
+
 def backfill_player_stats(season_start_year: int) -> int:
     """
-    QB passing yards and RB rushing yards only -- the two markets this
-    project's NFL player props actually predict (see nfl_player_props.py
-    and the scope-guard ticket); no reason to ingest every position's
-    full stat line yet. Also pulls snap share (import_snap_counts) --
-    the real per-week usage signal candidate_lines()'s depth-chart gate
-    needs, since a rolling yardage average alone can't see a committee
-    role change until several games after it happens.
+    QB/RB/WR/TE weekly box scores -- passing/rushing/receiving yards and
+    TDs, receptions, targets -- feeding this project's NFL player props
+    (see nfl_player_props.py). Also pulls snap share (import_snap_counts)
+    -- the real per-week usage signal candidate_lines()'s depth-chart
+    gate needs, since a rolling yardage average alone can't see a
+    committee role change until several games after it happens.
+
+    Real incident, 2026-09-14: nfl_data_py==0.3.3's import_weekly_data()
+    points to nflverse-data's "player_stats" GitHub release, which
+    nflverse itself renamed to "stats_player" in July 2025 -- confirmed
+    directly (the old release's most recent asset is season 2024; the
+    new one has 2025 and the current season, 2026). nfl_data_py is
+    unmaintained (0.3.3 is both the pinned AND the latest version on
+    PyPI, checked directly) and will never be fixed upstream, so this
+    reads the new release's parquet file directly with pandas rather
+    than going through the broken library function. Silently zero
+    output every night since whenever this project's "current season"
+    rolled past 2024 -- the nightly cron never errored, it just had
+    nothing to insert, since the season it asked for genuinely returned
+    a 404 that only ever surfaced as "0 rows stored" in a log line
+    nobody was watching for a null result specifically.
 
     snap_counts keys players by Pro-Football-Reference id, not
     nflverse's own gsis_id that weekly_data/depth_charts use -- import_ids()
@@ -170,9 +199,11 @@ def backfill_player_stats(season_start_year: int) -> int:
     """
     game_ids = _game_id_by_team_week(season_start_year)
 
-    weekly = nfl.import_weekly_data([season_start_year])
-    weekly = weekly[(weekly["season_type"] == "REG") & (weekly["position"].isin(["QB", "RB"]))]
-    log.info("%d QB/RB weekly rows for %d season from nfl_data_py", len(weekly), season_start_year)
+    weekly = pd.read_parquet(_weekly_stats_url(season_start_year))
+    weekly = weekly[(weekly["season_type"] == "REG") &
+                    (weekly["position"].isin(INGESTED_POSITIONS))]
+    log.info("%d %s weekly rows for %d season from nflverse (stats_player release)",
+            len(weekly), "/".join(INGESTED_POSITIONS), season_start_year)
 
     snaps = nfl.import_snap_counts([season_start_year])
     ids = nfl.import_ids()
@@ -187,7 +218,9 @@ def backfill_player_stats(season_start_year: int) -> int:
     stored, skipped_no_match = 0, 0
     with conn.cursor() as cur:
         for _, row in weekly.iterrows():
-            game_id = game_ids.get((int(row["week"]), row["recent_team"]))
+            # "team", not the old release's "recent_team" -- the new
+            # stats_player schema renamed this column too.
+            game_id = game_ids.get((int(row["week"]), row["team"]))
             ext_ref = f"nflverse:{game_id}" if game_id else None
             match_id = None
             if ext_ref:
@@ -198,23 +231,21 @@ def backfill_player_stats(season_start_year: int) -> int:
                 skipped_no_match += 1
                 continue
 
-            team_id = _team_id(cur, row["recent_team"])
+            team_id = _team_id(cur, row["team"])
             player_id = _resolve_or_create_player(cur, row["player_id"], row["player_display_name"])
             snap_pct = snap_pct_by_player_week.get((row["player_id"], int(row["week"])))
-            passing_yards = None if pd.isna(row["passing_yards"]) else int(row["passing_yards"])
-            rushing_yards = None if pd.isna(row["rushing_yards"]) else int(row["rushing_yards"])
+            stat_values = [None if pd.isna(row[c]) else int(row[c]) for c in STAT_COLUMNS]
 
             cur.execute(
-                """INSERT INTO futbol.player_match_stats_nfl
-                     (match_id, player_id, team_id, position, passing_yards, rushing_yards, snap_pct)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s)
+                f"""INSERT INTO futbol.player_match_stats_nfl
+                     (match_id, player_id, team_id, position, snap_pct,
+                      {', '.join(STAT_COLUMNS)})
+                   VALUES (%s,%s,%s,%s,%s,{','.join(['%s'] * len(STAT_COLUMNS))})
                    ON CONFLICT (match_id, player_id)
                    DO UPDATE SET position = EXCLUDED.position,
-                                 passing_yards = EXCLUDED.passing_yards,
-                                 rushing_yards = EXCLUDED.rushing_yards,
-                                 snap_pct = EXCLUDED.snap_pct""",
-                (match_id, player_id, team_id, row["position"],
-                 passing_yards, rushing_yards, snap_pct))
+                                 snap_pct = EXCLUDED.snap_pct,
+                                 {', '.join(f'{c} = EXCLUDED.{c}' for c in STAT_COLUMNS)}""",
+                (match_id, player_id, team_id, row["position"], snap_pct, *stat_values))
             stored += 1
             if stored % 200 == 0:
                 conn.commit()

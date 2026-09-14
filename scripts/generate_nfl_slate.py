@@ -1,7 +1,8 @@
 """
 NFL slate generator -- the vertical-slice equivalent of generate_slate.py
 for NFL: MONEYLINE, SPREAD, TOTAL_POINTS, and player props (QB passing
-yards, RB rushing yards). Reuses build_slate()/persist_slate()/
+yards, RB rushing yards + receptions, WR/TE receiving yards + receptions,
+anytime-TD for every skill position). Reuses build_slate()/persist_slate()/
 log_degenerate_candidates() from src/predictions/generator.py unchanged
 -- those are already market/sport-agnostic.
 
@@ -43,7 +44,8 @@ import psycopg2
 
 from models.nfl_player_props import candidate_lines as player_candidate_lines
 from models.nfl_player_props import current_depth_chart, prob_over as player_prob_over
-from models.nfl_player_props import rolling_yardage_stats
+from models.nfl_player_props import prob_anytime_td as player_prob_anytime_td
+from models.nfl_player_props import rolling_td_rate, rolling_yardage_stats
 from models.nfl_power_ratings import NFLPowerRatings
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
@@ -155,14 +157,27 @@ def build_candidates(model: NFLPowerRatings, home: str, away: str, home_id: int,
     return candidates
 
 
-STAT_COLUMN_BY_MARKET = {"QB": ("PLAYER_PASS_YARDS", "passing_yards"),
-                         "RB": ("PLAYER_RUSH_YARDS", "rushing_yards")}
+# position -> list of (market, column) -- a position can feed more than
+# one market (e.g. a WR gets both receiving yards and receptions).
+# Receptions applies to RB too (pass-catching backs are a real,
+# separate prop market from rushing yards, not a rounding error on it).
+STAT_COLUMN_BY_MARKET = {
+    "QB": [("PLAYER_PASS_YARDS", "passing_yards")],
+    "RB": [("PLAYER_RUSH_YARDS", "rushing_yards"), ("PLAYER_RECEPTIONS", "receptions")],
+    "WR": [("PLAYER_RECEIVING_YARDS", "receiving_yards"), ("PLAYER_RECEPTIONS", "receptions")],
+    "TE": [("PLAYER_RECEIVING_YARDS", "receiving_yards"), ("PLAYER_RECEPTIONS", "receptions")],
+}
+# Every position that can score a rushing or receiving TD -- includes
+# QB deliberately: mobile QBs have a real, non-trivial rushing-TD rate
+# (the rolling-rate model naturally produces near-zero probabilities
+# for pocket passers on its own, no separate carve-out needed).
+TD_ELIGIBLE_POSITIONS = ("QB", "RB", "WR", "TE")
 
 
 def build_player_candidates(cur, depth_chart: dict, team_abbr: str,
                             kickoff: datetime) -> list[Inference]:
     candidates = []
-    for position, (market, column) in STAT_COLUMN_BY_MARKET.items():
+    for position, market_columns in STAT_COLUMN_BY_MARKET.items():
         for nfl_player_id in depth_chart.get((team_abbr, position), []):
             cur.execute("SELECT player_id, full_name FROM futbol.players WHERE nfl_player_id = %s",
                        (nfl_player_id,))
@@ -171,21 +186,42 @@ def build_player_candidates(cur, depth_chart: dict, team_abbr: str,
                 continue  # never appeared in an ingested box score -- no history to predict from
             player_id, player_name = row
 
-            stats = rolling_yardage_stats(cur, player_id, column, kickoff)
-            if stats is None:
-                continue
-            context = {"avg_yards": stats["avg_yards"], "sigma": stats["sigma"],
-                      "n_games": stats["n_games"]}
-            for line in player_candidate_lines(stats["avg_yards"], stats["sigma"]):
-                p = player_prob_over(stats["avg_yards"], stats["sigma"], line)
-                if PROPS_OVER_BAND[0] <= p <= PROPS_OVER_BAND[1]:
-                    candidates.append(Inference(market, f"{player_name} over {line}",
-                                                line, "over", p, subject_player_id=player_id,
-                                                context=context))
-                elif PROPS_UNDER_BAND[0] <= p <= PROPS_UNDER_BAND[1]:
-                    candidates.append(Inference(market, f"{player_name} under {line}",
-                                                line, "under", 1 - p, subject_player_id=player_id,
-                                                context=context))
+            for market, column in market_columns:
+                stats = rolling_yardage_stats(cur, player_id, column, kickoff)
+                if stats is None:
+                    continue
+                context = {"avg_yards": stats["avg_yards"], "sigma": stats["sigma"],
+                          "n_games": stats["n_games"]}
+                for line in player_candidate_lines(stats["avg_yards"], stats["sigma"]):
+                    p = player_prob_over(stats["avg_yards"], stats["sigma"], line)
+                    if PROPS_OVER_BAND[0] <= p <= PROPS_OVER_BAND[1]:
+                        candidates.append(Inference(market, f"{player_name} over {line}",
+                                                    line, "over", p, subject_player_id=player_id,
+                                                    context=context))
+                    elif PROPS_UNDER_BAND[0] <= p <= PROPS_UNDER_BAND[1]:
+                        candidates.append(Inference(market, f"{player_name} under {line}",
+                                                    line, "under", 1 - p, subject_player_id=player_id,
+                                                    context=context))
+
+            if position in TD_ELIGIBLE_POSITIONS:
+                td = rolling_td_rate(cur, player_id, kickoff)
+                if td is not None:
+                    p_td = player_prob_anytime_td(td["lambda"])
+                    context = {"lambda": td["lambda"], "n_games": td["n_games"]}
+                    # Same confidence-band philosophy as the yardage
+                    # markets above, applied to P(yes) directly instead
+                    # of P(over a line) -- "yes" when confidently likely,
+                    # "no" when confidently unlikely, skip the ambiguous
+                    # middle (and skip near-zero-probability players
+                    # entirely, same as every other props market here).
+                    if PROPS_OVER_BAND[0] <= p_td <= PROPS_OVER_BAND[1]:
+                        candidates.append(Inference(
+                            "PLAYER_ANYTIME_TD", f"{player_name} anytime TD", None, "yes",
+                            p_td, subject_player_id=player_id, context=context))
+                    elif PROPS_UNDER_BAND[0] <= p_td <= PROPS_UNDER_BAND[1]:
+                        candidates.append(Inference(
+                            "PLAYER_ANYTIME_TD", f"{player_name} no TD", None, "no",
+                            1 - p_td, subject_player_id=player_id, context=context))
     return candidates
 
 
