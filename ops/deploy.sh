@@ -37,7 +37,15 @@ build_and_push() {
     local context="$3"
 
     echo "==> Building $name ..."
-    docker build --provenance=false \
+    # --platform linux/amd64 is required, not cosmetic: every real
+    # workload (futbol-api, futbol-web, all 3 CronJobs) is nodeSelector-
+    # pinned to k3s-control-plane, which is amd64 -- building on an
+    # Apple Silicon Mac without this produces an arm64 image that pulls
+    # fine but fails at container start with "exec format error" (a
+    # real incident, 2026-09-14: silently masked for hours by an
+    # unrelated DNS outage blocking the pull entirely, only surfaced
+    # once that was fixed and the pull actually succeeded).
+    docker build --provenance=false --platform linux/amd64 \
         -t "${REGISTRY}/${name}:${SHA}" \
         -t "${REGISTRY}/${name}:latest" \
         -f "${REPO_ROOT}/${dockerfile}" \
