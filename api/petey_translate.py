@@ -23,6 +23,18 @@ validator is what catches everything the prompt still gets wrong.
 """
 from __future__ import annotations
 
+import os
+import sys
+
+# Self-contained regardless of how this module is imported -- as
+# api.petey_translate (production, uvicorn api.main:app) or as a bare
+# top-level petey_translate (tests, which put api/ itself on sys.path,
+# matching judgment_filter.py's and petey_filter.py's own test-import
+# convention). Ensuring this file's own directory is on sys.path before
+# the bare `import petey_filter` below makes both cases work without
+# needing two different import styles depending on caller.
+sys.path.insert(0, os.path.dirname(__file__))
+
 from petey_filter import (
     ALLOWED_FIELDS,
     ALLOWED_LEAGUE_VALUES,

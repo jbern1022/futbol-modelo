@@ -19,9 +19,11 @@ routes are deliberately unversioned infra/meta endpoints):
     POST /v1/ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
     POST /v1/ask/head-to-head  {"team_a": "Seattle Sounders", "team_b": "LA Galaxy"}
     POST /v1/ask/match-take  {"match_id": 4456}
+    POST /v1/ask/query  {"question": "How accurate are corners predictions in MLS?"}
 """
 import csv
 import io
+import json
 import os
 import time
 from collections import defaultdict
@@ -41,6 +43,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
 from api.judgment_filter import contains_unsupported_judgment as _contains_unsupported_judgment
+from api.petey_filter import FilterValidationError, validate_and_compile
+from api.petey_translate import build_prompt as build_query_prompt
 
 RO_DSN = os.environ.get(
     "FUTBOL_RO_DSN",
@@ -56,6 +60,13 @@ OLLAMA_MODEL = "llama3.2:latest"
 RATE_LIMIT_MAX_REQUESTS = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
 _request_log: dict[str, list[float]] = defaultdict(list)
+
+# /v1/ask/query puts arbitrary user text directly into the Ollama prompt
+# and calls Ollama twice per request (translate, then phrase) instead of
+# once like every other Petey endpoint -- capping length bounds the
+# worst-case cost per request within the same shared rate-limit budget
+# above, rather than adding separate per-endpoint weighting.
+MAX_QUESTION_LENGTH = 500
 
 
 def _client_ip(request: Request) -> str:
@@ -152,6 +163,42 @@ def _ask_ollama(prompt: str, *, endpoint: str) -> Optional[str]:
         OLLAMA_REQUEST_SECONDS.labels(endpoint=endpoint).observe(time.monotonic() - start)
     OLLAMA_REQUESTS_TOTAL.labels(endpoint=endpoint, outcome="success").inc()
     return answer
+
+
+def _ask_ollama_for_filter(question: str) -> Optional[dict]:
+    """Petey v2 (docs/petey-spec.md, ADR-003): ask Ollama to translate
+    free text into a JSON filter tree, format=json to constrain output
+    to valid JSON syntax. Returns the parsed dict UNVALIDATED -- callers
+    MUST run it through petey_filter.validate_and_compile() before it
+    touches a query; this function only guarantees the response parsed
+    as JSON, not that its contents are safe or sensible. Returns None on
+    any failure (network, timeout, non-JSON response), same fallback
+    contract as _ask_ollama."""
+    start = time.monotonic()
+    try:
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": build_query_prompt(question),
+                "stream": False,
+                "format": "json",
+            },
+            timeout=OLLAMA_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        raw = resp.json().get("response", "").strip()
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            raise ValueError("Ollama's JSON response was not an object")
+    except Exception:
+        OLLAMA_REQUESTS_TOTAL.labels(endpoint="ask_query_translate", outcome="fallback").inc()
+        return None
+    finally:
+        OLLAMA_REQUEST_SECONDS.labels(endpoint="ask_query_translate").observe(
+            time.monotonic() - start)
+    OLLAMA_REQUESTS_TOTAL.labels(endpoint="ask_query_translate", outcome="success").inc()
+    return parsed
 
 
 DB_POOL = psycopg2.pool.ThreadedConnectionPool(
@@ -1168,3 +1215,120 @@ def ask_match_take(req: MatchTakeRequest, request: Request):
         "probability": round(probability, 4),
         "small_sample": False,
     }
+
+
+class AskQueryRequest(BaseModel):
+    question: str
+
+
+@app.post("/v1/ask/query", response_model=AskResponse)
+def ask_query(req: AskQueryRequest, request: Request):
+    """
+    Petey v2 (docs/petey-spec.md, ADR-003): free-text -> validated JSON
+    filter tree. Ollama never writes SQL and never sees the schema --
+    it does exactly two narrow jobs, same as every other Petey
+    endpoint's single job: (1) translate the question into a JSON
+    filter, validated/compiled deterministically by petey_filter
+    against the fixed v_petey_predictions base query before it ever
+    touches the database, then (2) phrase the resulting aggregate as a
+    sentence. Every attempt -- valid or rejected -- is logged to
+    petey_queries per the spec's self-improving FAQ loop.
+    """
+    _enforce_rate_limit(request)
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question must not be empty")
+    if len(question) > MAX_QUESTION_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"question too long (max {MAX_QUESTION_LENGTH} characters)")
+
+    raw_filter = _ask_ollama_for_filter(question)
+    compiled_filter = None
+    rejected_reason = None
+    sql = params = None
+    if raw_filter is None:
+        rejected_reason = "Ollama unavailable or did not return valid JSON"
+    else:
+        try:
+            sql, params = validate_and_compile(raw_filter)
+            compiled_filter = raw_filter
+        except FilterValidationError as e:
+            rejected_reason = str(e)
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO futbol.petey_queries (raw_text, compiled_filter, rejected_reason)
+                   VALUES (%s,%s,%s)""",
+                (question,
+                 psycopg2.extras.Json(compiled_filter) if compiled_filter else None,
+                 rejected_reason))
+    finally:
+        put_conn(conn)
+
+    if compiled_filter is None:
+        return {
+            "answer": (
+                "I couldn't turn that into a specific enough question -- try "
+                "asking about a market, league, team, or outcome (e.g. \"how "
+                "accurate are corners predictions in MLS\")."
+            ),
+            "n_predictions": 0,
+            "small_sample": True,
+        }
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT count(*) AS n, avg(probability) AS avg_confidence,
+                           avg((outcome = 'hit')::int) AS hit_rate
+                    FROM futbol.v_petey_predictions WHERE {sql}""",
+                params)
+            row = cur.fetchone()
+    finally:
+        put_conn(conn)
+
+    n = row["n"]
+    if not n:
+        return {
+            "answer": "I don't have any graded predictions matching that.",
+            "n_predictions": 0,
+            "small_sample": True,
+        }
+
+    hit_rate = float(row["hit_rate"])
+    avg_confidence = float(row["avg_confidence"])
+    summary = (
+        f"Predictions matched: {n}, "
+        f"Stated confidence: {avg_confidence * 100:.1f}%, "
+        f"Realized hit rate: {hit_rate * 100:.1f}%."
+    )
+    prompt = (
+        "You are Petey, a straightforward sports-analytics assistant. "
+        "Turn the following stat summary into ONE short, plain-English "
+        "sentence describing prediction accuracy for whatever was asked "
+        "about. 'Hit rate' means the percentage of past predictions that "
+        "turned out correct -- it is NOT a literal count of goals, "
+        "corners, or events. Do not add any numbers, teams, or facts not "
+        "present in the summary below. Do not speculate.\n\n" + summary
+    )
+    answer = _ask_ollama(prompt, endpoint="ask_query") or (
+        f"Predictions matching that have hit {hit_rate * 100:.1f}% of the "
+        f"time across {n} graded predictions."
+    )
+
+    small_sample = n < 5
+    result = {
+        "answer": answer,
+        "n_predictions": n,
+        "hit_rate": hit_rate,
+        "avg_confidence": avg_confidence,
+        "small_sample": small_sample,
+    }
+    if small_sample:
+        noun = "prediction" if n == 1 else "predictions"
+        result["disclaimer"] = f"Based on only {n} {noun} — treat this cautiously."
+    return result
