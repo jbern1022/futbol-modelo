@@ -100,6 +100,34 @@ export default function LessonsLearnedPage() {
 
           <section>
             <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
+              Removing a secret from the code isn&apos;t removing it
+            </h2>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+              An early commit had a live database password and a
+              third-party API key hardcoded directly into the nightly
+              automation script. The fix looked complete: both were pulled
+              out into environment variables, the script now fails fast
+              with a clear message if either is missing instead of quietly
+              running with a broken connection string, and{" "}
+              <code className="rounded bg-zinc-100 px-1 py-0.5 text-sm dark:bg-zinc-900">
+                .gitignore
+              </code>{" "}
+              was extended so it can&apos;t happen the same way again.
+              What the fix commit didn&apos;t do &mdash; and said so
+              explicitly in its own message, as a separate follow-up step
+              &mdash; was purge the old values from git history. They sat
+              there, in plain text, in a commit reachable from the public
+              GitHub mirror, until both credentials were rotated. A commit
+              that removes a secret only stops it from being read going
+              forward; every commit before it still has it, for as long as
+              the repository does. The two are different problems with
+              different fixes, and only one of them was actually a code
+              change.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-black dark:text-zinc-50">
               Fixed, tested, shipped &mdash; except it wasn&apos;t
             </h2>
             <p className="mt-2 text-zinc-600 dark:text-zinc-400">
