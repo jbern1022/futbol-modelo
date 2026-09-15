@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { marketLabel } from "@/lib/markets";
 import CalibrationSection from "./calibration-section";
 import MarketComparisonSection from "./market-comparison-section";
+import HomeAdvantageSection from "./home-advantage-section";
 import PredictionLog from "./prediction-log";
 
 interface ScorecardRow {
@@ -38,6 +39,13 @@ interface MarketComparisonRow {
   model_probability: number;
   market_probability: number;
   n_bookmakers: number;
+}
+
+interface HomeAdvantageRow {
+  league: string;
+  season: string;
+  gamma: number;
+  n_matches: number;
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -80,10 +88,12 @@ export default function TrackRecordContent({
   scorecard,
   calibration,
   marketComparison,
+  homeAdvantage,
 }: {
   scorecard: ScorecardRow[];
   calibration: CalibrationRow[];
   marketComparison: MarketComparisonRow[];
+  homeAdvantage: HomeAdvantageRow[];
 }) {
   const searchParams = useSearchParams();
   const [league, setLeague] = useState(() => searchParams.get("league") ?? "");
@@ -125,6 +135,9 @@ export default function TrackRecordContent({
   // Only 1X2 rows exist here -- the market filter would zero this
   // section out for every other market, so it only respects league.
   const filteredMarketComparison = marketComparison.filter(
+    (r) => !league || r.league === league
+  );
+  const filteredHomeAdvantage = homeAdvantage.filter(
     (r) => !league || r.league === league
   );
 
@@ -207,6 +220,8 @@ export default function TrackRecordContent({
       )}
 
       <MarketComparisonSection comparison={filteredMarketComparison} />
+
+      <HomeAdvantageSection history={filteredHomeAdvantage} />
 
       <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">Prediction log</h2>
       <PredictionLog league={league} season={season} market={market} />

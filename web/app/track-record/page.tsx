@@ -42,6 +42,13 @@ interface MarketComparisonRow {
   n_bookmakers: number;
 }
 
+interface HomeAdvantageRow {
+  league: string;
+  season: string;
+  gamma: number;
+  n_matches: number;
+}
+
 async function getScorecard(): Promise<ScorecardRow[]> {
   try {
     // The API itself already caches this for 5 minutes; an hour here
@@ -77,11 +84,23 @@ async function getMarketComparison(): Promise<MarketComparisonRow[]> {
   }
 }
 
+async function getHomeAdvantage(): Promise<HomeAdvantageRow[]> {
+  try {
+    const res = await fetch(`${API_URL}/v1/home-advantage`, { next: { revalidate: 3600 } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.history || [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function TrackRecordPage() {
-  const [scorecard, calibration, marketComparison] = await Promise.all([
+  const [scorecard, calibration, marketComparison, homeAdvantage] = await Promise.all([
     getScorecard(),
     getCalibration(),
     getMarketComparison(),
+    getHomeAdvantage(),
   ]);
 
   const totalGraded = scorecard.length > 0;
@@ -131,6 +150,7 @@ export default async function TrackRecordPage() {
             scorecard={scorecard}
             calibration={calibration}
             marketComparison={marketComparison}
+            homeAdvantage={homeAdvantage}
           />
         )}
       </main>

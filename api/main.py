@@ -407,6 +407,18 @@ class MarketComparisonResponse(BaseModel):
     comparison: list[MarketComparisonRow]
 
 
+class HomeAdvantageRow(BaseModel):
+    league: str
+    season: str
+    gamma: float
+    n_matches: int
+
+
+class HomeAdvantageResponse(BaseModel):
+    count: int
+    history: list[HomeAdvantageRow]
+
+
 class AskResponse(BaseModel):
     answer: str
     n_predictions: int
@@ -446,7 +458,7 @@ def root():
     return {"service": "futbol-modelo API", "status": "ok",
             "endpoints": ["/v1/fixtures", "/v1/fixtures/{match_id}/slate",
                          "/v1/scorecard", "/v1/calibration", "/v1/odds-comparison",
-                         "/v1/teams", "/v1/ask",
+                         "/v1/home-advantage", "/v1/teams", "/v1/ask",
                          "/v1/ask/team-form", "/v1/ask/head-to-head",
                          "/v1/ask/match-take", "/v1/pipeline-status"]}
 
@@ -811,6 +823,26 @@ def odds_comparison(league: Optional[str] = Query(None)):
         finally:
             put_conn(conn)
     return _cached(f"odds_comparison:{league}", compute)
+
+
+@app.get("/v1/home-advantage", response_model=HomeAdvantageResponse)
+def home_advantage(league: Optional[str] = Query(None)):
+    def compute():
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                query = "SELECT league, season, gamma, n_matches FROM futbol.home_advantage_history"
+                params = []
+                if league:
+                    query += " WHERE league = %s"
+                    params.append(league)
+                query += " ORDER BY league, season"
+                cur.execute(query, params)
+                rows = cur.fetchall()
+            return {"count": len(rows), "history": rows}
+        finally:
+            put_conn(conn)
+    return _cached(f"home_advantage:{league}", compute)
 
 
 class AskRequest(BaseModel):
