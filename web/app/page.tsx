@@ -36,7 +36,17 @@ async function getScorecardStats(): Promise<ScorecardStats | null> {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return null;
-    const rows: ScorecardRow[] = await res.json();
+    // /v1/scorecard returns {count, scorecard: [...]}, not a bare array
+    // -- this was reading the whole response object as ScorecardRow[]
+    // and calling .reduce() on it directly, which throws and is caught
+    // by the outer try/catch below, so the two stat boxes this feeds
+    // (Graded predictions, Hit rate) have been silently never rendering
+    // on the live homepage. Confirmed live before fixing: curled the
+    // real API (dict with count/scorecard keys, not an array) and built
+    // + ran the actual frontend against it, which rendered the homepage
+    // with neither stat box present.
+    const data = await res.json();
+    const rows: ScorecardRow[] = data.scorecard || [];
     const totalPredictions = rows.reduce((s, r) => s + r.n_predictions, 0);
     const bandRows = rows.filter(
       (r) => r.avg_confidence >= 0.6 && r.avg_confidence <= 0.75
