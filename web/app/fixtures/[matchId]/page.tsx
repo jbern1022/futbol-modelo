@@ -4,8 +4,22 @@ import { marketLabel } from "@/lib/markets";
 import { plainOdds } from "@/lib/format";
 import { leagueBadge, cleanStatement, outcomeBadge, roleBadge, whyPanel } from "@/lib/prediction-display";
 import { LocalDate } from "../../local-date";
+import MarketComparisonSection from "../../track-record/market-comparison-section";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+interface MarketComparisonRow {
+  league: string;
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  kickoff_utc: string;
+  status: string;
+  side: string;
+  model_probability: number;
+  market_probability: number;
+  n_bookmakers: number;
+}
 
 interface Prediction {
   prediction_id: number;
@@ -48,6 +62,23 @@ async function getSlate(matchId: string): Promise<SlateResponse | null> {
   }
 }
 
+// /v1/odds-comparison only filters by league (real bookmaker odds are
+// scarce enough that a per-match endpoint isn't worth adding yet) --
+// fetch the league's rows and filter to this match_id client-side.
+async function getMatchOdds(league: string, matchId: number): Promise<MarketComparisonRow[]> {
+  try {
+    const res = await fetch(`${API_URL}/v1/odds-comparison?league=${encodeURIComponent(league)}`, {
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const rows: MarketComparisonRow[] = data.comparison || [];
+    return rows.filter((r) => r.match_id === matchId);
+  } catch {
+    return [];
+  }
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -76,6 +107,7 @@ export default async function FixturePage({
 }) {
   const { matchId } = await params;
   const data = await getSlate(matchId);
+  const matchOdds = data ? await getMatchOdds(data.fixture.league, data.fixture.match_id) : [];
 
   if (!data) {
     return (
@@ -190,6 +222,8 @@ export default async function FixturePage({
             </div>
           ))}
         </div>
+
+        {matchOdds.length > 0 && <MarketComparisonSection comparison={matchOdds} />}
       </main>
     </div>
   );
