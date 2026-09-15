@@ -451,6 +451,25 @@ class TeamDetailResponse(BaseModel):
     recent: list[TeamFixtureRow]
 
 
+class StandingsRow(BaseModel):
+    team: str
+    played: int
+    won: int
+    drawn: int
+    lost: int
+    goals_for: int
+    goals_against: int
+    goal_diff: int
+    points: int
+
+
+class StandingsResponse(BaseModel):
+    league: str
+    season: str
+    available_seasons: list[str]
+    standings: list[StandingsRow]
+
+
 class TeamFormResponse(BaseModel):
     answer: str
     n_games: int
@@ -1030,6 +1049,76 @@ def get_team(name: str):
                        {"tid": team_id, "status": "final", "limit": 20})
             recent = cur.fetchall()
         return {"team": name, "leagues": leagues, "upcoming": upcoming, "recent": recent}
+    finally:
+        put_conn(conn)
+
+
+@app.get("/v1/standings", response_model=StandingsResponse)
+def get_standings(league: str = Query(..., description="EPL, SERIE_A, MLS, LA_LIGA, or WC"),
+                  season: Optional[str] = Query(None,
+                      description="Defaults to the season with the most recent match")):
+    """Classic points-table standings (3/1/0, tiebreak on goal
+    difference then goals for -- the standard football convention),
+    computed on demand from finished matches. No standings table
+    exists in the schema; this derives it every request rather than
+    maintaining a second source of truth that could drift from the
+    matches it's summarizing."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT DISTINCT s.label FROM futbol.seasons s
+                   JOIN futbol.leagues l ON l.league_id = s.league_id
+                   WHERE l.code = %s ORDER BY s.label""", (league,))
+            available_seasons = [r["label"] for r in cur.fetchall()]
+            if not available_seasons:
+                raise HTTPException(status_code=404, detail="Unknown league")
+
+            if season is None:
+                # Season labels aren't uniformly sortable across leagues
+                # (MLS: "2026", EPL: "2025-26") -- the season that actually
+                # has the most recent real match is the honest "current"
+                # one, not just the lexicographically largest label.
+                cur.execute(
+                    """SELECT s.label FROM futbol.matches m
+                       JOIN futbol.seasons s ON s.season_id = m.season_id
+                       JOIN futbol.leagues l ON l.league_id = s.league_id
+                       WHERE l.code = %s AND m.status = 'final'
+                       ORDER BY m.kickoff_utc DESC LIMIT 1""", (league,))
+                row = cur.fetchone()
+                season = row["label"] if row else available_seasons[-1]
+            elif season not in available_seasons:
+                raise HTTPException(status_code=404, detail="Unknown season for this league")
+
+            cur.execute(
+                """WITH team_matches AS (
+                       SELECT home_team_id AS team_id, home_score AS gf, away_score AS ga
+                       FROM futbol.matches m
+                       JOIN futbol.seasons s ON s.season_id = m.season_id
+                       JOIN futbol.leagues l ON l.league_id = s.league_id
+                       WHERE l.code = %(league)s AND s.label = %(season)s AND m.status = 'final'
+                       UNION ALL
+                       SELECT away_team_id, away_score, home_score
+                       FROM futbol.matches m
+                       JOIN futbol.seasons s ON s.season_id = m.season_id
+                       JOIN futbol.leagues l ON l.league_id = s.league_id
+                       WHERE l.code = %(league)s AND s.label = %(season)s AND m.status = 'final'
+                   )
+                   SELECT t.name AS team, COUNT(*) AS played,
+                          SUM(CASE WHEN tm.gf > tm.ga THEN 1 ELSE 0 END) AS won,
+                          SUM(CASE WHEN tm.gf = tm.ga THEN 1 ELSE 0 END) AS drawn,
+                          SUM(CASE WHEN tm.gf < tm.ga THEN 1 ELSE 0 END) AS lost,
+                          SUM(tm.gf) AS goals_for, SUM(tm.ga) AS goals_against,
+                          SUM(tm.gf - tm.ga) AS goal_diff,
+                          SUM(CASE WHEN tm.gf > tm.ga THEN 3 WHEN tm.gf = tm.ga THEN 1 ELSE 0 END) AS points
+                   FROM team_matches tm
+                   JOIN futbol.teams t ON t.team_id = tm.team_id
+                   GROUP BY t.name
+                   ORDER BY points DESC, goal_diff DESC, goals_for DESC, team""",
+                {"league": league, "season": season})
+            standings = cur.fetchall()
+        return {"league": league, "season": season,
+               "available_seasons": available_seasons, "standings": standings}
     finally:
         put_conn(conn)
 
