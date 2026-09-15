@@ -351,6 +351,7 @@ class PredictionLogRow(BaseModel):
     home: str
     away: str
     kickoff_utc: datetime
+    graded_at: datetime
 
 
 class PredictionLogResponse(BaseModel):
@@ -623,6 +624,11 @@ def list_predictions(
     season: Optional[str] = Query(None),
     market: Optional[str] = Query(None),
     outcome: Optional[str] = Query(None, description="hit or miss"),
+    sort: str = Query("kickoff_utc", pattern="^(kickoff_utc|graded_at)$",
+                      description="kickoff_utc (default) or graded_at -- "
+                                  "e.g. a homepage 'recently graded' feed "
+                                  "wants newest-graded-first, which isn't "
+                                  "the same ordering as newest-kickoff-first"),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
 ):
@@ -640,7 +646,8 @@ def list_predictions(
                        gp.probability, gp.outcome, g.actual_value,
                        tt.name AS subject_team, pl.full_name AS subject_player,
                        gp.match_id, gp.league, gp.season,
-                       th.name AS home, ta.name AS away, m.kickoff_utc
+                       th.name AS home, ta.name AS away, m.kickoff_utc,
+                       g.graded_at
                 FROM futbol.v_graded_predictions gp
                 JOIN futbol.predictions p ON p.prediction_id = gp.prediction_id
                 JOIN futbol.prediction_grades g ON g.prediction_id = gp.prediction_id
@@ -668,7 +675,8 @@ def list_predictions(
             cur.execute(f"SELECT COUNT(*) AS count FROM ({query}) sub", params)
             count = cur.fetchone()["count"]
 
-            query += " ORDER BY m.kickoff_utc DESC LIMIT %s OFFSET %s"
+            sort_col = "g.graded_at" if sort == "graded_at" else "m.kickoff_utc"
+            query += f" ORDER BY {sort_col} DESC LIMIT %s OFFSET %s"
             cur.execute(query, params + [limit, offset])
             rows = cur.fetchall()
         return {"count": count, "predictions": rows}

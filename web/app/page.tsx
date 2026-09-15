@@ -1,4 +1,5 @@
 import FixtureList from "./fixture-list";
+import RecentlyGraded from "./recently-graded";
 
 // Without this, Next.js statically prerenders this page at `docker
 // build` time on docker-host -- which has no network route to the
@@ -62,6 +63,36 @@ async function getScorecardStats(): Promise<ScorecardStats | null> {
   }
 }
 
+interface RecentlyGradedRow {
+  prediction_id: number;
+  market: string;
+  statement: string;
+  side: string;
+  probability: number;
+  outcome: string;
+  subject_team: string | null;
+  league: string;
+  home: string;
+  away: string;
+  graded_at: string;
+}
+
+async function getRecentlyGraded(): Promise<RecentlyGradedRow[]> {
+  try {
+    // Grading runs once a night alongside everything else this page
+    // fetches -- same 1h revalidate window as the fixtures/scorecard
+    // fetches above is already fully current for that cadence.
+    const res = await fetch(`${API_URL}/v1/predictions?sort=graded_at&limit=6`, {
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.predictions || [];
+  } catch {
+    return [];
+  }
+}
+
 interface Fixture {
   match_id: number;
   league: string;
@@ -118,9 +149,10 @@ function timeAgo(ms: number): string {
 }
 
 export default async function Home() {
-  const [{ data, stale, fetchedAt }, stats] = await Promise.all([
+  const [{ data, stale, fetchedAt }, stats, recentlyGraded] = await Promise.all([
     getFixtures(),
     getScorecardStats(),
+    getRecentlyGraded(),
   ]);
 
   return (
@@ -198,6 +230,8 @@ export default async function Home() {
         )}
 
         {data && data.fixtures.length > 0 && <FixtureList fixtures={data.fixtures} />}
+
+        <RecentlyGraded predictions={recentlyGraded} />
       </main>
     </div>
   );
