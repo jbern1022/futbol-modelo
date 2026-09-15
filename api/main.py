@@ -470,6 +470,23 @@ class StandingsResponse(BaseModel):
     standings: list[StandingsRow]
 
 
+class ClosingLineValueRow(BaseModel):
+    prediction_id: int
+    match_id: int
+    statement: str
+    side: str
+    our_probability: float
+    avg_closing_market_probability: float
+    edge_vs_closing: float
+    outcome: str
+    actual_value: Optional[float] = None
+
+
+class ClosingLineValueResponse(BaseModel):
+    count: int
+    rows: list[ClosingLineValueRow]
+
+
 class TeamFormResponse(BaseModel):
     answer: str
     n_games: int
@@ -1119,6 +1136,29 @@ def get_standings(league: str = Query(..., description="EPL, SERIE_A, MLS, LA_LI
             standings = cur.fetchall()
         return {"league": league, "season": season,
                "available_seasons": available_seasons, "standings": standings}
+    finally:
+        put_conn(conn)
+
+
+@app.get("/v1/closing-line-value", response_model=ClosingLineValueResponse)
+def closing_line_value(limit: int = Query(100, le=500)):
+    """'Our predictions beat the closing line' is the strongest version
+    of this project's calibration claim -- did the model's stated
+    probability, locked before kickoff, land closer to the truth than
+    the market's own final price? Backed by v_closing_line_value
+    (migration 0026), itself built on odds history that only
+    accumulates when fetch_and_store_odds() actually runs -- not on any
+    recurring schedule as of this endpoint shipping (a deliberate,
+    unmade API-quota-cost decision, not an oversight). Expect this to
+    return little or nothing until that changes and some time passes."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT * FROM futbol.v_closing_line_value
+                   ORDER BY match_id DESC, prediction_id DESC LIMIT %s""", (limit,))
+            rows = cur.fetchall()
+        return {"count": len(rows), "rows": rows}
     finally:
         put_conn(conn)
 
