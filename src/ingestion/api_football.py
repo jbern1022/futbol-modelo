@@ -30,6 +30,8 @@ from pathlib import Path
 import psycopg2
 import requests
 
+from . import entities
+
 log = logging.getLogger("api_football")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -590,6 +592,12 @@ def backfill_primary(league_code: str, season_start_year: int):
                          num("Red Cards"), num("Goalkeeper Saves"),
                          num("Shots on Goal"), num("Total Shots"),
                          num("Ball Possession"), match_id, tid))
+                    entities.record_source_stats(
+                        cur, match_id, tid, "api_football",
+                        corners=num("Corner Kicks"), fouls=num("Fouls"),
+                        yellows=num("Yellow Cards"), reds=num("Red Cards"),
+                        saves=num("Goalkeeper Saves"),
+                        shots_on_target=num("Shots on Goal"), shots=num("Total Shots"))
                 updated_stats += 1
 
                 load_fixture_players(session, cur, match_id, fixture_id,
@@ -658,6 +666,12 @@ def backfill(league_code: str, season_start_year: int):
                      num("Red Cards"), num("Goalkeeper Saves"),
                      num("Shots on Goal"), num("Total Shots"),
                      num("Ball Possession"), match_id, tid))
+                entities.record_source_stats(
+                    cur, match_id, tid, "api_football",
+                    corners=num("Corner Kicks"), fouls=num("Fouls"),
+                    yellows=num("Yellow Cards"), reds=num("Red Cards"),
+                    saves=num("Goalkeeper Saves"),
+                    shots_on_target=num("Shots on Goal"), shots=num("Total Shots"))
             updated += 1
             if updated % 20 == 0:
                 conn.commit()

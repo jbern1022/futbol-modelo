@@ -201,6 +201,43 @@ def name_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, _norm(a), _norm(b)).ratio()
 
 
+_SOURCE_STATS_COLS = ("corners", "shots", "shots_on_target", "fouls", "yellows", "reds", "saves")
+
+
+def record_source_stats(cur, match_id: int, team_id: int, source: str, **fields) -> None:
+    """
+    Additive per-source record into team_match_stats_by_source (migration
+    0025) -- separate from, and doesn't change, the shared-column UPDATE
+    into team_match_stats that every one of loader.py's and
+    api_football.py's write sites already does. That shared table has no
+    source column, so whichever ingestion path runs last silently
+    overwrites the other's numbers there; this is what lets
+    v_source_reconciliation actually compare what each source
+    independently reported instead of only ever seeing the last writer's
+    value.
+
+    fields: any subset of corners/shots/shots_on_target/fouls/yellows/
+    reds/saves. Only the columns actually passed are touched on both
+    INSERT and (crucially) UPDATE -- loader.py's FBref path calls this
+    once per stat_type (misc, shooting, passing_types, keeper), each
+    with a different single-field subset for the same (match, team,
+    fbref) row, so setting every column on every call would null out
+    whatever an earlier pass had already recorded.
+    """
+    provided = {k: v for k, v in fields.items() if k in _SOURCE_STATS_COLS}
+    if not provided:
+        return
+    cols = list(provided)
+    cur.execute(
+        f"""INSERT INTO futbol.team_match_stats_by_source
+              (match_id, team_id, source, {", ".join(cols)})
+            VALUES (%s, %s, %s, {", ".join(["%s"] * len(cols))})
+            ON CONFLICT (match_id, team_id, source) DO UPDATE SET
+              {", ".join(f"{c} = EXCLUDED.{c}" for c in cols)},
+              recorded_at = now()""",
+        [match_id, team_id, source, *provided.values()])
+
+
 def link_player(cur, source: str, source_id: str, full_name: str,
                 team_canonical: str, position: str | None = None) -> int:
     """

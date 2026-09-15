@@ -241,6 +241,9 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
                     f"""UPDATE futbol.team_match_stats SET {sets}
                         WHERE match_id = %s AND team_id = %s""",
                     (*vals, mid, tid))
+                entities.record_source_stats(
+                    cur, mid, tid, "fbref",
+                    **dict(zip(cols.values(), vals)))
             conn.commit()
 
         # player match-level stats (summary covers shots/goals/minutes)
