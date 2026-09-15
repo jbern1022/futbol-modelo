@@ -110,25 +110,68 @@ function humanizeKey(key: string): string {
   return key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
+// Prefix generate_slate.py's top_feature_impacts() writes into context
+// alongside the raw feature values -- e.g. "corners_for_r5" (the value the
+// model saw) plus "impact_corners_for_r5" (that feature's LightGBM
+// pred_contrib toward the prediction, in the model's raw log-rate space).
+// Older predictions have no impact_ keys at all; everything below degrades
+// to the original plain-values-in-original-order display for those.
+const IMPACT_PREFIX = "impact_";
+
 export function whyPanel(context: Record<string, number> | null) {
   if (!context) return null;
-  const entries = Object.entries(context).filter(([, v]) => v !== null);
-  if (entries.length === 0) return null;
+  const impacts: Record<string, number> = {};
+  const values: [string, number][] = [];
+  for (const [key, value] of Object.entries(context)) {
+    if (value === null) continue;
+    if (key.startsWith(IMPACT_PREFIX)) {
+      impacts[key.slice(IMPACT_PREFIX.length)] = value;
+    } else {
+      values.push([key, value]);
+    }
+  }
+  if (values.length === 0) return null;
+  const hasImpacts = Object.keys(impacts).length > 0;
+  if (hasImpacts) {
+    // Features the model actually leaned on for this specific prediction
+    // first; a feature current_form() computed but the model barely used
+    // for this row still shows below, just not first.
+    values.sort(([a], [b]) => Math.abs(impacts[b] ?? 0) - Math.abs(impacts[a] ?? 0));
+  }
   return (
     <details className="mt-2 text-xs text-zinc-500">
       <summary className="cursor-pointer select-none hover:text-zinc-700 dark:hover:text-zinc-300">
         Why
       </summary>
       <dl className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
-        {entries.map(([key, value]) => (
-          <div key={key} className="flex justify-between gap-2">
-            <dt>{CONTEXT_LABELS[key] ?? humanizeKey(key)}</dt>
-            <dd className="text-zinc-700 dark:text-zinc-300">
-              {typeof value === "number" ? value.toFixed(key === "rest_days" ? 0 : 2) : String(value)}
-            </dd>
-          </div>
-        ))}
+        {values.map(([key, value]) => {
+          const impact = impacts[key];
+          return (
+            <div key={key} className="flex justify-between gap-2">
+              <dt>
+                {CONTEXT_LABELS[key] ?? humanizeKey(key)}
+                {impact !== undefined && (
+                  <span
+                    className={impact >= 0 ? "ml-1 text-green-600 dark:text-green-400" : "ml-1 text-red-500 dark:text-red-400"}
+                    title={`Model impact: ${impact >= 0 ? "+" : ""}${impact.toFixed(3)} (raw model scale, not a probability)`}
+                  >
+                    {impact >= 0 ? "↑" : "↓"}
+                  </span>
+                )}
+              </dt>
+              <dd className="text-zinc-700 dark:text-zinc-300">
+                {typeof value === "number" ? value.toFixed(key === "rest_days" ? 0 : 2) : String(value)}
+              </dd>
+            </div>
+          );
+        })}
       </dl>
+      {hasImpacts && (
+        <p className="mt-1.5 text-[11px] text-zinc-400">
+          Arrows show which of these mattered most to the model for this
+          specific prediction, and in which direction.
+        </p>
+      )}
     </details>
   );
 }

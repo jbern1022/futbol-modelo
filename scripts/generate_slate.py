@@ -198,6 +198,20 @@ def fit_props_model(cur, market: str) -> tuple[Any, list[str], dict, dict]:
     return model, features, calibrators, meta
 
 
+def top_feature_impacts(model: Any, row: pd.DataFrame, feat_cols: list[str],
+                        n: int = 3) -> dict[str, float]:
+    """LightGBM's native pred_contrib -- per-feature SHAP-style contribution
+    to the model's raw prediction (log-rate space for these poisson-
+    objective models, not the final probability). Cheap: reuses the
+    already-fitted booster, no separate `shap` dependency. Returns only
+    the top-n by |contribution| so the "why" panel doesn't overwhelm.
+    Contributions plus the trailing bias term sum to the raw margin --
+    keep only the feature columns (drop that last bias entry)."""
+    contrib = model.predict(row[feat_cols], pred_contrib=True)[0][:-1]
+    ranked = sorted(zip(feat_cols, contrib), key=lambda kv: abs(kv[1]), reverse=True)
+    return {f"impact_{k}": round(float(v), 4) for k, v in ranked[:n]}
+
+
 def build_props_inferences(model: Any, features: dict, is_home: bool, team_id: int,
                            market: str, team_name: str, calibrators: dict) -> list[Inference]:
     spec = PROPS_MARKETS[market]
@@ -208,6 +222,7 @@ def build_props_inferences(model: Any, features: dict, is_home: bool, team_id: i
                 ["sot_for_r5", "sot_against_r5", "shots_for_r5",
                 "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"]
     mu = max(model.predict(row[feat_cols])[0], 0.05)
+    impacts = top_feature_impacts(model, row, feat_cols)
     out = []
     market_label = "Corners" if market == "CORNERS" else "Shots on Target"
     for line in spec["lines"]:
@@ -226,7 +241,7 @@ def build_props_inferences(model: Any, features: dict, is_home: bool, team_id: i
         out.append(Inference(
             market=market, statement=f"{team_name} — {market_label} {side} {line}",
             line=line, side=side, probability=round(stated_p, 5),
-            subject_team_id=team_id, context=features))
+            subject_team_id=team_id, context={**features, **impacts}))
     return out
 
 
@@ -331,9 +346,10 @@ def build_player_goal_inference(model: Any, features_list: list[str], form: dict
     p = float(1 - poisson.cdf(0, mu))
     if not (0.15 <= p <= 0.60):
         return None
+    impacts = top_feature_impacts(model, row, features_list)
     return Inference(market="PLAYER_GOALS", statement=f"{player_name} to score",
                      line=0.5, side="over", probability=round(p, 5),
-                     subject_player_id=player_id, context=form)
+                     subject_player_id=player_id, context={**form, **impacts})
 
 
 def build_player_saves_inference(model: Any, features_list: list[str], form: dict,
@@ -344,9 +360,10 @@ def build_player_saves_inference(model: Any, features_list: list[str], form: dic
     p = float(1 - poisson.cdf(np.floor(line), mu))
     if not (0.20 <= p <= 0.80):
         return None
+    impacts = top_feature_impacts(model, row, features_list)
     return Inference(market="PLAYER_SAVES", statement=f"{player_name} over {line} saves",
                      line=line, side="over", probability=round(p, 5),
-                     subject_player_id=player_id, context=form)
+                     subject_player_id=player_id, context={**form, **impacts})
 
 
 def generate_for_fixture(conn, cur, league: str, home: str, away: str,
