@@ -35,10 +35,12 @@ export default function PredictionLog({
   league,
   season,
   market,
+  team,
 }: {
   league: string;
   season: string;
   market: string;
+  team?: string;
 }) {
   const [outcome, setOutcome] = useState("");
   const [offset, setOffset] = useState(0);
@@ -54,8 +56,8 @@ export default function PredictionLog({
   // #adjusting-some-state-when-a-prop-changes) rather than in a
   // separate effect -- avoids an extra render pass and the
   // react-hooks/set-state-in-effect lint warning that pattern trips.
-  const [prevFilterKey, setPrevFilterKey] = useState([league, season, market, outcome]);
-  const filterKey = [league, season, market, outcome];
+  const [prevFilterKey, setPrevFilterKey] = useState([league, season, market, team, outcome]);
+  const filterKey = [league, season, market, team, outcome];
   if (filterKey.some((v, i) => v !== prevFilterKey[i])) {
     setPrevFilterKey(filterKey);
     setOffset(0);
@@ -66,6 +68,7 @@ export default function PredictionLog({
     if (league) params.set("league", league);
     if (season) params.set("season", season);
     if (market) params.set("market", market);
+    if (team) params.set("team", team);
     if (outcome) params.set("outcome", outcome);
     params.set("limit", String(PAGE_SIZE));
     params.set("offset", String(offset));
@@ -100,7 +103,7 @@ export default function PredictionLog({
     return () => {
       cancelled = true;
     };
-  }, [league, season, market, outcome, offset]);
+  }, [league, season, market, team, outcome, offset]);
 
   const from = count === 0 ? 0 : offset + 1;
   const to = Math.min(offset + PAGE_SIZE, count);

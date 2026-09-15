@@ -167,7 +167,13 @@ export default async function FixturePage({
               </span>
             </span>
             <h1 className="mt-1 text-2xl font-semibold text-black dark:text-zinc-50">
-              {fixture.home} vs {fixture.away}
+              <Link href={`/team/${encodeURIComponent(fixture.home)}`} className="hover:underline">
+                {fixture.home}
+              </Link>{" "}
+              vs{" "}
+              <Link href={`/team/${encodeURIComponent(fixture.away)}`} className="hover:underline">
+                {fixture.away}
+              </Link>
             </h1>
             <p className="mt-1 text-zinc-500">
               <LocalDate

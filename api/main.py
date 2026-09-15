@@ -433,6 +433,24 @@ class TeamsResponse(BaseModel):
     teams: list[str]
 
 
+class TeamFixtureRow(BaseModel):
+    match_id: int
+    league: str
+    opponent: str
+    is_home: bool
+    kickoff_utc: datetime
+    status: str
+    team_score: Optional[int] = None
+    opponent_score: Optional[int] = None
+
+
+class TeamDetailResponse(BaseModel):
+    team: str
+    leagues: list[str]
+    upcoming: list[TeamFixtureRow]
+    recent: list[TeamFixtureRow]
+
+
 class TeamFormResponse(BaseModel):
     answer: str
     n_games: int
@@ -624,6 +642,10 @@ def list_predictions(
     season: Optional[str] = Query(None),
     market: Optional[str] = Query(None),
     outcome: Optional[str] = Query(None, description="hit or miss"),
+    team: Optional[str] = Query(None, description="every prediction on a "
+                                "match either side of this team played in "
+                                "-- not just ones with this exact subject_team, "
+                                "e.g. a 1X2/BTTS prediction on the match counts too"),
     sort: str = Query("kickoff_utc", pattern="^(kickoff_utc|graded_at)$",
                       description="kickoff_utc (default) or graded_at -- "
                                   "e.g. a homepage 'recently graded' feed "
@@ -671,6 +693,10 @@ def list_predictions(
             if outcome:
                 query += " AND gp.outcome = %s"
                 params.append(outcome)
+            if team:
+                query += " AND (th.name = %s OR ta.name = %s)"
+                params.append(team)
+                params.append(team)
 
             cur.execute(f"SELECT COUNT(*) AS count FROM ({query}) sub", params)
             count = cur.fetchone()["count"]
@@ -951,6 +977,59 @@ def list_teams(league: Optional[str] = Query(None)):
                 cur.execute("SELECT name FROM futbol.teams ORDER BY name")
             rows = cur.fetchall()
         return {"teams": [r["name"] for r in rows]}
+    finally:
+        put_conn(conn)
+
+
+@app.get("/v1/teams/{name}", response_model=TeamDetailResponse)
+def get_team(name: str):
+    """Team page data: every league the team has matches in, its next
+    10 scheduled fixtures, and its last 20 finished ones. Matched on
+    the exact team name (same ADR-004 pattern as /v1/ask/team-form --
+    real known values from /v1/teams, not free-text lookup) rather
+    than a team_id, since that's what the frontend already has from
+    fixture cards and prediction statements."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT team_id FROM futbol.teams WHERE name = %s", (name,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Team not found")
+            team_id = row["team_id"]
+
+            cur.execute(
+                """SELECT DISTINCT l.code
+                   FROM futbol.matches m
+                   JOIN futbol.seasons s ON s.season_id = m.season_id
+                   JOIN futbol.leagues l ON l.league_id = s.league_id
+                   WHERE m.home_team_id = %s OR m.away_team_id = %s
+                   ORDER BY 1""", (team_id, team_id))
+            leagues = [r["code"] for r in cur.fetchall()]
+
+            fixture_query = """
+                SELECT m.match_id, l.code AS league, m.kickoff_utc, m.status,
+                       CASE WHEN m.home_team_id = %(tid)s THEN ta.name ELSE th.name END AS opponent,
+                       m.home_team_id = %(tid)s AS is_home,
+                       CASE WHEN m.home_team_id = %(tid)s THEN m.home_score ELSE m.away_score END AS team_score,
+                       CASE WHEN m.home_team_id = %(tid)s THEN m.away_score ELSE m.home_score END AS opponent_score
+                FROM futbol.matches m
+                JOIN futbol.teams th ON th.team_id = m.home_team_id
+                JOIN futbol.teams ta ON ta.team_id = m.away_team_id
+                JOIN futbol.seasons s ON s.season_id = m.season_id
+                JOIN futbol.leagues l ON l.league_id = s.league_id
+                WHERE (m.home_team_id = %(tid)s OR m.away_team_id = %(tid)s)
+                  AND m.status = %(status)s
+                ORDER BY m.kickoff_utc {direction}
+                LIMIT %(limit)s
+            """
+            cur.execute(fixture_query.format(direction="ASC"),
+                       {"tid": team_id, "status": "scheduled", "limit": 10})
+            upcoming = cur.fetchall()
+            cur.execute(fixture_query.format(direction="DESC"),
+                       {"tid": team_id, "status": "final", "limit": 20})
+            recent = cur.fetchall()
+        return {"team": name, "leagues": leagues, "upcoming": upcoming, "recent": recent}
     finally:
         put_conn(conn)
 
