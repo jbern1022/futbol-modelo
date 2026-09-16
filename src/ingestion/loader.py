@@ -254,7 +254,7 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
         for _, r in df.iterrows():
             team = entities.resolve_team("fbref", r["team"])
             tid = upsert_team(cur, team)
-            mid = _find_match(cur, r, tid)
+            mid = _find_match(cur, r, tid, league_code)
             if mid is None:
                 continue
             pid = entities.link_player(cur, "fbref", str(r.get("player_id", r["player"])),
