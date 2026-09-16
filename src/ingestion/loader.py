@@ -254,7 +254,13 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
         for _, r in df.iterrows():
             team = entities.resolve_team("fbref", r["team"])
             tid = upsert_team(cur, team)
-            mid = _find_match(cur, r, tid, league_code)
+            # read_player_match_stats(stat_type="summary") has no 'date'
+            # column -- only 'game', a composite "YYYY-MM-DD Home-Away"
+            # string (unlike the team-level tables above, which do have
+            # 'date' directly) -- found running the historical backfill,
+            # where this crashed with KeyError('date') on every row.
+            match_date = str(r["game"]).split(" ", 1)[0]
+            mid = _find_match(cur, {"date": match_date}, tid, league_code)
             if mid is None:
                 continue
             pid = entities.link_player(cur, "fbref", str(r.get("player_id", r["player"])),
@@ -268,7 +274,7 @@ def load_fbref(conn, league_key: str, seasons: list[str]):
                       minutes = EXCLUDED.minutes, goals = EXCLUDED.goals,
                       shots = EXCLUDED.shots,
                       shots_on_target = EXCLUDED.shots_on_target""",
-                (mid, pid, tid, _int(r.get("Min")), _int(r.get("Gls")),
+                (mid, pid, tid, _int(r.get("min")), _int(r.get("Gls")),
                  _int(r.get("Ast")), _int(r.get("Sh")), _int(r.get("SoT")),
                  _num(r.get("xG")), _num(r.get("xAG"))))
         conn.commit()
