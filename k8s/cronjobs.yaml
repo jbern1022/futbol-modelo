@@ -137,3 +137,80 @@ spec:
             envFrom:
             - secretRef:
                 name: futbol-secrets
+---
+# Odds cadence (2026-09-16 decision): daily wide sweep to pick up
+# opening lines on newly-scheduled fixtures as early as possible, plus
+# an every-2-hours same-day sweep so match_odds_history actually
+# captures real intra-day line movement for v_closing_line_value
+# (migration 0026) instead of a single snapshot. One real API-Football
+# call per matching fixture each run (see fetch_and_store_odds'
+# docstring) -- days-ahead=1 keeps the 2-hourly job's fixture count
+# small (only today's games), so the recurring cost is bounded by
+# match volume, not by days-ahead.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: futbol-odds-daily
+  namespace: default
+spec:
+  schedule: "45 12 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/hostname: k3s-control-plane
+          imagePullSecrets:
+          - name: gitea-registry
+          containers:
+          - name: odds-daily
+            image: gitea.josephbernal.com/joe/futbol-modelo:latest
+            imagePullPolicy: IfNotPresent
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                python -m ingestion.api_football odds --league EPL --days-ahead 7 &&
+                python -m ingestion.api_football odds --league SERIE_A --days-ahead 7 &&
+                python -m ingestion.api_football odds --league MLS --days-ahead 7
+            envFrom:
+            - secretRef:
+                name: futbol-secrets
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: futbol-odds-intraday
+  namespace: default
+spec:
+  schedule: "0 */2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/hostname: k3s-control-plane
+          imagePullSecrets:
+          - name: gitea-registry
+          containers:
+          - name: odds-intraday
+            image: gitea.josephbernal.com/joe/futbol-modelo:latest
+            imagePullPolicy: IfNotPresent
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                python -m ingestion.api_football odds --league EPL --days-ahead 1 &&
+                python -m ingestion.api_football odds --league SERIE_A --days-ahead 1 &&
+                python -m ingestion.api_football odds --league MLS --days-ahead 1
+            envFrom:
+            - secretRef:
+                name: futbol-secrets

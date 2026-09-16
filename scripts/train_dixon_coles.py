@@ -82,6 +82,11 @@ def walk_forward(df: pd.DataFrame, holdout: str, xi: float) -> dict:
 def register(conn, league: str, metrics: dict, holdout: str):
     tag = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                          capture_output=True, text=True).stdout.strip() or "local"
+    from ops.pipeline_run import record_model_version_history
+    _mv_name = f"dixon_coles_{league.lower()}"
+    _mv_window = f"all_excl_{holdout}"
+    _mv_params = json.dumps({"xi": metrics["xi"]})
+    _mv_metrics = json.dumps(metrics)
     with conn.cursor() as cur:
         cur.execute(
             """INSERT INTO futbol.model_versions
@@ -90,9 +95,9 @@ def register(conn, league: str, metrics: dict, holdout: str):
                ON CONFLICT (model_name, version_tag) DO UPDATE
                SET train_metrics = EXCLUDED.train_metrics
                RETURNING model_version_id""",
-            (f"dixon_coles_{league.lower()}", tag, f"all_excl_{holdout}",
-             json.dumps({"xi": metrics["xi"]}), json.dumps(metrics)))
+            (_mv_name, tag, _mv_window, _mv_params, _mv_metrics))
         mvid = cur.fetchone()[0]
+        record_model_version_history(cur, _mv_name, tag, _mv_window, _mv_params, _mv_metrics)
     conn.commit()
     return mvid
 

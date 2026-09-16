@@ -178,6 +178,15 @@ def main():
               f"predicted {row['predicted']:.2f}, actual {int(row['target_actual'])}")
 
     if args.register:
+        from ops.pipeline_run import record_model_version_history
+        _mv_name = f"props_{args.market.lower()}_lgbm"
+        _mv_tag = f"v1_{args.league.lower()}"
+        _mv_window = "2021-22_through_2024-25"
+        _mv_params = json.dumps({"league_scope": args.league, "lines": lines,
+                                 "calibration": "isotonic_5fold_oof"})
+        _mv_metrics = json.dumps({"log_loss_improvement_pct": round(improvement, 2),
+                                  "beats_baseline": beats, "n_train": len(train),
+                                  "n_test": len(test), "lines": line_results})
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO futbol.model_versions
@@ -186,14 +195,9 @@ def main():
                    ON CONFLICT (model_name, version_tag)
                    DO UPDATE SET train_metrics = EXCLUDED.train_metrics
                    RETURNING model_version_id""",
-                (f"props_{args.market.lower()}_lgbm", f"v1_{args.league.lower()}",
-                 "2021-22_through_2024-25",
-                 json.dumps({"league_scope": args.league, "lines": lines,
-                            "calibration": "isotonic_5fold_oof"}),
-                 json.dumps({"log_loss_improvement_pct": round(improvement, 2),
-                            "beats_baseline": beats, "n_train": len(train),
-                            "n_test": len(test), "lines": line_results})))
+                (_mv_name, _mv_tag, _mv_window, _mv_params, _mv_metrics))
             mvid = cur.fetchone()[0]
+            record_model_version_history(cur, _mv_name, _mv_tag, _mv_window, _mv_params, _mv_metrics)
             conn.commit()
             print(f"\nRegistered model_version_id={mvid}")
 

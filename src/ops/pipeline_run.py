@@ -81,3 +81,23 @@ def track_run(job_name: str):
     finally:
         if conn is not None:
             conn.close()
+
+
+def record_model_version_history(cur, model_name: str, version_tag: str,
+                                   training_window: str | None,
+                                   params: str, train_metrics: str) -> None:
+    """
+    Append one snapshot row to futbol.model_versions_history (migration
+    0027) alongside -- not instead of -- the caller's own model_versions
+    upsert. model_versions itself is a "current pointer" per
+    (model_name, version_tag): every write site here reuses a static
+    version_tag (e.g. 'v1') on every retrain, so ON CONFLICT DO UPDATE
+    silently overwrites yesterday's params/train_metrics with no history
+    anywhere. Call this with the same cursor right after the
+    model_versions INSERT so both land in the same transaction.
+    """
+    cur.execute(
+        """INSERT INTO futbol.model_versions_history
+             (model_name, version_tag, training_window, params, train_metrics)
+           VALUES (%s,%s,%s,%s,%s)""",
+        (model_name, version_tag, training_window, params, train_metrics))

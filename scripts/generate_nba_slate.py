@@ -117,7 +117,7 @@ def main() -> None:
     ap.add_argument("--season", required=True, help="e.g. 2026-27")
     ap.add_argument("--days-ahead", type=int, default=14)
     args = ap.parse_args()
-    from ops.pipeline_run import track_run
+    from ops.pipeline_run import track_run, record_model_version_history
 
     with track_run(f"nba_slate:{args.season}") as set_rows_written:
         conn = psycopg2.connect(DSN)
@@ -126,6 +126,9 @@ def main() -> None:
             model, meta = fit_model(cur, args.season)
             print(f"Fit on {meta['n_games']} games from seasons {meta['seasons']}")
 
+            _mv_window = ",".join(meta["seasons"])
+            _mv_params = json.dumps({"alpha": meta["alpha"]})
+            _mv_metrics = json.dumps({"n_games": meta["n_games"], "sigma_total": model.sigma_total})
             cur.execute(
                 """INSERT INTO futbol.model_versions
                      (model_name, version_tag, training_window, params, train_metrics)
@@ -134,10 +137,10 @@ def main() -> None:
                      SET training_window = EXCLUDED.training_window,
                          params = EXCLUDED.params, train_metrics = EXCLUDED.train_metrics
                    RETURNING model_version_id""",
-                (",".join(meta["seasons"]),
-                 json.dumps({"alpha": meta["alpha"]}),
-                 json.dumps({"n_games": meta["n_games"], "sigma_total": model.sigma_total})))
+                (_mv_window, _mv_params, _mv_metrics))
             model_version_id = cur.fetchone()[0]
+            record_model_version_history(cur, "slate_generator_nba", "v1",
+                                          _mv_window, _mv_params, _mv_metrics)
             conn.commit()
 
             cur.execute(UPCOMING_SQL, (args.season, args.days_ahead))

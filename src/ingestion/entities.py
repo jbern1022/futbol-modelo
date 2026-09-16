@@ -176,6 +176,36 @@ _REVERSE = {
     for src, name in sources.items()
 }
 
+# FBref uses different team-name forms in different tables for the same
+# club -- e.g. read_schedule() and the per-match stat tables (misc,
+# summary, etc.) return short forms ("Brighton", "Nottingham",
+# "Manchester Utd") that don't match the fuller names FBref shows
+# elsewhere and that TEAM_SEED was originally seeded from. Found
+# 2026-09-16 running the historical EPL/Serie A backfill: 2021-22 EPL
+# failed outright on 'Brighton'. Diffed every team FBref actually
+# returns across all 5 backfill seasons (2021-22..2025-26) for both
+# leagues against TEAM_SEED and added the short forms here rather than
+# in TEAM_SEED itself, since TEAM_SEED's structure is one name per
+# source and these are genuine second names for the same source.
+_FBREF_ALIASES: dict[str, str] = {
+    "Brighton": "Brighton",
+    "Manchester Utd": "Manchester United",
+    "Newcastle": "Newcastle",
+    "Nottingham": "Nottingham Forest",
+    "Tottenham": "Tottenham",
+    "West Ham": "West Ham",
+    "Wolves": "Wolves",
+    # Serie A: not confirmed by a live diff (FBref's schedule endpoint
+    # rate-limited before Serie A could be checked the same way), added
+    # proactively since these clubs have the same short-vs-full-name
+    # split pattern as the confirmed EPL cases above.
+    "Verona": "Verona",
+    "Inter Milan": "Inter",
+    "Parma": "Parma",
+}
+for _alias, _canon in _FBREF_ALIASES.items():
+    _REVERSE[("fbref", _norm(_alias))] = _canon
+
 
 def resolve_team(source: str, name: str) -> str:
     """Source team name -> canonical name. Raises on unknown (by design)."""

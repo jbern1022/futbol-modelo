@@ -73,6 +73,9 @@ def main():
                   "pre-kickoff prediction. (This is the trigger working correctly.)")
             return
 
+        from ops.pipeline_run import record_model_version_history
+        _mv_params = '{"xi": 0.0005, "reg": 8.0}'
+        _mv_metrics = f'{{"n_matches": {len(df)}}}'
         cur.execute(
             """INSERT INTO futbol.model_versions
                  (model_name, version_tag, training_window, params, train_metrics)
@@ -81,9 +84,10 @@ def main():
                  SET train_metrics = EXCLUDED.train_metrics
                RETURNING model_version_id""",
             ("dixon_coles_wc", "quick_look_v1", "wc2026_through_qf",
-             '{"xi": 0.0005, "reg": 8.0}',
-             f'{{"n_matches": {len(df)}}}'))
+             _mv_params, _mv_metrics))
         model_version_id = cur.fetchone()[0]
+        record_model_version_history(cur, "dixon_coles_wc", "quick_look_v1",
+                                      "wc2026_through_qf", _mv_params, _mv_metrics)
 
         statements = [
             ("1X2", None, "home", mk["home_win"], f"{HOME} win"),

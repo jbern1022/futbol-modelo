@@ -26,6 +26,7 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 
 from models.dixon_coles import DixonColes, derive_markets, knockout_extension
+from ops.pipeline_run import record_model_version_history
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
 
@@ -474,6 +475,15 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     # ON CONFLICT, so the registry actually means something (was
     # previously f"{home}_v_{away}_{date}", which never conflicted and
     # minted one throwaway row per fixture forever).
+    _mv_name = f"slate_generator_{league.lower()}"
+    _mv_tag = "v1"
+    _mv_window = dc_meta["training_window"]
+    _mv_params = json.dumps({"dixon_coles": {"xi": dc_meta["xi"], "reg": dc_meta["reg"]},
+                              "props": {m: meta["hyperparams"] | {"features": meta["features"]}
+                                        for m, meta in props_meta.items()}})
+    _mv_metrics = json.dumps({"dixon_coles_n_matches": dc_meta["n_matches"],
+                               "props_oof_mae": {m: meta["oof_mae"] for m, meta in props_meta.items()},
+                               "props_n_rows": {m: meta["n_rows"] for m, meta in props_meta.items()}})
     cur.execute(
         """INSERT INTO futbol.model_versions
              (model_name, version_tag, training_window, params, train_metrics)
@@ -483,15 +493,9 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                  params = EXCLUDED.params,
                  train_metrics = EXCLUDED.train_metrics
            RETURNING model_version_id""",
-        (f"slate_generator_{league.lower()}", "v1",
-         dc_meta["training_window"],
-         json.dumps({"dixon_coles": {"xi": dc_meta["xi"], "reg": dc_meta["reg"]},
-                     "props": {m: meta["hyperparams"] | {"features": meta["features"]}
-                               for m, meta in props_meta.items()}}),
-         json.dumps({"dixon_coles_n_matches": dc_meta["n_matches"],
-                     "props_oof_mae": {m: meta["oof_mae"] for m, meta in props_meta.items()},
-                     "props_n_rows": {m: meta["n_rows"] for m, meta in props_meta.items()}})))
+        (_mv_name, _mv_tag, _mv_window, _mv_params, _mv_metrics))
     mvid = cur.fetchone()[0]
+    record_model_version_history(cur, _mv_name, _mv_tag, _mv_window, _mv_params, _mv_metrics)
 
     n = persist_slate(conn, match_id, mvid, slate)
     if verbose:
