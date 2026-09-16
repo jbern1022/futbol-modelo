@@ -1,0 +1,122 @@
+# pgBouncer in front of the external Postgres (192.168.4.210), per
+# Todoist decision 2026-09-16 ("pgBouncer in front of Postgres" --
+# connection-storm protection / pooling). Postgres itself is NOT
+# k8s-managed (it's a plain VM, confirmed via `kubectl get svc,pods -A`
+# showing nothing postgres-related) -- this deploys pgbouncer as its
+# own in-cluster pod rather than touching the DB host, so it's fully
+# reversible: nothing points at it yet (see rollout note below), and
+# removing this manifest changes nothing about how the app/crons
+# already connect directly to Postgres.
+#
+# Config (userlist.txt, pgbouncer.ini) is generated INSIDE the
+# container at startup by parsing FUTBOL_DSN/FUTBOL_RO_DSN (already
+# the existing futbol-secrets keys, libpq keyword format: "host=...
+# dbname=... user=... password=..."), so the DB passwords never pass
+# through kubectl output or a file on this machine -- avoids the
+# credential-materialization problem hit trying to sync local .env
+# from the same secret.
+#
+# DELIBERATELY NOT WIRED UP YET: futbol-api/futbol-web/the 3 CronJobs'
+# FUTBOL_DSN/FUTBOL_RO_DSN still point directly at Postgres
+# (192.168.4.210:5432). Rerouting live traffic through a brand-new
+# pooler is a real production risk that deserves its own explicit
+# go-ahead and a canary (one consumer first), not a silent cutover
+# bundled into standing the pooler up. Verify pgbouncer proxies
+# correctly first (see deploy notes), then decide with the user which
+# consumer switches first.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-entrypoint
+  namespace: default
+data:
+  entrypoint.sh: |
+    #!/bin/sh
+    set -e
+
+    parse_dsn() {
+      dsn="$1"
+      for kv in $dsn; do
+        key="${kv%%=*}"
+        val="${kv#*=}"
+        case "$key" in
+          host) eval "${2}_HOST=\"$val\"" ;;
+          dbname) eval "${2}_NAME=\"$val\"" ;;
+          user) eval "${2}_USER=\"$val\"" ;;
+          password) eval "${2}_PASS=\"$val\"" ;;
+        esac
+      done
+    }
+
+    parse_dsn "$FUTBOL_DSN" RW
+    parse_dsn "$FUTBOL_RO_DSN" RO
+
+    mkdir -p /etc/pgbouncer
+    cat > /etc/pgbouncer/userlist.txt <<EOF
+    "$RW_USER" "$RW_PASS"
+    "$RO_USER" "$RO_PASS"
+    EOF
+    chmod 600 /etc/pgbouncer/userlist.txt
+
+    cat > /etc/pgbouncer/pgbouncer.ini <<EOF
+    [databases]
+    futbol = host=$RW_HOST port=5432 dbname=$RW_NAME
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 6432
+    auth_type = plain
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = transaction
+    max_client_conn = 200
+    default_pool_size = 20
+    admin_users = $RW_USER
+    logfile = /dev/stdout
+    EOF
+
+    exec pgbouncer /etc/pgbouncer/pgbouncer.ini
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: futbol-pgbouncer
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: futbol-pgbouncer
+  template:
+    metadata:
+      labels:
+        app: futbol-pgbouncer
+    spec:
+      containers:
+      - name: pgbouncer
+        image: edoburu/pgbouncer:v1.25.2-p0
+        command: ["/bin/sh", "/scripts/entrypoint.sh"]
+        ports:
+        - containerPort: 6432
+        envFrom:
+        - secretRef:
+            name: futbol-secrets
+        volumeMounts:
+        - name: entrypoint
+          mountPath: /scripts
+      volumes:
+      - name: entrypoint
+        configMap:
+          name: pgbouncer-entrypoint
+          defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: futbol-pgbouncer-svc
+  namespace: default
+spec:
+  selector:
+    app: futbol-pgbouncer
+  ports:
+  - port: 6432
+    targetPort: 6432
