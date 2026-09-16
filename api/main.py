@@ -15,6 +15,7 @@ routes are deliberately unversioned infra/meta endpoints):
     GET /v1/calibration?league=MLS
     GET /v1/odds-comparison?league=MLS
     GET /v1/teams?league=MLS
+    GET /v1/player-stats?name=Messi&opponent=Barcelona&recent_n=5
     POST /v1/ask  {"market": "CORNERS", "league": "MLS"}
     POST /v1/ask/team-form  {"team": "Seattle Sounders", "stat": "corners", "games": 10}
     POST /v1/ask/head-to-head  {"team_a": "Seattle Sounders", "team_b": "LA Galaxy"}
@@ -449,6 +450,20 @@ class TeamDetailResponse(BaseModel):
     leagues: list[str]
     upcoming: list[TeamFixtureRow]
     recent: list[TeamFixtureRow]
+
+
+class PlayerStatsAverages(BaseModel):
+    n_matches: int
+    averages: dict[str, float]
+
+
+class PlayerStatsResponse(BaseModel):
+    player: str
+    sport: str
+    recent_n: int
+    season_averages: PlayerStatsAverages
+    recent_averages: PlayerStatsAverages
+    vs_opponent: Optional[PlayerStatsAverages] = None
 
 
 class StandingsRow(BaseModel):
@@ -1066,6 +1081,117 @@ def get_team(name: str):
                        {"tid": team_id, "status": "final", "limit": 20})
             recent = cur.fetchall()
         return {"team": name, "leagues": leagues, "upcoming": upcoming, "recent": recent}
+    finally:
+        put_conn(conn)
+
+
+# One stat table per sport (schema's per-sport-table decision, 2026-08-21
+# -- see sql/schema.sql), so the "same" question ("average per game") means
+# different real columns per sport. matches/teams are shared across all
+# three, so opponent-team resolution works identically regardless of sport.
+_PLAYER_STAT_TABLES = {
+    "soccer": ("futbol.player_match_stats",
+               ["minutes", "goals", "assists", "shots", "shots_on_target",
+                "xg", "xa", "key_passes", "saves", "goals_conceded"]),
+    "nfl": ("futbol.player_match_stats_nfl",
+            ["passing_yards", "passing_tds", "interceptions_thrown",
+             "rushing_yards", "rushing_tds", "targets", "receptions",
+             "receiving_yards", "receiving_tds", "tackles", "sacks",
+             "snap_pct"]),
+    "nba": ("futbol.player_match_stats_nba", ["minutes", "points"]),
+}
+
+
+def _player_stats_averages(cur, table: str, cols: list[str], player_id: int,
+                           opponent_team_id: Optional[int] = None,
+                           limit: Optional[int] = None) -> dict:
+    avg_exprs = ", ".join(f"AVG({c}) AS {c}" for c in cols)
+    where = ["s.player_id = %(pid)s"]
+    params = {"pid": player_id}
+    if opponent_team_id is not None:
+        where.append(
+            """(CASE WHEN m.home_team_id = s.team_id THEN m.away_team_id
+                      ELSE m.home_team_id END) = %(opp)s""")
+        params["opp"] = opponent_team_id
+
+    if limit is not None:
+        # Average over the N most recent matches, not the whole history.
+        inner = f"""SELECT s.*, m.kickoff_utc FROM {table} s
+                    JOIN futbol.matches m ON m.match_id = s.match_id
+                    WHERE {' AND '.join(where)}
+                    ORDER BY m.kickoff_utc DESC LIMIT %(limit)s"""
+        params["limit"] = limit
+        cur.execute(f"SELECT count(*) AS n, {avg_exprs} FROM ({inner}) s", params)
+    else:
+        query = f"""SELECT count(*) AS n, {avg_exprs} FROM {table} s
+                    JOIN futbol.matches m ON m.match_id = s.match_id
+                    WHERE {' AND '.join(where)}"""
+        cur.execute(query, params)
+
+    row = cur.fetchone()
+    n = row["n"]
+    averages = {c: round(float(row[c]), 3) for c in cols if row[c] is not None}
+    return {"n_matches": n, "averages": averages}
+
+
+@app.get("/v1/player-stats", response_model=PlayerStatsResponse)
+def get_player_stats(
+        name: str = Query(..., description="Player full name (partial match ok)"),
+        opponent: Optional[str] = Query(None, description="Filter to matches against this team"),
+        recent_n: int = Query(5, ge=1, le=50)):
+    """Season (all-time) and recent-form averages for a player, real
+    numbers derived from player_match_stats(_nfl/_nba) -- not a
+    prediction, a straightforward aggregate of what already happened.
+    Sport is auto-detected from which per-sport stat table actually has
+    rows for the resolved player, since a player_id is only ever real
+    in one of the three (schema's per-sport-table design)."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT player_id, full_name FROM futbol.players
+                   WHERE full_name ILIKE %s ORDER BY full_name LIMIT 10""",
+                (f"%{name}%",))
+            candidates = cur.fetchall()
+            if not candidates:
+                raise HTTPException(status_code=404, detail=f"No player matching {name!r}")
+            exact = [c for c in candidates if c["full_name"].lower() == name.lower()]
+            if len(candidates) > 1 and not exact:
+                names = ", ".join(c["full_name"] for c in candidates)
+                raise HTTPException(status_code=400,
+                                    detail=f"Ambiguous player name {name!r} -- matches: {names}")
+            player = exact[0] if exact else candidates[0]
+            player_id = player["player_id"]
+
+            sport = None
+            for candidate_sport, (table, _cols) in _PLAYER_STAT_TABLES.items():
+                cur.execute(f"SELECT 1 FROM {table} WHERE player_id = %s LIMIT 1", (player_id,))
+                if cur.fetchone():
+                    sport = candidate_sport
+                    break
+            if sport is None:
+                raise HTTPException(status_code=404,
+                                    detail=f"{player['full_name']} has no recorded match stats")
+            table, cols = _PLAYER_STAT_TABLES[sport]
+
+            opponent_team_id = None
+            if opponent:
+                cur.execute("SELECT team_id FROM futbol.teams WHERE name ILIKE %s LIMIT 1",
+                           (f"%{opponent}%",))
+                opp_row = cur.fetchone()
+                if not opp_row:
+                    raise HTTPException(status_code=404, detail=f"No team matching {opponent!r}")
+                opponent_team_id = opp_row["team_id"]
+
+            season_avg = _player_stats_averages(cur, table, cols, player_id)
+            recent_avg = _player_stats_averages(cur, table, cols, player_id, limit=recent_n)
+            vs_opp = (_player_stats_averages(cur, table, cols, player_id,
+                                             opponent_team_id=opponent_team_id)
+                     if opponent_team_id is not None else None)
+
+        return {"player": player["full_name"], "sport": sport, "recent_n": recent_n,
+                "season_averages": season_avg, "recent_averages": recent_avg,
+                "vs_opponent": vs_opp}
     finally:
         put_conn(conn)
 
