@@ -421,6 +421,20 @@ class HomeAdvantageResponse(BaseModel):
     history: list[HomeAdvantageRow]
 
 
+class ModelChangelogRow(BaseModel):
+    model_name: str
+    version_tag: str
+    trained_at: datetime
+    training_window: Optional[str] = None
+    params: dict = {}
+    train_metrics: dict = {}
+
+
+class ModelChangelogResponse(BaseModel):
+    count: int
+    changelog: list[ModelChangelogRow]
+
+
 class AskResponse(BaseModel):
     answer: str
     n_predictions: int
@@ -928,6 +942,35 @@ def home_advantage(league: Optional[str] = Query(None)):
         finally:
             put_conn(conn)
     return _cached(f"home_advantage:{league}", compute)
+
+
+@app.get("/v1/model-changelog", response_model=ModelChangelogResponse)
+def model_changelog(model_name: Optional[str] = Query(None)):
+    """
+    Every real retrain event, not just the latest snapshot -- reads
+    model_versions_history (migration 0027), the append-only table
+    built specifically for this page since model_versions itself is a
+    current-pointer table that overwrites in place on every retrain
+    (see that migration's comment for the full reasoning).
+    """
+    def compute():
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                query = """SELECT model_name, version_tag, trained_at,
+                                  training_window, params, train_metrics
+                           FROM futbol.model_versions_history"""
+                params: list = []
+                if model_name:
+                    query += " WHERE model_name = %s"
+                    params.append(model_name)
+                query += " ORDER BY trained_at DESC LIMIT 200"
+                cur.execute(query, params)
+                rows = cur.fetchall()
+            return {"count": len(rows), "changelog": rows}
+        finally:
+            put_conn(conn)
+    return _cached(f"model_changelog:{model_name}", compute)
 
 
 class AskRequest(BaseModel):
