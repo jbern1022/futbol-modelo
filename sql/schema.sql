@@ -247,6 +247,11 @@ CREATE TABLE IF NOT EXISTS match_odds (
     bookmaker_name      TEXT,
     market              TEXT NOT NULL,
     selection           TEXT NOT NULL,
+    -- Nullable, best-effort only -- see sql/migrations/0029's comment.
+    -- Player-market odds (e.g. Anytime Goal Scorer) give a bare name
+    -- string, not an api_football_id, unlike every other player
+    -- reference in this schema.
+    player_id           INT REFERENCES players(player_id),
     decimal_odds        NUMERIC(8,3) NOT NULL,
     implied_probability NUMERIC(6,5),
     no_vig_probability  NUMERIC(6,5),
@@ -266,6 +271,7 @@ CREATE TABLE IF NOT EXISTS match_odds_history (
     bookmaker_name        TEXT,
     market                TEXT NOT NULL,
     selection             TEXT NOT NULL,
+    player_id             INT REFERENCES players(player_id),
     decimal_odds          NUMERIC(8,3) NOT NULL,
     implied_probability   NUMERIC(6,5),
     no_vig_probability    NUMERIC(6,5),
@@ -281,10 +287,11 @@ SELECT
     o.decimal_odds AS opening_odds, o.no_vig_probability AS opening_probability,
     o.fetched_at AS opening_fetched_at,
     c.decimal_odds AS closing_odds, c.no_vig_probability AS closing_probability,
-    c.fetched_at AS closing_fetched_at
+    c.fetched_at AS closing_fetched_at,
+    o.player_id
 FROM (
     SELECT DISTINCT ON (match_id, bookmaker_id, market, selection)
-        match_id, bookmaker_id, bookmaker_name, market, selection,
+        match_id, bookmaker_id, bookmaker_name, market, selection, player_id,
         decimal_odds, no_vig_probability, fetched_at
     FROM match_odds_history
     ORDER BY match_id, bookmaker_id, market, selection, fetched_at ASC

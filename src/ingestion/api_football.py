@@ -110,14 +110,35 @@ def _get(session: requests.Session, endpoint: str, params: dict, attempts: int =
     ) from last_err
 
 
-def normalize_match_winner_odds(response: list[dict]) -> list[dict]:
-    """Flatten API-Football match-winner odds into database-ready records."""
+# API-Football bet-type ids we ingest, mapped to our own market codes.
+# Confirmed live 2026-09-21 against a real fixture's /odds response --
+# both are in the SAME call already being made for 1X2, no second
+# endpoint needed. "Anytime Goal Scorer" per-team variants (bet ids 218,
+# 231) exist too but aren't pulled here -- the un-scoped id 92 already
+# covers both teams' players in one market.
+#
+# EXCLUSIVE_MARKETS matters for remove_overround(): 1X2 and BTTS are
+# mutually-exclusive outcomes (probabilities sum to ~1 pre-vig), so
+# stripping the vig by normalizing to sum=1 is valid. PLAYER_ANYTIME_GOAL
+# is NOT exclusive -- multiple players can each score in the same match
+# -- so summing and normalizing every player's odds together would
+# badly distort each one's real probability. Non-exclusive markets get
+# a raw implied probability only; no_vig_probability stays NULL rather
+# than a number that looks precise but is actually wrong.
+ODDS_BET_IDS = {1: "1X2", 8: "BTTS", 92: "PLAYER_ANYTIME_GOAL"}
+EXCLUSIVE_MARKETS = {"1X2", "BTTS"}
+
+
+def normalize_odds(response: list[dict]) -> list[dict]:
+    """Flatten API-Football odds into database-ready records, covering
+    1X2, BTTS, and Anytime Goal Scorer (see ODDS_BET_IDS)."""
     records = []
     for fixture in response:
         fixture_id = fixture.get("fixture", {}).get("id")
         for bookmaker in fixture.get("bookmakers", []):
             for bet in bookmaker.get("bets", []):
-                if bet.get("id") != 1:
+                market = ODDS_BET_IDS.get(bet.get("id"))
+                if market is None:
                     continue
                 for value in bet.get("values", []):
                     try:
@@ -130,7 +151,7 @@ def normalize_match_winner_odds(response: list[dict]) -> list[dict]:
                         "fixture_id": fixture_id,
                         "bookmaker_id": bookmaker.get("id"),
                         "bookmaker_name": bookmaker.get("name"),
-                        "market": "1X2",
+                        "market": market,
                         "selection": value.get("value"),
                         "decimal_odds": decimal_odds,
                     })
@@ -223,15 +244,75 @@ def link_fixture_ids(league_code: str, season_start_year: int) -> int:
     return linked
 
 
+def _normalize_player_name(name: str) -> str:
+    """Case/accent/whitespace-insensitive key for matching an odds
+    provider's bare player name string against our own players.full_name
+    -- see resolve_player_for_odds()."""
+    import unicodedata
+    stripped = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return " ".join(stripped.lower().split())
+
+
+def resolve_player_for_odds(cur, name: str, home_team_id: int, away_team_id: int) -> int | None:
+    """
+    Anytime Goal Scorer odds give a bare name, not an api_football_id --
+    unlike every other player reference in this schema, which is
+    resolved purely by id (see resolve_or_create_player_id's comment:
+    "no name-based conflict resolution... the numeric id is the only
+    safe key"). This is a deliberate, scoped exception: match against
+    only the two teams actually playing (their full historical roster,
+    not the whole players table), and return None on anything that
+    doesn't resolve unambiguously -- never guess. Fixture hasn't been
+    played yet, so player_match_stats for THIS match doesn't exist --
+    player_match_stats from either team's past matches is the roster
+    proxy instead.
+
+    Two tiers, both roster-scoped:
+    1. Exact normalized full-name match.
+    2. Last-name-only match, but ONLY if exactly one roster player
+       shares that last name. Needed because API-Football's own roster
+       names (from fixtures/players, feeding resolve_or_create_player_id)
+       are inconsistently abbreviated ("C. Tzolis") while the odds
+       provider gives full first names ("Christos Tzolis") -- confirmed
+       2026-09-21 checking a real fixture: exact match alone missed 2 of
+       3 real scorers this way. Last name is stable across both formats
+       and, scoped to ~30-60 players across two rosters, collisions are
+       rare -- but when one exists (e.g. this repo's own known duplicate
+       player rows, like "Max Dowman" / "M. Dowman" both present for the
+       same person), this declines rather than picking one.
+    """
+    cur.execute(
+        """SELECT DISTINCT p.player_id, p.full_name
+           FROM futbol.players p
+           JOIN futbol.player_match_stats pms ON pms.player_id = p.player_id
+           WHERE pms.team_id IN (%s, %s)""",
+        (home_team_id, away_team_id))
+    roster = cur.fetchall()
+
+    target = _normalize_player_name(name)
+    exact = [pid for pid, full_name in roster if _normalize_player_name(full_name) == target]
+    if len(exact) == 1:
+        return exact[0]
+
+    def last_name(n: str) -> str:
+        parts = _normalize_player_name(n).replace(".", "").split()
+        return parts[-1] if parts else ""
+
+    target_last = last_name(name)
+    by_last = [pid for pid, full_name in roster if last_name(full_name) == target_last]
+    return by_last[0] if len(by_last) == 1 else None
+
+
 def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
     """
     Storage half of the real bookmaker odds comparison feature (Track
-    Record UI display is separate, deferred work). Fetches
-    match-winner (1X2) odds for already-known, still-scheduled fixtures
-    in the next `days_ahead` days, strips each bookmaker's own
-    overround, and upserts into match_odds (latest snapshot per
-    match/bookmaker/selection, not a full time series -- see
-    sql/migrations/0010_match_odds.sql).
+    Record UI display is separate, deferred work). Fetches 1X2, BTTS,
+    and Anytime Goal Scorer odds (see ODDS_BET_IDS) for already-known,
+    still-scheduled fixtures in the next `days_ahead` days, strips each
+    bookmaker's own overround (exclusive markets only -- see
+    EXCLUSIVE_MARKETS), and upserts into match_odds (latest snapshot per
+    match/bookmaker/market/selection, not a full time series -- see
+    sql/migrations/0010_match_odds.sql and 0029 for the player_id column).
 
     One real API call per matching fixture -- keep days_ahead modest
     on a rate-limited API-Football tier; this does not batch across
@@ -243,7 +324,8 @@ def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT m.match_id, m.external_ref, th.name, ta.name
+                """SELECT m.match_id, m.external_ref, th.name, ta.name,
+                          th.team_id, ta.team_id
                    FROM futbol.matches m
                    JOIN futbol.teams th ON th.team_id = m.home_team_id
                    JOIN futbol.teams ta ON ta.team_id = m.away_team_id
@@ -257,40 +339,56 @@ def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
         log.info("%d scheduled %s fixture(s) in the next %d day(s)",
                  len(fixtures), league_code, days_ahead)
 
-        for match_id, external_ref, home, away in fixtures:
+        for match_id, external_ref, home, away, home_team_id, away_team_id in fixtures:
             fixture_id = _api_football_fixture_id(external_ref)
             if fixture_id is None:
                 log.info("no API-Football fixture id for %s vs %s -- skipping odds", home, away)
                 continue
 
             response = _get(session, "odds", {"fixture": fixture_id})
-            records = normalize_match_winner_odds(response)
+            records = normalize_odds(response)
             if not records:
                 continue
 
             # remove_overround normalizes probabilities within one
-            # bookmaker's own market -- grouping by bookmaker first so a
-            # multi-bookmaker response doesn't get treated as one market.
-            by_bookmaker: dict[int | None, list[dict]] = {}
+            # bookmaker's own MARKET -- grouping by (bookmaker, market)
+            # so a multi-market, multi-bookmaker response doesn't get
+            # treated as one pool (1X2 and BTTS odds summed together
+            # would be meaningless, let alone a non-exclusive market
+            # like PLAYER_ANYTIME_GOAL -- see EXCLUSIVE_MARKETS).
+            by_bookmaker_market: dict[tuple[int | None, str], list[dict]] = {}
             for r in records:
-                by_bookmaker.setdefault(r["bookmaker_id"], []).append(r)
+                by_bookmaker_market.setdefault((r["bookmaker_id"], r["market"]), []).append(r)
 
             with conn.cursor() as cur:
-                for bookmaker_records in by_bookmaker.values():
-                    for r in remove_overround(bookmaker_records):
+                for (_bookmaker_id, market), group in by_bookmaker_market.items():
+                    if market in EXCLUSIVE_MARKETS:
+                        group = remove_overround(group)
+                    else:
+                        for r in group:
+                            r["implied_probability"] = 1 / r["decimal_odds"]
+                            r["no_vig_probability"] = None
+
+                    for r in group:
+                        player_id = (
+                            resolve_player_for_odds(cur, r["selection"], home_team_id, away_team_id)
+                            if market == "PLAYER_ANYTIME_GOAL" else None)
+
                         cur.execute(
                             """INSERT INTO futbol.match_odds
                                  (match_id, bookmaker_id, bookmaker_name, market,
-                                  selection, decimal_odds, implied_probability, no_vig_probability)
-                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                                  selection, player_id, decimal_odds,
+                                  implied_probability, no_vig_probability)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                                ON CONFLICT (match_id, bookmaker_id, market, selection)
                                DO UPDATE SET decimal_odds = EXCLUDED.decimal_odds,
                                              implied_probability = EXCLUDED.implied_probability,
                                              no_vig_probability = EXCLUDED.no_vig_probability,
+                                             player_id = EXCLUDED.player_id,
                                              fetched_at = now()""",
                             (match_id, r["bookmaker_id"], r["bookmaker_name"], r["market"],
-                             r["selection"], r["decimal_odds"], r["implied_probability"],
-                             r["no_vig_probability"]))
+                             r["selection"], player_id, r["decimal_odds"],
+                             r["implied_probability"], r["no_vig_probability"]))
                         # Always appended, never upserted -- match_odds
                         # above only ever holds the latest snapshot, so
                         # this is the only place opening-vs-closing line
@@ -298,11 +396,12 @@ def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
                         cur.execute(
                             """INSERT INTO futbol.match_odds_history
                                  (match_id, bookmaker_id, bookmaker_name, market,
-                                  selection, decimal_odds, implied_probability, no_vig_probability)
-                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                                  selection, player_id, decimal_odds,
+                                  implied_probability, no_vig_probability)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                             (match_id, r["bookmaker_id"], r["bookmaker_name"], r["market"],
-                             r["selection"], r["decimal_odds"], r["implied_probability"],
-                             r["no_vig_probability"]))
+                             r["selection"], player_id, r["decimal_odds"],
+                             r["implied_probability"], r["no_vig_probability"]))
                         stored += 1
             conn.commit()
     finally:
