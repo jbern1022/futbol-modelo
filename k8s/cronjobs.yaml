@@ -64,6 +64,7 @@ spec:
                 python -m ingestion.api_football backfill --league MLS --season 2026 &&
                 python -m ingestion.api_football backfill --league EPL --season 2026 --primary &&
                 python -m ingestion.api_football backfill --league SERIE_A --season 2026 --primary &&
+                python -m ingestion.api_football backfill --league LA_LIGA --season 2026 --primary &&
                 python -m ingestion.nfl_data backfill --season 2026 &&
                 python -m ingestion.nfl_data backfill-players --season 2026 &&
                 python -m ingestion.nba_data backfill --season 2026-27 &&
@@ -103,6 +104,7 @@ spec:
                 python scripts/auto_slate.py --league MLS --days 21 &&
                 python scripts/auto_slate.py --league EPL --days 45 &&
                 python scripts/auto_slate.py --league SERIE_A --days 45 &&
+                python scripts/auto_slate.py --league LA_LIGA --days 45 &&
                 python scripts/generate_nfl_slate.py --season 2026 --days-ahead 14 &&
                 python scripts/generate_nba_slate.py --season 2026-27 --days-ahead 45
             envFrom:
@@ -176,7 +178,8 @@ spec:
               - |
                 python -m ingestion.api_football odds --league EPL --days-ahead 7 &&
                 python -m ingestion.api_football odds --league SERIE_A --days-ahead 7 &&
-                python -m ingestion.api_football odds --league MLS --days-ahead 7
+                python -m ingestion.api_football odds --league MLS --days-ahead 7 &&
+                python -m ingestion.api_football odds --league LA_LIGA --days-ahead 7
             envFrom:
             - secretRef:
                 name: futbol-secrets
@@ -210,7 +213,8 @@ spec:
               - |
                 python -m ingestion.api_football odds --league EPL --days-ahead 1 &&
                 python -m ingestion.api_football odds --league SERIE_A --days-ahead 1 &&
-                python -m ingestion.api_football odds --league MLS --days-ahead 1
+                python -m ingestion.api_football odds --league MLS --days-ahead 1 &&
+                python -m ingestion.api_football odds --league LA_LIGA --days-ahead 1
             envFrom:
             - secretRef:
                 name: futbol-secrets

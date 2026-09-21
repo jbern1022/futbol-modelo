@@ -89,9 +89,17 @@ case "$TARGET" in
 
     futbol-modelo)
         build_and_push "futbol-modelo" "Dockerfile" "."
-        patch_cronjob "futbol-nightly-refresh" "refresh"  "${REGISTRY}/futbol-modelo:${SHA}"
-        patch_cronjob "futbol-auto-slate"       "auto-slate" "${REGISTRY}/futbol-modelo:${SHA}"
-        patch_cronjob "futbol-auto-grade"       "auto-grade" "${REGISTRY}/futbol-modelo:${SHA}"
+        patch_cronjob "futbol-nightly-refresh" "refresh"      "${REGISTRY}/futbol-modelo:${SHA}"
+        patch_cronjob "futbol-auto-slate"      "auto-slate"   "${REGISTRY}/futbol-modelo:${SHA}"
+        patch_cronjob "futbol-auto-grade"      "auto-grade"   "${REGISTRY}/futbol-modelo:${SHA}"
+        # Found 2026-09-21: these two were missing from this list, so they
+        # stayed on :latest with imagePullPolicy: IfNotPresent -- pushing a
+        # new :latest silently did nothing for them once any image had ever
+        # been cached under that tag on the node. Confirmed live: while the
+        # three CronJobs above tracked the current SHA correctly, these two
+        # were still sitting on a stale :latest days after a real deploy.
+        patch_cronjob "futbol-odds-daily"      "odds-daily"   "${REGISTRY}/futbol-modelo:${SHA}"
+        patch_cronjob "futbol-odds-intraday"   "odds-intraday" "${REGISTRY}/futbol-modelo:${SHA}"
         ;;
 
     *)
