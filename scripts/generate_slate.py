@@ -6,8 +6,10 @@ a genuine pre-kickoff slate through the immutable ledger.
 
     python scripts/generate_slate.py --league MLS --home Arsenal --away Chelsea
 
-Player-level markets (goals, saves) are MLS-only for now — the only
-league with player_match_stats populated so far.
+Player-level markets (goals, saves) run for MLS, EPL, and Serie A --
+see PLAYER_PROPS_LEAGUES below. La Liga is excluded until its
+historical FBref player-stats backfill lands (no player_match_stats
+rows for LA_LIGA yet as of 2026-09-21).
 """
 import argparse
 import json
@@ -55,6 +57,12 @@ PROPS_MARKETS: dict[str, dict[str, Any]] = {
             "for_col": "sot_for_r5", "against_col": "sot_against_r5"},
 }
 PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS"}
+
+# Player-level goals/saves models need player_match_stats coverage,
+# which La Liga doesn't have yet (see module docstring). Separate from
+# PROPS_LEAGUES (team-level corners/SOT) in case the two sets diverge
+# again -- they happen to match today, but for different reasons.
+PLAYER_PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS"}
 
 
 def find_fixture(cur, league: str, home: str, away: str) -> tuple | None:
@@ -305,7 +313,8 @@ def fit_player_goals_model(cur) -> tuple[Any, list[str]]:
              ON pms.match_id = f.match_id AND pms.player_id = f.player_id
            JOIN futbol.seasons s ON s.season_id = m.season_id
            JOIN futbol.leagues l ON l.league_id = s.league_id
-           WHERE l.code = 'MLS' AND pms.minutes >= 45""")
+           WHERE l.code = ANY(%s) AND pms.minutes >= 45""",
+        (list(PLAYER_PROPS_LEAGUES),))
     rows = cur.fetchall()
     df = pd.DataFrame(rows, columns=features + ["goals"])
     df = df.apply(pd.to_numeric, errors="coerce").dropna()
@@ -329,8 +338,9 @@ def fit_player_saves_model(cur) -> tuple[Any, list[str]]:
              ON tf.match_id = pf.match_id AND tf.team_id = pf.team_id
            JOIN futbol.seasons s ON s.season_id = m.season_id
            JOIN futbol.leagues l ON l.league_id = s.league_id
-           WHERE l.code = 'MLS' AND p.position = 'G' AND pms.minutes >= 45
-             AND pms.saves IS NOT NULL""")
+           WHERE l.code = ANY(%s) AND p.position = 'G' AND pms.minutes >= 45
+             AND pms.saves IS NOT NULL""",
+        (list(PLAYER_PROPS_LEAGUES),))
     rows = cur.fetchall()
     df = pd.DataFrame(rows, columns=features + ["saves"])
     df = df.apply(pd.to_numeric, errors="coerce").dropna()
@@ -422,7 +432,7 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                 candidates += build_props_inferences(model, home_form, True, home_id, market, home, calibrators)
                 candidates += build_props_inferences(model, away_form, False, away_id, market, away, calibrators)
 
-        if league == "MLS":
+        if league in PLAYER_PROPS_LEAGUES:
             try:
                 goals_model, goals_feats = fit_player_goals_model(cur)
                 saves_model, saves_feats = fit_player_saves_model(cur)
