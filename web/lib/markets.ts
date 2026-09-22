@@ -4,6 +4,7 @@ export const MARKET_LABELS: Record<string, string> = {
   TOTAL_GOALS: "Total Goals",
   CORNERS: "Corners",
   SOT: "Shots on Target",
+  CARDS: "Cards",
   PLAYER_GOALS: "Anytime Goalscorer",
   PLAYER_SAVES: "Goalkeeper Saves",
   MONEYLINE: "Moneyline",

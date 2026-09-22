@@ -330,7 +330,7 @@ CREATE TABLE predictions (
     model_version_id INT NOT NULL REFERENCES model_versions(model_version_id),
     market          TEXT NOT NULL CHECK (market IN (
                         -- soccer (live)
-                        '1X2', 'BTTS', 'TOTAL_GOALS', 'CORNERS', 'SOT',
+                        '1X2', 'BTTS', 'TOTAL_GOALS', 'CORNERS', 'SOT', 'CARDS',
                         'PLAYER_GOALS', 'PLAYER_SAVES',
                         -- NFL (live) -- neither NFL nor NBA has a draw,
                         -- so 1X2 doesn't apply; MONEYLINE is the 2-way

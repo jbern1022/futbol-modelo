@@ -35,13 +35,14 @@ function opacityForN(n: number): number {
 }
 
 // One fixed color per market rather than a generated palette -- there
-// are only 7 markets total, so a lookup reads clearer than a hash.
+// are only 8 markets total, so a lookup reads clearer than a hash.
 const MARKET_COLORS: Record<string, string> = {
   "1X2": "#f59e0b",
   BTTS: "#8b5cf6",
   TOTAL_GOALS: "#3b82f6",
   CORNERS: "#10b981",
   SOT: "#ec4899",
+  CARDS: "#eab308",
   PLAYER_GOALS: "#ef4444",
   PLAYER_SAVES: "#06b6d4",
 };

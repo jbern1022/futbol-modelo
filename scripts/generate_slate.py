@@ -52,13 +52,44 @@ except ImportError:
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
+PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS", "LA_LIGA"}
+
+# CARDS is EPL/SERIE_A only -- both the team-level yellows/fouls/reds
+# features and referee_avg_cards_r10 (see sql/features.sql) were only
+# validated for these two leagues (scripts/train_props.py's own
+# --league choices never included MLS/LA_LIGA for CARDS), and
+# referee_match_features has zero coverage for those leagues' matches.
+CARDS_LEAGUES = {"EPL", "SERIE_A"}
+
 PROPS_MARKETS: dict[str, dict[str, Any]] = {
     "CORNERS": {"target_col": "corners", "lines": [3.5, 4.5, 5.5, 6.5],
-                "for_col": "corners_for_r5", "against_col": "corners_against_r5"},
+                "leagues": PROPS_LEAGUES, "label": "Corners",
+                "features": ["corners_for_r5", "corners_against_r5", "shots_for_r5",
+                            "shots_against_r5", "xg_for_r5", "xg_against_r5",
+                            "rest_days", "is_home"]},
     "SOT": {"target_col": "shots_on_target", "lines": [2.5, 3.5, 4.5, 5.5],
-            "for_col": "sot_for_r5", "against_col": "sot_against_r5"},
+            "leagues": PROPS_LEAGUES, "label": "Shots on Target",
+            "features": ["sot_for_r5", "sot_against_r5", "shots_for_r5",
+                        "shots_against_r5", "xg_for_r5", "xg_against_r5",
+                        "rest_days", "is_home"]},
+    # referee_avg_cards_r10: leakage-safe at TRAINING time (the true
+    # historical referee is known for every past match), but the real
+    # referee for an upcoming fixture is essentially never known at
+    # slate-generation time -- verified live 2026-09-22: every
+    # currently-scheduled EPL/SERIE_A fixture within the 21-45 day
+    # generation window has referee=NULL (API-Football doesn't assign
+    # one that far out), and a fixture only ever gets slated once, so
+    # "wait until it's known" isn't compatible with this architecture
+    # without a bigger timing change. generate_for_fixture() falls back
+    # to fit_props_model's league-wide average (meta["referee_fallback"])
+    # for every live CARDS prediction -- a real, explicit, weaker
+    # version of what train_props.py backtested with perfect hindsight,
+    # not the same result. See Todoist for the full tradeoff discussion.
+    "CARDS": {"target_col": "yellows", "lines": [1.5, 2.5, 3.5],
+              "leagues": CARDS_LEAGUES, "label": "Cards",
+              "features": ["yellows_for_r5", "fouls_for_r5", "reds_for_r5",
+                          "rest_days", "is_home", "referee_avg_cards_r10"]},
 }
-PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS", "LA_LIGA"}
 
 # Historically diverged from PROPS_LEAGUES while La Liga lacked
 # player_match_stats coverage (see module docstring) -- kept as a
@@ -110,6 +141,7 @@ def current_form(cur, team_id: int, kickoff: datetime) -> dict:
     kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
     cur.execute(
         """SELECT tms.corners, tms.shots, tms.shots_on_target, tms.xg,
+                  tms.fouls, tms.yellows, tms.reds,
                   o.corners AS corners_c, o.shots AS shots_c,
                   o.shots_on_target AS sot_c, o.xg AS xg_c, m.kickoff_utc
            FROM futbol.team_match_stats tms
@@ -127,7 +159,8 @@ def current_form(cur, team_id: int, kickoff: datetime) -> dict:
     # than silently averaging stale games from months ago.
     if len(rows) < 3:
         return {}
-    cols = ["corners", "shots", "sot", "xg", "corners_c", "shots_c", "sot_c", "xg_c", "kickoff"]
+    cols = ["corners", "shots", "sot", "xg", "fouls", "yellows", "reds",
+            "corners_c", "shots_c", "sot_c", "xg_c", "kickoff"]
     df = pd.DataFrame(rows, columns=cols)
     numeric_cols = [c for c in cols if c != "kickoff"]
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
@@ -138,35 +171,47 @@ def current_form(cur, team_id: int, kickoff: datetime) -> dict:
         "shots_for_r5": df["shots"].mean(), "shots_against_r5": df["shots_c"].mean(),
         "sot_for_r5": df["sot"].mean(), "sot_against_r5": df["sot_c"].mean(),
         "xg_for_r5": df["xg"].mean(), "xg_against_r5": df["xg_c"].mean(),
+        "fouls_for_r5": df["fouls"].mean(), "yellows_for_r5": df["yellows"].mean(),
+        "reds_for_r5": df["reds"].mean(),
         "rest_days": max(rest_days, 1),
     }
 
 
 def fit_props_model(cur, market: str) -> tuple[Any, list[str], dict, dict]:
     spec = PROPS_MARKETS[market]
-    features = ["corners_for_r5", "corners_against_r5", "shots_for_r5",
-               "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"] \
-               if market == "CORNERS" else \
-               ["sot_for_r5", "sot_against_r5", "shots_for_r5",
-               "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"]
+    features = spec["features"]
+    # referee_avg_cards_r10 lives on referee_match_features (a per-MATCH
+    # table), not team_match_features (per-team) -- see sql/features.sql.
+    feature_cols = ", ".join(
+        "rmf.referee_avg_cards_r10" if c == "referee_avg_cards_r10" else f"f.{c}"
+        for c in features)
     # n_prior >= 5: a team with 1-2 prior matches gets a "rolling 5" average
     # that's really just those 1-2 games, fed to the model as if it were a
     # full window. Extends ADR-007's small-sample honesty threshold (used
     # elsewhere for UI disclaimers) down into training data itself.
     cur.execute(
-        f"""SELECT {', '.join('f.'+c for c in features)}, tms.{spec['target_col']} AS y
+        f"""SELECT {feature_cols}, tms.{spec['target_col']} AS y
             FROM futbol.team_match_features f
             JOIN futbol.matches m ON m.match_id = f.match_id
             JOIN futbol.seasons s ON s.season_id = m.season_id
             JOIN futbol.leagues l ON l.league_id = s.league_id
             JOIN futbol.team_match_stats tms
               ON tms.match_id = f.match_id AND tms.team_id = f.team_id
+            LEFT JOIN futbol.referee_match_features rmf ON rmf.match_id = f.match_id
             WHERE l.code = ANY(%s) AND tms.{spec['target_col']} IS NOT NULL
               AND f.n_prior >= 5""",
-        (list(PROPS_LEAGUES),))
+        (list(spec["leagues"]),))
     rows = cur.fetchall()
     df = pd.DataFrame(rows, columns=features + ["y"])
     df = df.apply(pd.to_numeric, errors="coerce")
+    # The league-wide average of this training set's referee_avg_cards_r10
+    # -- the fallback build_props_inferences uses for CARDS live, since the
+    # real assigned referee is essentially never known at slate-generation
+    # time (see PROPS_MARKETS["CARDS"]'s comment). Computed BEFORE dropna()
+    # so it reflects the full training population, not just rows that also
+    # happened to have every other feature present.
+    referee_fallback = (float(df["referee_avg_cards_r10"].mean())
+                        if "referee_avg_cards_r10" in df.columns else None)
     df = df.dropna()
     df["is_home"] = df["is_home"].astype(int)
 
@@ -202,6 +247,7 @@ def fit_props_model(cur, market: str) -> tuple[Any, list[str], dict, dict]:
     meta = {
         "features": features, "hyperparams": hyperparams,
         "n_rows": len(df), "oof_mae": round(float(np.mean(np.abs(oof_mu - df["y"].values))), 4),
+        "referee_fallback": referee_fallback,
     }
 
     model = lgb.LGBMRegressor(verbose=-1, **hyperparams)
@@ -226,16 +272,12 @@ def top_feature_impacts(model: Any, row: pd.DataFrame, feat_cols: list[str],
 def build_props_inferences(model: Any, features: dict, is_home: bool, team_id: int,
                            market: str, team_name: str, calibrators: dict) -> list[Inference]:
     spec = PROPS_MARKETS[market]
+    feat_cols = spec["features"]
     row = pd.DataFrame([{**features, "is_home": int(is_home)}])
-    feat_cols = ["corners_for_r5", "corners_against_r5", "shots_for_r5",
-                "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"] \
-                if market == "CORNERS" else \
-                ["sot_for_r5", "sot_against_r5", "shots_for_r5",
-                "shots_against_r5", "xg_for_r5", "xg_against_r5", "rest_days", "is_home"]
     mu = max(model.predict(row[feat_cols])[0], 0.05)
     impacts = top_feature_impacts(model, row, feat_cols)
     out = []
-    market_label = "Corners" if market == "CORNERS" else "Shots on Target"
+    market_label = spec["label"]
     for line in spec["lines"]:
         raw_p = float(1 - poisson.cdf(np.floor(line), mu))
         calibrator = calibrators.get(line)
@@ -428,11 +470,24 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
         home_form = current_form(cur, home_id, kickoff)
         away_form = current_form(cur, away_id, kickoff)
         if home_form and away_form:
-            for market in PROPS_MARKETS:
+            for market, spec in PROPS_MARKETS.items():
+                if league not in spec["leagues"]:
+                    continue
                 model, _, calibrators, meta = fit_props_model(cur, market)
                 props_meta[market] = meta
-                candidates += build_props_inferences(model, home_form, True, home_id, market, home, calibrators)
-                candidates += build_props_inferences(model, away_form, False, away_id, market, away, calibrators)
+                # CARDS' referee_avg_cards_r10 needs the real assigned
+                # referee, which is essentially never known this far
+                # ahead of kickoff (see PROPS_MARKETS["CARDS"]'s
+                # comment) -- falls back to fit_props_model's league-wide
+                # average. Copies rather than mutates home_form/away_form:
+                # those dicts are reused for every market in this loop.
+                if market == "CARDS":
+                    home_market_form = {**home_form, "referee_avg_cards_r10": meta["referee_fallback"]}
+                    away_market_form = {**away_form, "referee_avg_cards_r10": meta["referee_fallback"]}
+                else:
+                    home_market_form, away_market_form = home_form, away_form
+                candidates += build_props_inferences(model, home_market_form, True, home_id, market, home, calibrators)
+                candidates += build_props_inferences(model, away_market_form, False, away_id, market, away, calibrators)
 
         if league in PLAYER_PROPS_LEAGUES:
             try:

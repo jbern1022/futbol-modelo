@@ -95,7 +95,7 @@ const TABLES: Table[] = [
     name: "predictions",
     description: "The immutable ledger. INSERT-only (a trigger rejects UPDATE/DELETE outright); another trigger rejects any row locked at or after its match's kickoff.",
     columns: [
-      { name: "market", type: "text", note: "CHECK-constrained: '1X2','BTTS','TOTAL_GOALS','CORNERS','SOT','PLAYER_GOALS','PLAYER_SAVES' (soccer, live) plus 'MONEYLINE','SPREAD','TOTAL_POINTS' (NFL, live) plus 'TOTAL_POINTS','PLAYER_POINTS' (NBA, live -- NBA has no moneyline/spread market by design, see the scope-guard ticket)" },
+      { name: "market", type: "text", note: "CHECK-constrained: '1X2','BTTS','TOTAL_GOALS','CORNERS','SOT','CARDS','PLAYER_GOALS','PLAYER_SAVES' (soccer, live; CARDS is EPL/SERIE_A only) plus 'MONEYLINE','SPREAD','TOTAL_POINTS' (NFL, live) plus 'TOTAL_POINTS','PLAYER_POINTS' (NBA, live -- NBA has no moneyline/spread market by design, see the scope-guard ticket)" },
       { name: "side", type: "text", note: "Semantics depend on market: 'home'/'draw'/'away' for 1X2, 'yes'/'no' for BTTS, 'over'/'under' for line markets, 'home'/'away' for SPREAD/MONEYLINE (which team the prediction concerns)" },
       { name: "line", type: "numeric", note: "NULL where not applicable (1X2, BTTS, MONEYLINE); the threshold for O/U markets; the signed spread for SPREAD" },
       { name: "probability", type: "numeric", note: "CHECK-constrained to the open interval (0,1) — never exactly 0 or 1" },

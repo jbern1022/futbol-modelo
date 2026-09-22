@@ -31,7 +31,7 @@ LEFT JOIN futbol.prediction_grades g USING (prediction_id)
 WHERE g.prediction_id IS NULL AND m.status = 'final';
 """
 
-TEAM_STAT_COLUMN = {"CORNERS": "corners", "SOT": "shots_on_target"}
+TEAM_STAT_COLUMN = {"CORNERS": "corners", "SOT": "shots_on_target", "CARDS": "yellows"}
 PLAYER_STAT_COLUMN = {"PLAYER_GOALS": "goals", "PLAYER_SAVES": "saves"}
 NFL_PLAYER_STAT_COLUMN = {"PLAYER_PASS_YARDS": "passing_yards", "PLAYER_RUSH_YARDS": "rushing_yards"}
 
