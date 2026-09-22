@@ -67,6 +67,13 @@ data:
         kubernetes_sd_configs:
           - role: pod
         pipeline_stages:
+          # containerd wraps every line in its own CRI format first --
+          # "<ts> stdout F <actual line>" -- found live 2026-09-22: the
+          # json stage below was silently failing on every single line,
+          # including real JSON ones, because it was trying to parse that
+          # whole wrapped string, not the message inside it. cri: strips
+          # the wrapper so json: below gets the real payload.
+          - cri: {}
           # futbol-modelo's scripts log JSON lines (see src/ops/json_logging.py)
           # -- parse them so `level`/`job`/etc. become real, queryable Loki
           # labels/fields instead of being stuck inside an opaque message
