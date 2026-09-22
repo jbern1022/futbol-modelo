@@ -243,6 +243,20 @@ spec:
 # NTFY_URL/NTFY_TOPIC set in futbol-secrets it only prints to the pod's
 # own logs (`kubectl logs -l job-name=<job>`); add those two keys to
 # the secret once a real ntfy server/topic exists to get push alerts.
+#
+# pgBouncer canary (2026-09-22, Todoist: "pgBouncer deployed but NOT
+# wired to live traffic"): this is the one consumer routed through
+# futbol-pgbouncer-svc:6432 instead of direct Postgres -- lowest-risk
+# candidate (read-only, once daily, easy to spot if it breaks). FUTBOL_DSN
+# is overridden here via `env` (which wins over the shared `envFrom`
+# below for the same key) rather than changing the secret's FUTBOL_DSN
+# itself, so every other consumer stays on direct Postgres untouched.
+# Uses a dedicated futbol_canary front-end identity (see
+# k8s/pgbouncer.yaml) rather than the real DB password, so this canary
+# never needed the production credential to be read or copied anywhere.
+# Once this proves stable, roll the real FUTBOL_DSN/FUTBOL_RO_DSN over
+# for the rest, one consumer at a time -- see k8s/pgbouncer.yaml's own
+# header for the full rollout note.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -271,6 +285,14 @@ spec:
             args:
               - |
                 python scripts/check_pipeline_health.py
+            env:
+            - name: PGBOUNCER_CANARY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: futbol-secrets
+                  key: PGBOUNCER_CANARY_PASSWORD
+            - name: FUTBOL_DSN
+              value: "host=futbol-pgbouncer-svc port=6432 dbname=futbol user=futbol_canary password=$(PGBOUNCER_CANARY_PASSWORD)"
             envFrom:
             - secretRef:
                 name: futbol-secrets

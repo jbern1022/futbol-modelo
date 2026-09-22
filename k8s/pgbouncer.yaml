@@ -55,12 +55,22 @@ data:
     cat > /etc/pgbouncer/userlist.txt <<EOF
     "$RW_USER" "$RW_PASS"
     "$RO_USER" "$RO_PASS"
+    "futbol_canary" "$PGBOUNCER_CANARY_PASSWORD"
     EOF
     chmod 600 /etc/pgbouncer/userlist.txt
 
+    # futbol_canary is a front-end-only identity (2026-09-22 canary
+    # cutover, Todoist: "pgBouncer deployed but NOT wired to live
+    # traffic") -- a password minted just for this, never the real
+    # Postgres password, since a consumer's DSN shouldn't need to carry
+    # that to prove pgbouncer proxies correctly. [databases] pins the
+    # actual backend connection to $RW_USER/$RW_PASS regardless of
+    # which userlist.txt identity authenticated at the front end, so
+    # futbol_canary rides on the real futbol role's privileges without
+    # ever having its own real-DB credential.
     cat > /etc/pgbouncer/pgbouncer.ini <<EOF
     [databases]
-    futbol = host=$RW_HOST port=5432 dbname=$RW_NAME
+    futbol = host=$RW_HOST port=5432 dbname=$RW_NAME user=$RW_USER password=$RW_PASS
 
     [pgbouncer]
     listen_addr = 0.0.0.0
