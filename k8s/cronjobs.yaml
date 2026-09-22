@@ -32,6 +32,14 @@
 # runs 15 minutes later and trains props models directly from
 # team_match_features, so this ordering matters.
 #
+# futbol-auto-slate and futbol-auto-grade each open with
+# scripts/wait_for_pipeline_success.py, blocking on the upstream
+# CronJob's actual last pipeline_runs success (compute_team_ratings for
+# nightly-refresh, nba_slate:<season> for auto-slate) instead of just
+# trusting the 15-minute schedule gap -- replaces a timing assumption
+# with a real dependency check; times out loud (non-zero exit + ntfy)
+# rather than silently running against stale/partial upstream data.
+#
 #     kubectl apply -f k8s/cronjobs.yaml
 
 apiVersion: batch/v1
@@ -102,6 +110,7 @@ spec:
             command: ["/bin/sh", "-c"]
             args:
               - |
+                python scripts/wait_for_pipeline_success.py --job compute_team_ratings --within-minutes 180 --timeout-minutes 45 &&
                 python scripts/auto_slate.py --league MLS --days 21 &&
                 python scripts/auto_slate.py --league EPL --days 45 &&
                 python scripts/auto_slate.py --league SERIE_A --days 45 &&
@@ -139,6 +148,7 @@ spec:
             command: ["/bin/sh", "-c"]
             args:
               - |
+                python scripts/wait_for_pipeline_success.py --job-prefix nba_slate: --within-minutes 180 --timeout-minutes 45 &&
                 python scripts/auto_grade.py &&
                 python scripts/simulate_bankroll.py
             envFrom:
