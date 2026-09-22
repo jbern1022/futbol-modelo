@@ -46,6 +46,9 @@ from pydantic import BaseModel
 from api.judgment_filter import contains_unsupported_judgment as _contains_unsupported_judgment
 from api.petey_filter import FilterValidationError, validate_and_compile
 from api.petey_translate import build_prompt as build_query_prompt
+from ops.json_logging import configure_json_logging
+
+log = configure_json_logging("futbol-api")
 
 RO_DSN = os.environ.get(
     "FUTBOL_RO_DSN",
@@ -159,6 +162,10 @@ def _ask_ollama(prompt: str, *, endpoint: str) -> Optional[str]:
             raise ValueError("empty or unsupported-judgment response")
     except Exception:
         OLLAMA_REQUESTS_TOTAL.labels(endpoint=endpoint, outcome="fallback").inc()
+        # The Prometheus counter above says THAT this failed; this says
+        # WHY (timeout vs. network error vs. empty/judgment-language
+        # response) -- silently swallowed otherwise.
+        log.warning("ollama request failed, falling back", extra={"endpoint": endpoint}, exc_info=True)
         return None
     finally:
         OLLAMA_REQUEST_SECONDS.labels(endpoint=endpoint).observe(time.monotonic() - start)
@@ -194,6 +201,8 @@ def _ask_ollama_for_filter(question: str) -> Optional[dict]:
             raise ValueError("Ollama's JSON response was not an object")
     except Exception:
         OLLAMA_REQUESTS_TOTAL.labels(endpoint="ask_query_translate", outcome="fallback").inc()
+        log.warning("ollama filter-translation failed, falling back",
+                   extra={"endpoint": "ask_query_translate"}, exc_info=True)
         return None
     finally:
         OLLAMA_REQUEST_SECONDS.labels(endpoint="ask_query_translate").observe(

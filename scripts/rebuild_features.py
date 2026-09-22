@@ -12,7 +12,10 @@ import sys
 
 import psycopg2
 
+from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
+
+log = configure_json_logging("rebuild_features")
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 FEATURES_SQL = os.path.join(
@@ -40,9 +43,11 @@ def main():
         finally:
             conn.close()
         set_rows_written(n_team + n_player + n_referee)
-        print(f"rebuild_features done: {n_team} rows in team_match_features, "
-              f"{n_player} rows in player_match_features, "
-              f"{n_referee} rows in referee_match_features")
+        log.info("rebuild_features done", extra={
+            "n_team_match_features": n_team,
+            "n_player_match_features": n_player,
+            "n_referee_match_features": n_referee,
+        })
 
 
 if __name__ == "__main__":

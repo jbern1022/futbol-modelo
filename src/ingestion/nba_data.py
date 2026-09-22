@@ -28,7 +28,6 @@ import psycopg2
 from nba_api.stats.endpoints import leaguegamelog, scheduleleaguev2
 
 log = logging.getLogger("nba_data")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -197,7 +196,12 @@ def main():
                          "(fast, for a nightly cron); omit for a full-season pull")
     args = ap.parse_args()
     from datetime import datetime, timedelta
+    from ops.json_logging import configure_json_logging
     from ops.pipeline_run import track_run
+
+    job_name = (f"nba_backfill_players:{args.season}" if args.mode == "backfill-players"
+                else f"nba_backfill:{args.season}")
+    configure_json_logging(job_name)
 
     if args.mode == "backfill-players":
         date_from = (datetime.now() - timedelta(days=args.days_back)).strftime("%m/%d/%Y") \

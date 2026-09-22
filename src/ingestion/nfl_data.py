@@ -32,7 +32,6 @@ import pandas as pd
 import psycopg2
 
 log = logging.getLogger("nfl_data")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -263,7 +262,12 @@ def main():
     ap.add_argument("--season", type=int, required=True,
                     help="Season START year, e.g. 2026 for the 2026 NFL season")
     args = ap.parse_args()
+    from ops.json_logging import configure_json_logging
     from ops.pipeline_run import track_run
+
+    job_name = (f"nfl_backfill_players:{args.season}" if args.mode == "backfill-players"
+                else f"nfl_backfill:{args.season}")
+    configure_json_logging(job_name)
 
     if args.mode == "backfill-players":
         with track_run(f"nfl_backfill_players:{args.season}") as set_rows_written:

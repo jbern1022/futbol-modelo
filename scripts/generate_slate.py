@@ -15,6 +15,7 @@ A's 1,146 -- comfortably past the bar those two already cleared live.
 """
 import argparse
 import json
+import logging
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -36,6 +37,8 @@ from dixon_coles import DixonColes, derive_markets, knockout_extension
 from ops.pipeline_run import record_model_version_history
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
+
+log = logging.getLogger(__name__)
 
 # Emission threshold for CORNERS/SOT candidates in build_props_inferences()
 # below -- distinct from generator.TARGET_BAND, which ranks/selects among
@@ -431,7 +434,8 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
     if now >= kickoff_aware:
         if verbose:
-            print(f"  SKIP {home} vs {away}: kickoff already passed")
+            log.info("skip: kickoff already passed",
+                     extra={"league": league, "home": home, "away": away})
         return None
 
     # A fixture gets one slate, ever -- persist_slate's ON CONFLICT dedupes
@@ -450,13 +454,15 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
         (match_id,))
     if cur.fetchone():
         if verbose:
-            print(f"  SKIP {home} vs {away}: already has a slate")
+            log.info("skip: already has a slate",
+                     extra={"league": league, "home": home, "away": away})
         return None
 
     dc, dc_meta = fit_dixon_coles(cur, league)
     if home not in dc.teams or away not in dc.teams:
         if verbose:
-            print(f"  SKIP {home} vs {away}: team(s) not in fitted list")
+            log.info("skip: team(s) not in fitted list",
+                     extra={"league": league, "home": home, "away": away})
         return None
     mk = derive_markets(dc.predict(home, away))
 
@@ -533,9 +539,11 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                                         saves_model, saves_feats, save_form, pid, pname)
                                     if inf:
                                         candidates.append(inf)
-            except Exception as e:
+            except Exception:
                 if verbose:
-                    print(f"  (player props skipped: {e})")
+                    log.warning("player props skipped",
+                               extra={"league": league, "home": home, "away": away},
+                               exc_info=True)
 
     candidates = log_degenerate_candidates(cur, match_id, candidates, verbose)
     slate = build_slate(candidates, band=TARGET_BAND, size=20)
@@ -569,8 +577,10 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
 
     n = persist_slate(conn, match_id, mvid, slate)
     if verbose:
-        print(f"  OK {home} vs {away}: {n} predictions written "
-              f"(match_id={match_id}, model_version_id={mvid})")
+        log.info("slate written", extra={
+            "league": league, "home": home, "away": away,
+            "n_predictions": n, "match_id": match_id, "model_version_id": mvid,
+        })
     return n
 
 
@@ -580,6 +590,13 @@ def main() -> None:
     ap.add_argument("--home", required=True)
     ap.add_argument("--away", required=True)
     args = ap.parse_args()
+
+    # Manual/dev entry point (auto_slate.py's automated path configures
+    # its own job-specific logging before calling generate_for_fixture) --
+    # still JSON so this stays consistent with everything else, and so a
+    # manual run's own generate_for_fixture log lines land in Loki too.
+    from ops.json_logging import configure_json_logging
+    configure_json_logging(f"generate_slate:{args.league}")
 
     conn = psycopg2.connect(DSN)
     with conn.cursor() as cur:

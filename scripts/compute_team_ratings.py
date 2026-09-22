@@ -27,7 +27,10 @@ import pandas as pd
 import psycopg2
 
 from models.team_ratings import bootstrap_team_ratings
+from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
+
+log = configure_json_logging("compute_team_ratings")
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -73,15 +76,17 @@ def main():
                 reg = 8.0 if len(df) < 200 else 0.0
                 xi = 0.0005 if len(df) < 200 else 0.0015
                 if len(df) < 60:
-                    print(f"[{league}] only {len(df)} matches -- skipping, too little data")
+                    log.info("skipping league, too little data",
+                             extra={"league": league, "n_matches": len(df)})
                     continue
-                print(f"[{league}] bootstrapping {len(df)} matches, n_boot={args.n_boot}...")
+                log.info("bootstrapping league",
+                         extra={"league": league, "n_matches": len(df), "n_boot": args.n_boot})
                 ratings = bootstrap_team_ratings(df, xi=xi, reg=reg, n_boot=args.n_boot)
                 for team, r in ratings.items():
                     all_rows.append({
                         "league": league, "team": team, "n_matches": len(df), **r,
                     })
-                print(f"[{league}] done, {len(ratings)} teams")
+                log.info("league done", extra={"league": league, "n_teams": len(ratings)})
 
         with conn.cursor() as cur:
             cur.execute("TRUNCATE futbol.team_ratings")
@@ -96,7 +101,7 @@ def main():
                     r)
         conn.commit()
         set_rows_written(len(all_rows))
-        print(f"done: {len(all_rows)} team rating(s) written")
+        log.info("compute_team_ratings done", extra={"n_ratings_written": len(all_rows)})
     conn.close()
 
 

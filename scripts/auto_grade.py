@@ -17,7 +17,10 @@ import psycopg2
 import psycopg2.extensions
 
 from grading.grader import grade_prediction, GRADER_VERSION
+from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
+
+log = configure_json_logging("auto_grade")
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -104,8 +107,9 @@ def main() -> None:
             conn.commit()
         conn.close()
         set_rows_written(graded)
-        print(f"[{datetime.now(timezone.utc).isoformat()}] auto_grade: "
-              f"{graded} graded ({voided} void), {skipped} skipped (no stats yet)")
+        log.info("auto_grade done", extra={
+            "n_graded": graded, "n_void": voided, "n_skipped_no_stats": skipped,
+        })
 
 
 if __name__ == "__main__":

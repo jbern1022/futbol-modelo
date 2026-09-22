@@ -19,7 +19,10 @@ from datetime import datetime, timedelta, timezone
 import psycopg2
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from ops.json_logging import configure_json_logging
 from ops.ntfy import post_to_ntfy
+
+log = configure_json_logging("check_pipeline_health")
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -77,29 +80,30 @@ def main() -> None:
     cutoff = now - timedelta(hours=args.stale_after_hours)
     stale = []
 
-    print(f"Checking {len(EXPECTED_JOBS)} expected job(s) for a success in the last "
-          f"{args.stale_after_hours}h:")
+    log.info("checking expected jobs", extra={
+        "n_expected_jobs": len(EXPECTED_JOBS), "stale_after_hours": args.stale_after_hours,
+    })
     for job_name in EXPECTED_JOBS:
         last = last_success.get(job_name)
         if last is None:
-            print(f"  {job_name:24s} NEVER succeeded <-- STALE")
+            log.warning("job stale: never succeeded", extra={"job_name": job_name})
             stale.append((job_name, None))
         elif last < cutoff:
             age_hours = (now - last).total_seconds() / 3600
-            print(f"  {job_name:24s} last success {age_hours:.1f}h ago <-- STALE")
+            log.warning("job stale", extra={"job_name": job_name, "age_hours": round(age_hours, 1)})
             stale.append((job_name, last))
         else:
             age_hours = (now - last).total_seconds() / 3600
-            print(f"  {job_name:24s} last success {age_hours:.1f}h ago -- OK")
+            log.info("job healthy", extra={"job_name": job_name, "age_hours": round(age_hours, 1)})
 
     if not stale:
-        print("All jobs healthy.")
+        log.info("all jobs healthy")
         return
 
     lines = [f"{job_name}: {'never succeeded' if last is None else f'last success {last.isoformat()}'}"
             for job_name, last in stale]
     message = f"{len(stale)} pipeline job(s) stale (no success in {args.stale_after_hours}h):\n" + "\n".join(lines)
-    print(message)
+    log.error("pipeline stale", extra={"n_stale": len(stale), "stale_jobs": [j for j, _ in stale]})
     post_to_ntfy(message, title="futbol-modelo: pipeline stale", priority="high")
 
 

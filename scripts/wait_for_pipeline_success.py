@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 import psycopg2
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from ops.json_logging import configure_json_logging
 from ops.ntfy import post_to_ntfy
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
@@ -58,11 +59,13 @@ def main() -> None:
     args = ap.parse_args()
 
     label = args.job or f"{args.job_prefix}*"
+    log = configure_json_logging(f"wait_for_pipeline_success:{label}")
     deadline = time.monotonic() + args.timeout_minutes * 60
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=args.within_minutes)
 
-    print(f"Waiting for a recent success of '{label}' (finished after {cutoff.isoformat()}), "
-          f"timeout {args.timeout_minutes}m", flush=True)
+    log.info("waiting for upstream success", extra={
+        "waiting_for": label, "cutoff": cutoff.isoformat(), "timeout_minutes": args.timeout_minutes,
+    })
 
     last_seen = None
     while True:
@@ -74,18 +77,27 @@ def main() -> None:
             conn.close()
 
         if last_seen is not None and last_seen >= cutoff:
-            print(f"OK: '{label}' last succeeded at {last_seen.isoformat()}", flush=True)
+            log.info("upstream succeeded", extra={
+                "waiting_for": label, "last_success": last_seen.isoformat(),
+            })
             return
 
         if time.monotonic() >= deadline:
             msg = (f"Timed out after {args.timeout_minutes}m waiting for '{label}' to "
                    f"succeed (last success: {last_seen.isoformat() if last_seen else 'never'})")
-            print(msg, flush=True)
+            log.error("timed out waiting for upstream success", extra={
+                "waiting_for": label,
+                "last_success": last_seen.isoformat() if last_seen else None,
+                "timeout_minutes": args.timeout_minutes,
+            })
             post_to_ntfy(msg, title="futbol-modelo: pipeline gate timeout", priority="high")
             raise SystemExit(1)
 
-        print(f"  not yet (last success: {last_seen.isoformat() if last_seen else 'never'}) "
-              f"-- rechecking in {args.poll_seconds}s", flush=True)
+        log.info("not yet, rechecking", extra={
+            "waiting_for": label,
+            "last_success": last_seen.isoformat() if last_seen else None,
+            "poll_seconds": args.poll_seconds,
+        })
         time.sleep(args.poll_seconds)
 
 

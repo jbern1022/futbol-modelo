@@ -41,7 +41,10 @@ from typing import Any
 import psycopg2
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
+
+log = configure_json_logging("simulate_bankroll")
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -137,7 +140,9 @@ def main():
         with conn.cursor() as cur:
             for prediction_market, odds_market in BETTABLE_MARKETS.items():
                 rows = simulate(cur, prediction_market, odds_market)
-                print(f"[{prediction_market}] {len(rows)} bet(s) with a real odds snapshot available")
+                log.info("market simulated", extra={
+                    "market": prediction_market, "n_bets": len(rows),
+                })
                 all_rows.extend(rows)
 
         with conn.cursor() as cur:
@@ -155,8 +160,7 @@ def main():
                     r)
         conn.commit()
         set_rows_written(len(all_rows))
-        print(f"done: {len(all_rows)} bet(s) written, "
-              f"final bankroll per market printed above is in the table")
+        log.info("simulate_bankroll done", extra={"n_bets_written": len(all_rows)})
     conn.close()
 
 

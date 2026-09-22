@@ -33,7 +33,6 @@ import requests
 from . import entities
 
 log = logging.getLogger("api_football")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 BASE_URL = "https://v3.football.api-sports.io"
 API_KEY = os.environ.get("API_FOOTBALL_KEY")
@@ -815,7 +814,17 @@ def main():
     ap.add_argument("--days-ahead", type=int, default=7,
                     help="odds mode only: fetch odds for fixtures within this many days (default 7)")
     args = ap.parse_args()
+    from ops.json_logging import configure_json_logging
     from ops.pipeline_run import track_run
+
+    # Same job_name shape track_run below already uses per branch --
+    # computed once so the JSON log lines and the pipeline_runs row for
+    # the same invocation carry an identical label.
+    job_name = {
+        "odds": f"odds:{args.league}",
+        "link-fixtures": f"link_fixtures:{args.league}",
+    }.get(args.mode, f"nightly_refresh:{args.league}")
+    configure_json_logging(job_name)
 
     if args.mode == "odds":
         with track_run(f"odds:{args.league}") as set_rows_written:
