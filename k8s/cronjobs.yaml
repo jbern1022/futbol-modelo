@@ -117,6 +117,16 @@ spec:
                 python scripts/auto_slate.py --league LA_LIGA --days 45 &&
                 python scripts/generate_nfl_slate.py --season 2026 --days-ahead 14 &&
                 python scripts/generate_nba_slate.py --season 2026-27 --days-ahead 45
+            # pgBouncer rollout, 5th consumer (2026-09-22). See
+            # k8s/pgbouncer.yaml for the futbol_canary auth design.
+            env:
+            - name: PGBOUNCER_CANARY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: futbol-secrets
+                  key: PGBOUNCER_CANARY_PASSWORD
+            - name: FUTBOL_DSN
+              value: "host=futbol-pgbouncer-svc port=6432 dbname=futbol user=futbol_canary password=$(PGBOUNCER_CANARY_PASSWORD)"
             envFrom:
             - secretRef:
                 name: futbol-secrets
@@ -151,6 +161,16 @@ spec:
                 python scripts/wait_for_pipeline_success.py --job-prefix nba_slate: --within-minutes 180 --timeout-minutes 45 &&
                 python scripts/auto_grade.py &&
                 python scripts/simulate_bankroll.py
+            # pgBouncer rollout, 4th consumer (2026-09-22). See
+            # k8s/pgbouncer.yaml for the futbol_canary auth design.
+            env:
+            - name: PGBOUNCER_CANARY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: futbol-secrets
+                  key: PGBOUNCER_CANARY_PASSWORD
+            - name: FUTBOL_DSN
+              value: "host=futbol-pgbouncer-svc port=6432 dbname=futbol user=futbol_canary password=$(PGBOUNCER_CANARY_PASSWORD)"
             envFrom:
             - secretRef:
                 name: futbol-secrets
@@ -195,6 +215,16 @@ spec:
                 python -m ingestion.api_football odds --league SERIE_A --days-ahead 7 &&
                 python -m ingestion.api_football odds --league MLS --days-ahead 7 &&
                 python -m ingestion.api_football odds --league LA_LIGA --days-ahead 7
+            # pgBouncer rollout, 3rd consumer (2026-09-22). See
+            # k8s/pgbouncer.yaml for the futbol_canary auth design.
+            env:
+            - name: PGBOUNCER_CANARY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: futbol-secrets
+                  key: PGBOUNCER_CANARY_PASSWORD
+            - name: FUTBOL_DSN
+              value: "host=futbol-pgbouncer-svc port=6432 dbname=futbol user=futbol_canary password=$(PGBOUNCER_CANARY_PASSWORD)"
             envFrom:
             - secretRef:
                 name: futbol-secrets
@@ -230,6 +260,18 @@ spec:
                 python -m ingestion.api_football odds --league SERIE_A --days-ahead 1 &&
                 python -m ingestion.api_football odds --league MLS --days-ahead 1 &&
                 python -m ingestion.api_football odds --league LA_LIGA --days-ahead 1
+            # pgBouncer rollout, 2nd consumer after futbol-pipeline-health
+            # (2026-09-22) -- picked next since it runs every 2h, so a
+            # problem surfaces and gets caught fast. Same futbol_canary
+            # pattern as the canary; see k8s/pgbouncer.yaml.
+            env:
+            - name: PGBOUNCER_CANARY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: futbol-secrets
+                  key: PGBOUNCER_CANARY_PASSWORD
+            - name: FUTBOL_DSN
+              value: "host=futbol-pgbouncer-svc port=6432 dbname=futbol user=futbol_canary password=$(PGBOUNCER_CANARY_PASSWORD)"
             envFrom:
             - secretRef:
                 name: futbol-secrets
