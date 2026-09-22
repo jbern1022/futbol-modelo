@@ -65,6 +65,40 @@ FROM rolled r;
 
 CREATE INDEX idx_tmf ON team_match_features (match_id, team_id);
 
+-- Referee tendency (Todoist: "futbol-modelo: referee-tendencies feature
+-- for CARDS market" -- CARDS is the one market that fails baseline
+-- outright; matches.referee, added in migration 0033, was previously
+-- ingested and silently discarded). Kept as its own small table rather
+-- than added to team_match_features above: this is a per-MATCH
+-- (referee) signal, not a per-team one -- both the home and away rows
+-- of a match share the same referee_avg_cards_r10 -- and every other
+-- market's query already reads team_match_features, so a new column
+-- there would need to be threaded through markets that have no use for
+-- it. Same leakage-safe as-of pattern as the rolling windows above:
+-- only a referee's PRIOR officiated matches count, partitioned by
+-- referee and ordered by kickoff.
+DROP TABLE IF EXISTS referee_match_features;
+CREATE TABLE referee_match_features AS
+WITH match_cards AS (
+    SELECT m.match_id, m.kickoff_utc, m.referee,
+           SUM(s.yellows) AS total_yellows,
+           SUM(s.fouls)   AS total_fouls
+    FROM matches m
+    JOIN team_match_stats s USING (match_id)
+    WHERE m.status = 'final' AND m.referee IS NOT NULL
+    GROUP BY m.match_id, m.kickoff_utc, m.referee
+)
+SELECT
+    match_id, referee, kickoff_utc,
+    AVG(total_yellows) OVER w10 AS referee_avg_cards_r10,
+    AVG(total_fouls)   OVER w10 AS referee_avg_fouls_r10,
+    COUNT(*)            OVER w10 AS referee_n_prior
+FROM match_cards
+WINDOW w10 AS (PARTITION BY referee ORDER BY kickoff_utc
+               ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING);
+
+CREATE INDEX idx_rmf ON referee_match_features (match_id);
+
 DROP TABLE IF EXISTS player_match_features;
 CREATE TABLE player_match_features AS
 SELECT

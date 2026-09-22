@@ -49,11 +49,22 @@ MARKETS = {
     },
     "CARDS": {
         "target_col": "yellows",
+        # referee_avg_cards_r10: leakage-safe rolling avg of TOTAL match
+        # cards (both teams) this referee has issued in their prior
+        # officiated matches -- see sql/features.sql's
+        # referee_match_features. NULL for a referee's first ever match
+        # in the dataset (n_prior=0) or an unmatched referee name, which
+        # dropna() below excludes same as any other missing feature.
         "features": ["yellows_for_r5", "fouls_for_r5", "reds_for_r5",
-                    "rest_days", "is_home"],
+                    "rest_days", "is_home", "referee_avg_cards_r10"],
         "lines": [1.5, 2.5, 3.5],
     },
 }
+
+# referee_avg_cards_r10 lives on referee_match_features (a per-MATCH
+# table), not team_match_features (per-team) -- every other feature is
+# selected as f.{col}; this one needs a different table alias.
+FEATURE_ALIAS_OVERRIDES = {"referee_avg_cards_r10": "rmf.referee_avg_cards_r10"}
 
 Q = """
 SELECT
@@ -71,6 +82,7 @@ JOIN futbol.teams ta ON ta.team_id = m.away_team_id
 JOIN futbol.seasons s ON s.season_id = m.season_id
 JOIN futbol.leagues l ON l.league_id = s.league_id
 JOIN futbol.team_match_stats tms ON tms.match_id = f.match_id AND tms.team_id = f.team_id
+LEFT JOIN futbol.referee_match_features rmf ON rmf.match_id = f.match_id
 WHERE l.code = ANY(%s) AND tms.{target_col} IS NOT NULL
 ORDER BY f.kickoff_utc;
 """
@@ -103,7 +115,7 @@ def main():
     features, target_col, lines = spec["features"], spec["target_col"], spec["lines"]
     leagues = ["SERIE_A", "EPL"] if args.league == "BOTH" else [args.league]
 
-    feature_cols = ", ".join(f"f.{c}" for c in features)
+    feature_cols = ", ".join(FEATURE_ALIAS_OVERRIDES.get(c, f"f.{c}") for c in features)
     query = Q.format(feature_cols=feature_cols, target_col=target_col)
 
     conn = psycopg2.connect(DSN)

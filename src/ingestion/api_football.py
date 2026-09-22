@@ -461,6 +461,20 @@ def resolve_team_id(cur, api_team_id: int, api_team_name: str) -> int | None:
     return None
 
 
+def _normalize_referee(raw: str | None) -> str | None:
+    """API-Football's referee field is inconsistently formatted across
+    leagues (verified on a real sample): EPL gives a bare name
+    ("Peter Bankes"), La Liga/Serie A sometimes append ", Country"
+    ("Ricardo De Burgos Bengoetxea, Spain") and sometimes don't. Strips
+    a trailing ", <anything>" so the same referee doesn't get split into
+    two distinct strings depending on which league's payload it came
+    from."""
+    if not raw:
+        return None
+    name = raw.split(",")[0].strip()
+    return name or None
+
+
 def find_match_id(cur, home_team_id: int, away_team_id: int, date: str,
                   league_code: str | None = None) -> int | None:
     """+/-1 day tolerance: sources occasionally disagree on which
@@ -740,6 +754,12 @@ def backfill(league_code: str, season_start_year: int):
             if not match_id:
                 skipped_match += 1
                 continue
+
+            referee = _normalize_referee(fx["fixture"].get("referee"))
+            if referee:
+                cur.execute(
+                    "UPDATE futbol.matches SET referee = %s WHERE match_id = %s",
+                    (referee, match_id))
 
             stats = _get(session, "fixtures/statistics", {"fixture": fixture_id})
             for team_stats in stats:

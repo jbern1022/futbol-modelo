@@ -34,12 +34,15 @@ def main():
                 n_team = cur.fetchone()[0]
                 cur.execute("SELECT COUNT(*) FROM player_match_features")
                 n_player = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM referee_match_features")
+                n_referee = cur.fetchone()[0]
             conn.commit()
         finally:
             conn.close()
-        set_rows_written(n_team + n_player)
+        set_rows_written(n_team + n_player + n_referee)
         print(f"rebuild_features done: {n_team} rows in team_match_features, "
-              f"{n_player} rows in player_match_features")
+              f"{n_player} rows in player_match_features, "
+              f"{n_referee} rows in referee_match_features")
 
 
 if __name__ == "__main__":

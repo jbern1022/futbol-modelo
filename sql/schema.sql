@@ -89,6 +89,7 @@ CREATE TABLE matches (
     pens_home       INT,
     pens_away       INT,
     external_ref    TEXT,                          -- source event id
+    referee         TEXT,                          -- normalized name, see 0033
     UNIQUE (season_id, home_team_id, away_team_id, kickoff_utc)
 );
 CREATE INDEX idx_matches_kickoff ON matches (kickoff_utc);

@@ -1,0 +1,18 @@
+-- Adds referee to matches (Todoist: "futbol-modelo: referee-tendencies
+-- feature for CARDS market" -- CARDS is the one market that currently
+-- fails baseline outright; a referee-tendencies signal might flip it
+-- to viable).
+--
+-- Confirmed live against the real API-Football /fixtures response
+-- (fixture 1557411, EPL) before building anything on this: the
+-- "referee" field is real and already present in the exact bulk
+-- /fixtures?league=&season= response backfill() already calls for
+-- EPL/SERIE_A -- this is exposing a field that was already arriving
+-- on the wire and being silently discarded, not a new API dependency.
+-- Format is inconsistent across leagues though (verified on a 15-fixture
+-- sample): EPL rows are a bare name ("Peter Bankes"); La Liga/Serie A
+-- rows are sometimes "Name, Country" ("Ricardo De Burgos Bengoetxea,
+-- Spain") and sometimes bare -- normalized at ingestion time (see
+-- src/ingestion/api_football.py's _normalize_referee), so this column
+-- always holds just the name.
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS referee TEXT;
