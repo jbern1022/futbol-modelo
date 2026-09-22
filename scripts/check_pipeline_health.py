@@ -23,16 +23,31 @@ from ops.ntfy import post_to_ntfy
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
-# Every job_name the three real CronJobs (k8s/cronjobs.yaml) actually
+# Every job_name the five real CronJobs (k8s/cronjobs.yaml) actually
 # write to pipeline_runs today. Kept as an explicit list, not a plain
 # `SELECT DISTINCT job_name`, so a retired job doesn't alert forever --
 # must be updated by hand if cronjobs.yaml's command chains change,
 # same manual-sync discipline as sql/schema.sql vs sql/migrations/.
+#
+# Corrected 2026-09-22: this list predated LA_LIGA and everything added
+# to the pipeline since (compute_team_ratings, nfl/nba slate+grade,
+# simulate_bankroll, the odds CronJobs) -- confirmed against
+# `SELECT DISTINCT job_name FROM futbol.pipeline_runs` on the live DB,
+# so this monitor was blind to roughly half of what actually runs.
+# nfl_slate/nba_slate carry a season in the job_name (same pattern as
+# cronjobs.yaml's own hardcoded --season args) -- update these two
+# alongside cronjobs.yaml when the season rolls over, or they'll read
+# as permanently stale instead of raising a real alert.
 EXPECTED_JOBS = [
-    "nightly_refresh:MLS", "nightly_refresh:EPL", "nightly_refresh:SERIE_A",
+    "nightly_refresh:MLS", "nightly_refresh:EPL", "nightly_refresh:SERIE_A", "nightly_refresh:LA_LIGA",
     "rebuild_features",
-    "auto_slate:MLS", "auto_slate:EPL", "auto_slate:SERIE_A",
+    "compute_team_ratings",
+    "auto_slate:MLS", "auto_slate:EPL", "auto_slate:SERIE_A", "auto_slate:LA_LIGA",
+    "nfl_slate:2026",
+    "nba_slate:2026-27",
     "auto_grade",
+    "simulate_bankroll",
+    "odds:MLS", "odds:EPL", "odds:SERIE_A", "odds:LA_LIGA",
 ]
 
 LAST_SUCCESS_SQL = """
