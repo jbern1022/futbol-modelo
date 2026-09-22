@@ -79,6 +79,19 @@ spec:
                 python -m ingestion.nba_data backfill-players --season 2026-27 --days-back 3 &&
                 python scripts/rebuild_features.py &&
                 python scripts/compute_team_ratings.py
+            # pgBouncer rollout, final CronJob (2026-09-22). Not manually
+            # triggered -- most upstream job in the chain, and a manual
+            # run would burn a real API-Football quota cycle for no
+            # reason; verifying at its normal 12:00 UTC run instead. See
+            # k8s/pgbouncer.yaml for the futbol_canary auth design.
+            env:
+            - name: PGBOUNCER_CANARY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: futbol-secrets
+                  key: PGBOUNCER_CANARY_PASSWORD
+            - name: FUTBOL_DSN
+              value: "host=futbol-pgbouncer-svc port=6432 dbname=futbol user=futbol_canary password=$(PGBOUNCER_CANARY_PASSWORD)"
             envFrom:
             - secretRef:
                 name: futbol-secrets
