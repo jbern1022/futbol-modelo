@@ -100,6 +100,9 @@ case "$TARGET" in
         # were still sitting on a stale :latest days after a real deploy.
         patch_cronjob "futbol-odds-daily"      "odds-daily"   "${REGISTRY}/futbol-modelo:${SHA}"
         patch_cronjob "futbol-odds-intraday"   "odds-intraday" "${REGISTRY}/futbol-modelo:${SHA}"
+        # Added with futbol-pipeline-health (k8s/cronjobs.yaml, 2026-09-22)
+        # -- same stale-:latest trap the two odds CronJobs hit above.
+        patch_cronjob "futbol-pipeline-health" "pipeline-health" "${REGISTRY}/futbol-modelo:${SHA}"
         ;;
 
     *)
