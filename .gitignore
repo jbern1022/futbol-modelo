@@ -6,4 +6,5 @@ __pycache__/
 /models/
 .coverage
 .pytest_cache/
+*.egg-info/
 .futbol-secrets-backup.yaml

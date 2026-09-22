@@ -1,8 +1,8 @@
 """
 Smoke test for DixonColes.fit() on synthetic data.
 
-The property-based invariant tests (test_dixon_coles_invariants.py) bypass
-fit() entirely — they inject params directly. This test actually calls fit()
+The property-based invariant tests (test_invariants.py) bypass fit()
+entirely — they inject params directly. This test actually calls fit()
 to catch wiring bugs (wrong column name, bad optimizer call, missing
 normalisation) that properties-on-params would never see.
 """
@@ -12,7 +12,8 @@ import pytest
 from scipy.optimize import minimize
 from scipy.stats import poisson as scipy_poisson
 
-from models.dixon_coles import DixonColes, _tau, derive_markets
+from dixon_coles import DixonColes, derive_markets
+from dixon_coles._model import _tau
 
 
 def _synthetic_matches():
@@ -71,7 +72,7 @@ def test_all_market_probs_in_unit_interval(fitted_model):
 def _fit_with_original_scalar_tau_loop(df: pd.DataFrame, xi: float, reg: float = 0.0) -> np.ndarray:
     """Independent reimplementation of fit()'s nll() exactly as it read
     before _tau_vec existed -- scalar _tau() via a per-match Python list
-    comprehension, not calling anything from dixon_coles.py's fit() itself.
+    comprehension, not calling anything from _model.py's fit() itself.
     Same x0, same constraints, same optimizer call. Used only to prove the
     vectorized fit() converges to the same params, not to replace it."""
     df = df.dropna(subset=["hg", "ag"]).copy()

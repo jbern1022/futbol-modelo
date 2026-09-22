@@ -9,7 +9,7 @@ non-negative goal counts, not just 0/1).
 import numpy as np
 import pytest
 
-from models.dixon_coles import _tau, _tau_vec
+from dixon_coles._model import _tau, _tau_vec
 
 # (x, y) pairs covering every _tau branch (0,0)/(0,1)/(1,0)/(1,1) plus
 # several higher scorelines that all fall through to the "return 1.0" case.

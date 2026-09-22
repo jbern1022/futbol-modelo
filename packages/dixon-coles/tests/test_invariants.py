@@ -9,11 +9,11 @@ case a hand-written unit test would happen to cover.
 import numpy as np
 from hypothesis import assume, given, settings, strategies as st
 
-from models.dixon_coles import DixonColes, derive_markets
+from dixon_coles import DixonColes, derive_markets
 
 # atk/dfn/gamma bounded to keep lam/mu (= exp(atk+dfn+gamma)) in a sane
 # goal-expectation range; rho bounded to the small range real fits produce
-# -- values near dixon_coles.py's docstring examples, not the full
+# -- values near _model.py's docstring examples, not the full
 # mathematically-permissible range, since collapsed/pathological corners
 # are a separate concern from these invariants.
 _param = st.floats(min_value=-1.0, max_value=1.0, allow_nan=False, allow_infinity=False)

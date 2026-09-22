@@ -23,7 +23,7 @@ empirical intervals over analytical approximations (see the isotonic
 OOF calibration in scripts/generate_slate.py's fit_props_model).
 
 Usage:
-    from models.dixon_coles import DixonColes
+    from dixon_coles import DixonColes
     from models.team_ratings import bootstrap_team_ratings
 
     result = bootstrap_team_ratings(df, xi=0.0015, reg=0.0)
@@ -34,7 +34,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .dixon_coles import DixonColes
+from dixon_coles import DixonColes
 
 
 def _team_params(model: DixonColes) -> dict[str, tuple[float, float]]:

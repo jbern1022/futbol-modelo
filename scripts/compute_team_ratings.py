@@ -19,6 +19,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# models.team_ratings imports dixon_coles, now its own standalone package
+# (packages/dixon-coles) -- see that package's README for why.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "packages", "dixon-coles", "src"))
 
 import pandas as pd
 import psycopg2

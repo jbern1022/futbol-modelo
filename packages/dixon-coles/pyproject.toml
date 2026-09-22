@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dixon-coles"
+version = "0.1.0"
+description = "Time-decayed bivariate Poisson match model with low-score dependency correction (Dixon & Coles, 1997)"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "Joseph Bernal" }]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.urls]
+Source = "https://github.com/jbern1022/futbol-modelo/tree/main/packages/dixon-coles"
+
+[tool.setuptools.package-data]
+dixon_coles = ["py.typed"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

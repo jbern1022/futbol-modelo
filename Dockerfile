@@ -10,6 +10,10 @@ COPY --chown=appuser:appuser src/ src/
 COPY --chown=appuser:appuser scripts/ scripts/
 COPY --chown=appuser:appuser sql/ sql/
 COPY --chown=appuser:appuser api/ api/
+# dixon_coles is its own standalone package now (see packages/dixon-coles/
+# README) -- each script that needs it does its own sys.path.insert
+# pointing here, same pattern as the existing src/ insertion.
+COPY --chown=appuser:appuser packages/dixon-coles/src/ packages/dixon-coles/src/
 ENV PYTHONPATH=/app/src
 USER appuser
 # default is overridden per Job/CronJob/Deployment spec

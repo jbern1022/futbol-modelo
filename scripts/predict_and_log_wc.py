@@ -13,11 +13,14 @@ import sys
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# dixon_coles now lives in its own standalone package (packages/dixon-coles)
+# -- see that package's README for why.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "packages", "dixon-coles", "src"))
 
 import pandas as pd
 import psycopg2
 
-from models.dixon_coles import DixonColes, derive_markets
+from dixon_coles import DixonColes, derive_markets
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 

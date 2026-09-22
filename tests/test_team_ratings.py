@@ -1,14 +1,14 @@
 """
 Tests for src/models/team_ratings.py's bootstrap confidence intervals
 on Dixon-Coles attack/defence ratings. Synthetic data, same shape as
-test_dixon_coles_smoke.py's fixture -- no DB needed, this is pure
-statistical code over a plain DataFrame.
+packages/dixon-coles/tests/test_smoke.py's fixture -- no DB needed,
+this is pure statistical code over a plain DataFrame.
 """
 import numpy as np
 import pandas as pd
 import pytest
 
-from models.dixon_coles import DixonColes
+from dixon_coles import DixonColes
 from models.team_ratings import bootstrap_team_ratings
 
 

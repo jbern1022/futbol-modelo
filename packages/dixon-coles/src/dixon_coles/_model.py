@@ -1,8 +1,8 @@
 """
-Dixon-Coles match model (the "high-level" model).
+Dixon-Coles match model.
 
 Time-decayed bivariate Poisson with low-score dependency correction
-(Dixon & Coles, 1997). Fits per-league. Outputs a full scoreline
+(Dixon & Coles, 1997). Fits per-competition. Outputs a full scoreline
 distribution per fixture, from which all match-level markets derive:
 1X2, total goals O/U, BTTS, clean sheets, exact scores.
 
@@ -42,10 +42,10 @@ def _tau_vec(x: np.ndarray, y: np.ndarray, lam: np.ndarray, mu: np.ndarray, rho:
     Python-level list comprehension, once per match, on every optimizer
     iteration -- the actual hot path fit() runs hundreds of times per fit.
     Same four cases as _tau, just as boolean masks over the whole array
-    instead of a branch per element. See tests/test_dixon_coles_tau_vec.py
-    for the element-wise equivalence proof against _tau, and
-    tests/test_dixon_coles_smoke.py::test_fit_matches_pre_vectorization_snapshot
-    for proof this doesn't change what fit() actually converges to.
+    instead of a branch per element. See tests/test_tau_vec.py for the
+    element-wise equivalence proof against _tau, and
+    tests/test_smoke.py::test_fit_matches_pre_vectorization_snapshot for
+    proof this doesn't change what fit() actually converges to.
     """
     tau = np.ones_like(lam, dtype=float)
     m00 = (x == 0) & (y == 0)
@@ -184,9 +184,9 @@ def derive_markets(pred: dict) -> dict:
 
 def knockout_extension(match_probs: dict, et_scale: float = 0.31) -> dict:
     """
-    For knockout fixtures (World Cup module): if draw after 90',
-    extra time modeled as ~31% of a full match's goal expectation,
-    then penalties as a coin flip with a tiny home/seed tilt.
+    For a knockout fixture: if draw after 90', extra time modeled as
+    ~31% of a full match's goal expectation, then penalties as a coin
+    flip with a tiny home/seed tilt.
     """
     draw_p = match_probs["draw"]
     # crude v1: split ET outcomes proportional to 90' win rates, pens 50/50

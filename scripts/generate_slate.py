@@ -21,6 +21,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# dixon_coles now lives in its own standalone package (packages/dixon-coles)
+# -- see that package's README for why.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "packages", "dixon-coles", "src"))
 
 import numpy as np
 import pandas as pd
@@ -29,7 +32,7 @@ from scipy.stats import poisson
 from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 
-from models.dixon_coles import DixonColes, derive_markets, knockout_extension
+from dixon_coles import DixonColes, derive_markets, knockout_extension
 from ops.pipeline_run import record_model_version_history
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
