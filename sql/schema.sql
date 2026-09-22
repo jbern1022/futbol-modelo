@@ -608,3 +608,21 @@ CREATE TABLE IF NOT EXISTS bankroll_simulation (
 
 CREATE INDEX IF NOT EXISTS idx_bankroll_simulation_kickoff
     ON bankroll_simulation(kickoff_utc);
+
+-- Bootstrap CIs on Dixon-Coles attack/defence ratings -- see
+-- sql/migrations/0031 and src/models/team_ratings.py. Full-recompute,
+-- a current snapshot (not per-season, unlike home_advantage_history).
+CREATE TABLE IF NOT EXISTS team_ratings (
+    league          TEXT NOT NULL,
+    team            TEXT NOT NULL,
+    atk             NUMERIC(6,4) NOT NULL,
+    atk_ci_low      NUMERIC(6,4) NOT NULL,
+    atk_ci_high     NUMERIC(6,4) NOT NULL,
+    dfn             NUMERIC(6,4) NOT NULL,
+    dfn_ci_low      NUMERIC(6,4) NOT NULL,
+    dfn_ci_high     NUMERIC(6,4) NOT NULL,
+    n_boot_samples  INT NOT NULL,
+    n_matches       INT NOT NULL,
+    computed_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (league, team)
+);

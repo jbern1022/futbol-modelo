@@ -69,7 +69,8 @@ spec:
                 python -m ingestion.nfl_data backfill-players --season 2026 &&
                 python -m ingestion.nba_data backfill --season 2026-27 &&
                 python -m ingestion.nba_data backfill-players --season 2026-27 --days-back 3 &&
-                python scripts/rebuild_features.py
+                python scripts/rebuild_features.py &&
+                python scripts/compute_team_ratings.py
             envFrom:
             - secretRef:
                 name: futbol-secrets

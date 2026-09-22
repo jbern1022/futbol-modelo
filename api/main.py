@@ -455,6 +455,25 @@ class BankrollResponse(BaseModel):
     bets: list[BankrollBetRow]
 
 
+class TeamRatingRow(BaseModel):
+    league: str
+    team: str
+    atk: float
+    atk_ci_low: float
+    atk_ci_high: float
+    dfn: float
+    dfn_ci_low: float
+    dfn_ci_high: float
+    n_boot_samples: int
+    n_matches: int
+    computed_at: datetime
+
+
+class TeamRatingsResponse(BaseModel):
+    count: int
+    ratings: list[TeamRatingRow]
+
+
 class AskResponse(BaseModel):
     answer: str
     n_predictions: int
@@ -1030,6 +1049,36 @@ def bankroll(market: Optional[str] = Query(None)):
         finally:
             put_conn(conn)
     return _cached(f"bankroll:{market}", compute)
+
+
+@app.get("/v1/team-ratings", response_model=TeamRatingsResponse)
+def team_ratings(league: Optional[str] = Query(None)):
+    """
+    Bootstrap confidence intervals on every team's Dixon-Coles
+    attack/defence rating (scripts/compute_team_ratings.py, migration
+    0031, src/models/team_ratings.py has the statistical core). A
+    current snapshot -- same fit as the live model, not a per-season
+    series like /v1/home-advantage.
+    """
+    def compute():
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                query = """SELECT league, team, atk, atk_ci_low, atk_ci_high,
+                                  dfn, dfn_ci_low, dfn_ci_high, n_boot_samples,
+                                  n_matches, computed_at
+                           FROM futbol.team_ratings"""
+                params: list = []
+                if league:
+                    query += " WHERE league = %s"
+                    params.append(league)
+                query += " ORDER BY league, atk DESC"
+                cur.execute(query, params)
+                rows = cur.fetchall()
+            return {"count": len(rows), "ratings": rows}
+        finally:
+            put_conn(conn)
+    return _cached(f"team_ratings:{league}", compute)
 
 
 class AskRequest(BaseModel):
