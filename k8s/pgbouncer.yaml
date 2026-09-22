@@ -56,21 +56,28 @@ data:
     "$RW_USER" "$RW_PASS"
     "$RO_USER" "$RO_PASS"
     "futbol_canary" "$PGBOUNCER_CANARY_PASSWORD"
+    "futbol_ro_canary" "$PGBOUNCER_RO_CANARY_PASSWORD"
     EOF
     chmod 600 /etc/pgbouncer/userlist.txt
 
-    # futbol_canary is a front-end-only identity (2026-09-22 canary
-    # cutover, Todoist: "pgBouncer deployed but NOT wired to live
-    # traffic") -- a password minted just for this, never the real
-    # Postgres password, since a consumer's DSN shouldn't need to carry
-    # that to prove pgbouncer proxies correctly. [databases] pins the
-    # actual backend connection to $RW_USER/$RW_PASS regardless of
-    # which userlist.txt identity authenticated at the front end, so
-    # futbol_canary rides on the real futbol role's privileges without
-    # ever having its own real-DB credential.
+    # futbol_canary/futbol_ro_canary are front-end-only identities
+    # (2026-09-22 canary cutover, Todoist: "pgBouncer deployed but NOT
+    # wired to live traffic") -- passwords minted just for this, never
+    # the real Postgres passwords, since a consumer's DSN shouldn't need
+    # to carry those to prove pgbouncer proxies correctly. [databases]
+    # pins each alias's actual backend connection to the real
+    # RW_USER/RW_PASS or RO_USER/RO_PASS regardless of which
+    # userlist.txt identity authenticated at the front end, so the
+    # canary identities ride on the real roles' privileges without ever
+    # having their own real-DB credential. futbol_ro is prep for
+    # futbol-api's read path (FUTBOL_RO_DSN) -- built 2026-09-22 but not
+    # wired into futbol-api/futbol-web yet, deliberately: those are
+    # live-serving Deployments, a different risk class than the
+    # CronJobs, and get their own explicit go-ahead before cutover.
     cat > /etc/pgbouncer/pgbouncer.ini <<EOF
     [databases]
     futbol = host=$RW_HOST port=5432 dbname=$RW_NAME user=$RW_USER password=$RW_PASS
+    futbol_ro = host=$RO_HOST port=5432 dbname=$RO_NAME user=$RO_USER password=$RO_PASS
 
     [pgbouncer]
     listen_addr = 0.0.0.0
@@ -101,6 +108,20 @@ spec:
       labels:
         app: futbol-pgbouncer
     spec:
+      # Found during the 2026-09-22 canary cutover: cross-node pod
+      # networking between k3s-control-plane and k3 is broken --
+      # verified with a raw pod-IP-to-pod-IP TCP connect (not just the
+      # Service), which timed out with no packets getting through at
+      # all. Every other futbol-modelo workload (futbol-api, futbol-web,
+      # all CronJobs) already runs on k3s-control-plane via this same
+      # nodeSelector; pgbouncer was the only thing that had landed on
+      # k3, which is why nothing had exercised this path before. This
+      # pins pgbouncer alongside everything that actually talks to it,
+      # working around the gap rather than fixing it -- the underlying
+      # flannel/VXLAN cross-node routing issue is still real and
+      # unexplained, worth its own investigation separately.
+      nodeSelector:
+        kubernetes.io/hostname: k3s-control-plane
       containers:
       - name: pgbouncer
         image: edoburu/pgbouncer:v1.25.2-p0
