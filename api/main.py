@@ -435,6 +435,26 @@ class ModelChangelogResponse(BaseModel):
     changelog: list[ModelChangelogRow]
 
 
+class BankrollBetRow(BaseModel):
+    prediction_id: int
+    match_id: int
+    kickoff_utc: datetime
+    market: str
+    side: str
+    model_probability: float
+    decimal_odds: float
+    stake: float
+    outcome: str
+    profit: float
+    bankroll_after: float
+
+
+class BankrollResponse(BaseModel):
+    count: int
+    starting_bankroll: float
+    bets: list[BankrollBetRow]
+
+
 class AskResponse(BaseModel):
     answer: str
     n_predictions: int
@@ -971,6 +991,45 @@ def model_changelog(model_name: Optional[str] = Query(None)):
         finally:
             put_conn(conn)
     return _cached(f"model_changelog:{model_name}", compute)
+
+
+@app.get("/v1/bankroll", response_model=BankrollResponse)
+def bankroll(market: Optional[str] = Query(None)):
+    """
+    The paper-trading bankroll simulation (scripts/simulate_bankroll.py,
+    migration 0030) -- every graded prediction that had a real
+    bookmaker odds snapshot before kickoff, in kickoff order, with the
+    running bankroll after each bet. Full-recompute table, not
+    append-only -- see that migration's comment.
+
+    starting_bankroll is derived from the first row rather than a
+    constant duplicated here, since this API image and the script that
+    populates this table (scripts/simulate_bankroll.py) are built from
+    separate Dockerfiles (Dockerfile.api only copies api/, not
+    scripts/) -- a hardcoded constant here could silently drift out of
+    sync with the script's own STARTING_BANKROLL.
+    """
+    def compute():
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                query = """SELECT prediction_id, match_id, kickoff_utc, market, side,
+                                  model_probability, decimal_odds, stake, outcome,
+                                  profit, bankroll_after
+                           FROM futbol.bankroll_simulation"""
+                params: list = []
+                if market:
+                    query += " WHERE market = %s"
+                    params.append(market)
+                query += " ORDER BY kickoff_utc ASC"
+                cur.execute(query, params)
+                rows = cur.fetchall()
+            starting_bankroll = (
+                float(rows[0]["bankroll_after"]) - float(rows[0]["profit"]) if rows else 0.0)
+            return {"count": len(rows), "starting_bankroll": starting_bankroll, "bets": rows}
+        finally:
+            put_conn(conn)
+    return _cached(f"bankroll:{market}", compute)
 
 
 class AskRequest(BaseModel):

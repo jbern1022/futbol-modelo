@@ -135,7 +135,11 @@ spec:
           - name: auto-grade
             image: gitea.josephbernal.com/joe/futbol-modelo:latest
             imagePullPolicy: IfNotPresent
-            command: ["python", "scripts/auto_grade.py"]
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                python scripts/auto_grade.py &&
+                python scripts/simulate_bankroll.py
             envFrom:
             - secretRef:
                 name: futbol-secrets

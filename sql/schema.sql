@@ -585,3 +585,26 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     version     TEXT PRIMARY KEY,
     applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ---------- Backtesting ----------
+
+-- Paper-trading / bankroll simulation -- see sql/migrations/0030.
+-- Full-recompute, not append-only: scripts/simulate_bankroll.py
+-- truncates and rewrites this every run.
+CREATE TABLE IF NOT EXISTS bankroll_simulation (
+    prediction_id     BIGINT PRIMARY KEY REFERENCES predictions(prediction_id),
+    match_id          INT NOT NULL REFERENCES matches(match_id),
+    kickoff_utc       TIMESTAMPTZ NOT NULL,
+    market            TEXT NOT NULL,
+    side              TEXT NOT NULL,
+    model_probability NUMERIC(6,5) NOT NULL,
+    decimal_odds      NUMERIC(8,3) NOT NULL,
+    stake             NUMERIC(10,2) NOT NULL,
+    outcome           TEXT NOT NULL,
+    profit            NUMERIC(10,2) NOT NULL,
+    bankroll_after    NUMERIC(12,2) NOT NULL,
+    run_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bankroll_simulation_kickoff
+    ON bankroll_simulation(kickoff_utc);
