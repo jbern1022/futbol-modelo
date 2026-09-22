@@ -6,10 +6,12 @@ a genuine pre-kickoff slate through the immutable ledger.
 
     python scripts/generate_slate.py --league MLS --home Arsenal --away Chelsea
 
-Player-level markets (goals, saves) run for MLS, EPL, and Serie A --
-see PLAYER_PROPS_LEAGUES below. La Liga is excluded until its
-historical FBref player-stats backfill lands (no player_match_stats
-rows for LA_LIGA yet as of 2026-09-21).
+Player-level markets (goals, saves) run for MLS, EPL, Serie A, and La
+Liga -- see PLAYER_PROPS_LEAGUES below. La Liga's historical backfill
+(5 seasons via API-Football --primary, since its FBref player-stats
+scrape was never run) landed 2026-09-21: 43,194 qualifying
+player-match rows (minutes >= 45), ahead of EPL's 26,659 and Serie
+A's 1,146 -- comfortably past the bar those two already cleared live.
 """
 import argparse
 import json
@@ -56,13 +58,13 @@ PROPS_MARKETS: dict[str, dict[str, Any]] = {
     "SOT": {"target_col": "shots_on_target", "lines": [2.5, 3.5, 4.5, 5.5],
             "for_col": "sot_for_r5", "against_col": "sot_against_r5"},
 }
-PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS"}
+PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS", "LA_LIGA"}
 
-# Player-level goals/saves models need player_match_stats coverage,
-# which La Liga doesn't have yet (see module docstring). Separate from
-# PROPS_LEAGUES (team-level corners/SOT) in case the two sets diverge
-# again -- they happen to match today, but for different reasons.
-PLAYER_PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS"}
+# Historically diverged from PROPS_LEAGUES while La Liga lacked
+# player_match_stats coverage (see module docstring) -- kept as a
+# separate set rather than merged back into one, in case the two ever
+# diverge again for a different reason.
+PLAYER_PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS", "LA_LIGA"}
 
 
 def find_fixture(cur, league: str, home: str, away: str) -> tuple | None:
