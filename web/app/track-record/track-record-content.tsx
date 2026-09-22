@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { marketLabel } from "@/lib/markets";
+import { sportLabel } from "@/lib/sports";
 import CalibrationSection from "./calibration-section";
 import MarketComparisonSection from "./market-comparison-section";
 import HomeAdvantageSection from "./home-advantage-section";
@@ -17,6 +18,7 @@ interface ScorecardRow {
   avg_confidence: number;
   brier: number;
   log_loss: number;
+  sport: string;
 }
 
 interface CalibrationRow {
@@ -26,6 +28,7 @@ interface CalibrationRow {
   avg_stated_prob: number;
   realized_rate: number;
   n: number;
+  sport: string;
 }
 
 interface MarketComparisonRow {
@@ -96,33 +99,43 @@ export default function TrackRecordContent({
   homeAdvantage: HomeAdvantageRow[];
 }) {
   const searchParams = useSearchParams();
+  const [sport, setSport] = useState(() => searchParams.get("sport") ?? "");
   const [league, setLeague] = useState(() => searchParams.get("league") ?? "");
   const [season, setSeason] = useState(() => searchParams.get("season") ?? "");
   const [market, setMarket] = useState(() => searchParams.get("market") ?? "");
 
-  // Sync filters into the URL (?league=&season=&market=) so a filtered
-  // view is shareable/bookmarkable -- this is what ADR-011's "link to
-  // the relevant filtered Track Record view" needs to actually resolve
-  // to something. Uses the native History API directly rather than
-  // next/navigation's router: router.replace() would re-run this page's
-  // server component and refetch scorecard/calibration for a filter
-  // change that's already fully handled client-side.
+  // Sync filters into the URL (?sport=&league=&season=&market=) so a
+  // filtered view is shareable/bookmarkable -- this is what ADR-011's
+  // "link to the relevant filtered Track Record view" needs to actually
+  // resolve to something. Uses the native History API directly rather
+  // than next/navigation's router: router.replace() would re-run this
+  // page's server component and refetch scorecard/calibration for a
+  // filter change that's already fully handled client-side.
   useEffect(() => {
     const params = new URLSearchParams();
+    if (sport) params.set("sport", sport);
     if (league) params.set("league", league);
     if (season) params.set("season", season);
     if (market) params.set("market", market);
     const query = params.toString();
     const url = query ? `${window.location.pathname}?${query}` : window.location.pathname;
     window.history.replaceState(null, "", url);
-  }, [league, season, market]);
+  }, [sport, league, season, market]);
 
-  const leagues = useMemo(() => uniqueSorted(scorecard.map((r) => r.league)), [scorecard]);
+  const sports = useMemo(() => uniqueSorted(scorecard.map((r) => r.sport)), [scorecard]);
+  // League options narrow to the selected sport, so the dropdown never
+  // offers a sport/league combo that can't match anything (e.g. NFL
+  // while sport=soccer is selected).
+  const leagues = useMemo(
+    () => uniqueSorted(scorecard.filter((r) => !sport || r.sport === sport).map((r) => r.league)),
+    [scorecard, sport]
+  );
   const seasons = useMemo(() => uniqueSorted(scorecard.map((r) => r.season)), [scorecard]);
   const markets = useMemo(() => uniqueSorted(scorecard.map((r) => r.market)), [scorecard]);
 
   const filteredScorecard = scorecard.filter(
     (r) =>
+      (!sport || r.sport === sport) &&
       (!league || r.league === league) &&
       (!season || r.season === season) &&
       (!market || r.market === market)
@@ -130,7 +143,7 @@ export default function TrackRecordContent({
   // Calibration rows have no season dimension -- the season filter only
   // narrows the "By market" table below, not the calibration cards.
   const filteredCalibration = calibration.filter(
-    (r) => (!league || r.league === league) && (!market || r.market === market)
+    (r) => (!sport || r.sport === sport) && (!league || r.league === league) && (!market || r.market === market)
   );
   // Only 1X2 rows exist here -- the market filter would zero this
   // section out for every other market, so it only respects league.
@@ -143,6 +156,24 @@ export default function TrackRecordContent({
 
   const totalPredictions = filteredScorecard.reduce((sum, r) => sum + r.n_predictions, 0);
 
+  // Cross-sport calibration comparison -- deliberately computed from the
+  // full, unfiltered `calibration` prop rather than filteredCalibration:
+  // this is a standing "how does each sport calibrate" summary, not
+  // something that should go empty because of an unrelated league/market
+  // filter. Weighted by n so a sport with more graded bands doesn't get
+  // drowned out by one with a handful of noisy small-sample bands.
+  const calibrationBySport = useMemo(() => {
+    const acc: Record<string, { errSum: number; n: number }> = {};
+    for (const r of calibration) {
+      const entry = (acc[r.sport] ??= { errSum: 0, n: 0 });
+      entry.errSum += Math.abs(r.avg_stated_prob - r.realized_rate) * r.n;
+      entry.n += r.n;
+    }
+    return Object.entries(acc)
+      .map(([sport, { errSum, n }]) => ({ sport, n, meanAbsError: n > 0 ? errSum / n : 0 }))
+      .sort((a, b) => a.meanAbsError - b.meanAbsError);
+  }, [calibration]);
+
   return (
     <>
       <div className="mt-8 flex flex-wrap items-end justify-between gap-4">
@@ -153,6 +184,19 @@ export default function TrackRecordContent({
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
+          <FilterSelect
+            label="Sport"
+            value={sport}
+            options={sports}
+            onChange={(v) => {
+              setSport(v);
+              // Reset league on sport change -- otherwise a league from
+              // the old sport stays selected but no longer appears in
+              // the (now sport-narrowed) League dropdown.
+              setLeague("");
+            }}
+            optionLabel={sportLabel}
+          />
           <FilterSelect label="League" value={league} options={leagues} onChange={setLeague} />
           <FilterSelect label="Season" value={season} options={seasons} onChange={setSeason} />
           <FilterSelect
@@ -165,6 +209,44 @@ export default function TrackRecordContent({
         </div>
       </div>
 
+      {calibrationBySport.length > 1 && (
+        <>
+          <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">
+            Calibration by sport
+          </h2>
+          <p className="mt-2 max-w-xl text-sm text-zinc-500">
+            Mean absolute gap between stated and realized rate across every
+            calibration band, weighted by sample size -- lower means the
+            model&apos;s confidence is more trustworthy for that sport. This
+            is the real payoff of running one shared forecasting platform
+            across structurally different sports: is a common model actually
+            comparably honest about all of them?
+          </p>
+          <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+                <tr>
+                  <th scope="col" className="px-4 py-2 font-medium">Sport</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-right">Graded predictions</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-right">Mean |stated &minus; realized|</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calibrationBySport.map((row) => (
+                  <tr key={row.sport} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+                    <td className="px-4 py-2 text-black dark:text-zinc-50">{sportLabel(row.sport)}</td>
+                    <td className="px-4 py-2 text-right text-zinc-500">{row.n.toLocaleString("en-US")}</td>
+                    <td className="px-4 py-2 text-right text-black dark:text-zinc-50">
+                      {(row.meanAbsError * 100).toFixed(1)} pp
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
       <h2 className="mt-10 text-lg font-semibold text-black dark:text-zinc-50">By market</h2>
       {filteredScorecard.length === 0 ? (
         <p className="mt-4 text-sm text-zinc-500">No graded predictions match these filters.</p>
@@ -173,6 +255,7 @@ export default function TrackRecordContent({
           <table className="w-full text-left text-sm">
             <thead className="border-b border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
               <tr>
+                <th scope="col" className="px-4 py-2 font-medium">Sport</th>
                 <th scope="col" className="px-4 py-2 font-medium">League</th>
                 <th scope="col" className="px-4 py-2 font-medium">Season</th>
                 <th scope="col" className="px-4 py-2 font-medium">Market</th>
@@ -184,6 +267,7 @@ export default function TrackRecordContent({
             <tbody>
               {filteredScorecard.map((row, i) => (
                 <tr key={i} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+                  <td className="px-4 py-2 text-zinc-500">{sportLabel(row.sport)}</td>
                   <td className="px-4 py-2 text-zinc-500">{row.league}</td>
                   <td className="px-4 py-2 text-zinc-500">{row.season}</td>
                   <td className="px-4 py-2 text-black dark:text-zinc-50">{marketLabel(row.market)}</td>

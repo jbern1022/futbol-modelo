@@ -422,11 +422,11 @@ CREATE TRIGGER trg_prediction_grades_no_update
 -- exactly as inserted. See sql/migrations/0003_dedupe_scorecard_views.sql.
 CREATE OR REPLACE VIEW v_graded_predictions AS
 SELECT prediction_id, match_id, market, side, line, subject_team_id,
-       subject_player_id, probability, outcome, league, season
+       subject_player_id, probability, outcome, league, season, sport
 FROM (
     SELECT p.prediction_id, p.match_id, p.market, p.side, p.line,
            p.subject_team_id, p.subject_player_id, p.probability,
-           g.outcome, l.code AS league, s.label AS season,
+           g.outcome, l.code AS league, s.label AS season, l.sport AS sport,
            ROW_NUMBER() OVER (
                PARTITION BY p.match_id, p.market, p.side, p.line,
                             p.subject_team_id, p.subject_player_id
@@ -449,9 +449,10 @@ SELECT
     ROUND(AVG(probability)::numeric, 4)     AS avg_stated_prob,
     ROUND(AVG((outcome = 'hit')::int)::numeric, 4) AS realized_rate,
     COUNT(*) AS n,
-    side
+    side,
+    sport
 FROM v_graded_predictions
-GROUP BY market, side, league, prob_bucket;
+GROUP BY market, side, league, prob_bucket, sport;
 
 CREATE OR REPLACE VIEW v_season_scorecard AS
 SELECT
@@ -467,9 +468,10 @@ SELECT
     ROUND(AVG(
         - ( (outcome='hit')::int * LN(GREATEST(probability, 1e-9))
           + (1-(outcome='hit')::int) * LN(GREATEST(1-probability, 1e-9)) )
-    )::numeric, 4)                                  AS log_loss
+    )::numeric, 4)                                  AS log_loss,
+    sport
 FROM v_graded_predictions
-GROUP BY league, season, market
+GROUP BY league, season, market, sport
 ORDER BY league, season, market;
 
 -- UI half of the real bookmaker odds comparison -- backs

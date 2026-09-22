@@ -18,6 +18,7 @@ interface ScorecardRow {
   avg_confidence: number;
   brier: number;
   log_loss: number;
+  sport: string;
 }
 
 interface CalibrationRow {
@@ -27,6 +28,7 @@ interface CalibrationRow {
   avg_stated_prob: number;
   realized_rate: number;
   n: number;
+  sport: string;
 }
 
 interface MarketComparisonRow {

@@ -11,8 +11,8 @@ Endpoints (versioned under /v1 -- /health, /, and the docs/openapi
 routes are deliberately unversioned infra/meta endpoints):
     GET /v1/fixtures?league=MLS&status=scheduled&days=21
     GET /v1/fixtures/{match_id}/slate
-    GET /v1/scorecard?league=MLS
-    GET /v1/calibration?league=MLS
+    GET /v1/scorecard?league=MLS&sport=soccer
+    GET /v1/calibration?league=MLS&sport=soccer
     GET /v1/odds-comparison?league=MLS
     GET /v1/teams?league=MLS
     GET /v1/player-stats?name=Messi&opponent=Barcelona&recent_n=5
@@ -369,6 +369,7 @@ class ScorecardRow(BaseModel):
     avg_confidence: float
     brier: float
     log_loss: float
+    sport: str
 
 
 class ScorecardResponse(BaseModel):
@@ -384,6 +385,7 @@ class CalibrationRow(BaseModel):
     realized_rate: float
     n: int
     side: str
+    sport: str
 
 
 class CalibrationResponse(BaseModel):
@@ -904,27 +906,33 @@ def export_predictions_csv(league: Optional[str] = Query(None)):
 
 
 @app.get("/v1/scorecard", response_model=ScorecardResponse)
-def scorecard(league: Optional[str] = Query(None)):
+def scorecard(league: Optional[str] = Query(None), sport: Optional[str] = Query(None)):
     def compute():
         conn = get_conn()
         try:
             with conn.cursor() as cur:
                 query = "SELECT * FROM futbol.v_season_scorecard"
+                clauses = []
                 params = []
                 if league:
-                    query += " WHERE league = %s"
+                    clauses.append("league = %s")
                     params.append(league)
+                if sport:
+                    clauses.append("sport = %s")
+                    params.append(sport)
+                if clauses:
+                    query += " WHERE " + " AND ".join(clauses)
                 query += " ORDER BY league, season, market"
                 cur.execute(query, params)
                 rows = cur.fetchall()
             return {"count": len(rows), "scorecard": rows}
         finally:
             put_conn(conn)
-    return _cached(f"scorecard:{league}", compute)
+    return _cached(f"scorecard:{league}:{sport}", compute)
 
 
 @app.get("/v1/calibration", response_model=CalibrationResponse)
-def calibration(league: Optional[str] = Query(None)):
+def calibration(league: Optional[str] = Query(None), sport: Optional[str] = Query(None)):
     def compute():
         conn = get_conn()
         try:
@@ -934,13 +942,16 @@ def calibration(league: Optional[str] = Query(None)):
                 if league:
                     query += " AND league = %s"
                     params.append(league)
+                if sport:
+                    query += " AND sport = %s"
+                    params.append(sport)
                 query += " ORDER BY league, market, side, avg_stated_prob"
                 cur.execute(query, params)
                 rows = cur.fetchall()
             return {"count": len(rows), "calibration": rows}
         finally:
             put_conn(conn)
-    return _cached(f"calibration:{league}", compute)
+    return _cached(f"calibration:{league}:{sport}", compute)
 
 
 @app.get("/v1/odds-comparison", response_model=MarketComparisonResponse)
