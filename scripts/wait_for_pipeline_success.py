@@ -62,7 +62,7 @@ def main() -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=args.within_minutes)
 
     print(f"Waiting for a recent success of '{label}' (finished after {cutoff.isoformat()}), "
-          f"timeout {args.timeout_minutes}m")
+          f"timeout {args.timeout_minutes}m", flush=True)
 
     last_seen = None
     while True:
@@ -74,16 +74,18 @@ def main() -> None:
             conn.close()
 
         if last_seen is not None and last_seen >= cutoff:
-            print(f"OK: '{label}' last succeeded at {last_seen.isoformat()}")
+            print(f"OK: '{label}' last succeeded at {last_seen.isoformat()}", flush=True)
             return
 
         if time.monotonic() >= deadline:
             msg = (f"Timed out after {args.timeout_minutes}m waiting for '{label}' to "
                    f"succeed (last success: {last_seen.isoformat() if last_seen else 'never'})")
-            print(msg)
+            print(msg, flush=True)
             post_to_ntfy(msg, title="futbol-modelo: pipeline gate timeout", priority="high")
             raise SystemExit(1)
 
+        print(f"  not yet (last success: {last_seen.isoformat() if last_seen else 'never'}) "
+              f"-- rechecking in {args.poll_seconds}s", flush=True)
         time.sleep(args.poll_seconds)
 
 
