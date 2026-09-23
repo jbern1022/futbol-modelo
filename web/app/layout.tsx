@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ThemeToggle from "./theme-toggle";
@@ -33,6 +33,26 @@ export const metadata: Metadata = {
     title: "Futbol Modelo",
     description: DESCRIPTION,
   },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Futbol Modelo",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+// viewport-fit=cover + theme-color let a standalone-mode PWA (added to
+// home screen) draw behind the iOS notch/status bar and tint the
+// status bar to match the site's dark background, instead of the
+// default white bar every other unconfigured site gets.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
 };
 
 const THEME_INIT_SCRIPT = `
