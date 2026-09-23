@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { LocalDate } from "./local-date";
+import { sportLabel } from "@/lib/sports";
 
 interface Fixture {
   match_id: number;
   league: string;
   season: string;
+  sport: string;
   home: string;
   away: string;
   kickoff_utc: string;
@@ -45,15 +47,64 @@ function leagueBadge(league: string) {
 }
 
 export default function FixtureList({ fixtures }: { fixtures: Fixture[] }) {
-  const leagues = Array.from(new Set(fixtures.map((f) => f.league))).sort();
+  const sports = Array.from(new Set(fixtures.map((f) => f.sport))).sort();
+  const [selectedSport, setSelectedSport] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
 
-  const visible = selected ? fixtures.filter((f) => f.league === selected) : fixtures;
+  // League options narrow to the selected sport, same reasoning as
+  // Track Record's Sport -> League narrowing: never offer a league
+  // that can't match anything for the currently selected sport.
+  const leagues = Array.from(
+    new Set(fixtures.filter((f) => !selectedSport || f.sport === selectedSport).map((f) => f.league))
+  ).sort();
+
+  const visible = fixtures.filter(
+    (f) => (!selectedSport || f.sport === selectedSport) && (!selected || f.league === selected)
+  );
 
   return (
     <div>
+      {sports.length > 1 && (
+        <div role="group" aria-label="Filter fixtures by sport" className="mt-6 flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              setSelectedSport(null);
+              setSelected(null);
+            }}
+            aria-pressed={selectedSport === null}
+            className={`rounded-md px-3 py-1 text-xs font-medium ${
+              selectedSport === null
+                ? "bg-black text-white dark:bg-zinc-50 dark:text-black"
+                : "border border-zinc-200 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
+            }`}
+          >
+            All sports
+          </button>
+          {sports.map((sp) => (
+            <button
+              key={sp}
+              onClick={() => {
+                setSelectedSport(sp);
+                // Reset league on sport change -- otherwise a league
+                // from the old sport stays selected but no longer
+                // appears in the (now sport-narrowed) league row.
+                setSelected(null);
+              }}
+              aria-pressed={selectedSport === sp}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${
+                selectedSport === sp
+                  ? "bg-black text-white dark:bg-zinc-50 dark:text-black"
+                  : "border border-zinc-200 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
+              }`}
+            >
+              {sportLabel(sp)}
+            </button>
+          ))}
+        </div>
+      )}
+
       {leagues.length > 1 && (
-        <div role="group" aria-label="Filter fixtures by league" className="mt-6 flex flex-wrap gap-2">
+        <div role="group" aria-label="Filter fixtures by league" className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={() => setSelected(null)}
             aria-pressed={selected === null}
@@ -83,7 +134,9 @@ export default function FixtureList({ fixtures }: { fixtures: Fixture[] }) {
       )}
 
       {visible.length === 0 ? (
-        <div className="mt-10 text-zinc-500">No upcoming fixtures for {selected}.</div>
+        <div className="mt-10 text-zinc-500">
+          No upcoming fixtures for {selected || (selectedSport && sportLabel(selectedSport)) || "these filters"}.
+        </div>
       ) : (
         <div className="mt-6 space-y-3">
           {visible.map((f) => (

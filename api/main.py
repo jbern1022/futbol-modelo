@@ -9,7 +9,7 @@ Run locally:
 
 Endpoints (versioned under /v1 -- /health, /, and the docs/openapi
 routes are deliberately unversioned infra/meta endpoints):
-    GET /v1/fixtures?league=MLS&status=scheduled&days=21
+    GET /v1/fixtures?league=MLS&sport=soccer&status=scheduled&days=21
     GET /v1/fixtures/{match_id}/slate
     GET /v1/scorecard?league=MLS&sport=soccer
     GET /v1/calibration?league=MLS&sport=soccer
@@ -252,6 +252,7 @@ class FixtureSummary(BaseModel):
     match_id: int
     league: str
     season: str
+    sport: str
     home: str
     away: str
     kickoff_utc: datetime
@@ -633,6 +634,7 @@ def pipeline_status():
 @app.get("/v1/fixtures", response_model=FixturesResponse)
 def list_fixtures(
     league: Optional[str] = Query(None, description="EPL, SERIE_A, MLS, or WC"),
+    sport: Optional[str] = Query(None, description="soccer, football, or basketball"),
     status: str = Query("scheduled", description="scheduled or final"),
     days: int = Query(21, description="Only fixtures within this many days"),
 ):
@@ -640,7 +642,7 @@ def list_fixtures(
     try:
         with conn.cursor() as cur:
             query = """
-                SELECT m.match_id, l.code AS league, s.label AS season,
+                SELECT m.match_id, l.code AS league, s.label AS season, l.sport AS sport,
                        th.name AS home, ta.name AS away,
                        m.kickoff_utc, m.status,
                        m.home_score, m.away_score,
@@ -668,6 +670,9 @@ def list_fixtures(
             if league:
                 query += " AND l.code = %s"
                 params.append(league)
+            if sport:
+                query += " AND l.sport = %s"
+                params.append(sport)
             query += " ORDER BY m.kickoff_utc"
             cur.execute(query, params)
             rows = cur.fetchall()

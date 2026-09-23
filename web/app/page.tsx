@@ -97,6 +97,7 @@ interface Fixture {
   match_id: number;
   league: string;
   season: string;
+  sport: string;
   home: string;
   away: string;
   kickoff_utc: string;
