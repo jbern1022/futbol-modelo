@@ -196,3 +196,97 @@ The cost is the same one ADR-006 accepts: no framework means no
 auto-generated down-migrations or diffing — a wrong migration is fixed
 by writing a new one, not by rolling back, which is a deliberate
 match to the ledger's own append-only philosophy (ADR-002).
+
+---
+
+## ADR-008: Prediction/grading corrections are new rows, model/methodology changes are new versions — never silent rewrites
+
+**Status:** Accepted
+
+**Context:** ADR-002 already establishes that the `predictions` table
+itself is append-only. What was never written down explicitly is the
+*full* set of rules for the situations that actually come up in
+practice: a postponed or cancelled match, a data correction discovered
+after grading, and a model or methodology change — each of which could
+be handled correctly or incorrectly within the append-only constraint,
+and the difference isn't obvious from the schema alone.
+
+**Decision:** Formalizing what the codebase already does in practice,
+as an explicit contract (see `docs/PLATFORM_CONTRACT.md`'s
+"Methodology versioning" section for the full policy this ADR
+anchors):
+
+1. **Postponed/cancelled matches:** the match row is marked `canc` (or
+   equivalent); any predictions already locked against it are voided
+   via a new `prediction_grades` row, never deleted. This is exactly
+   what the real 2026-08-27/28 duplicate-match incident required (see
+   ADR-005) — 9 fixtures' orphaned predictions were voided, not erased.
+2. **Data corrections discovered after grading:** a correction never
+   edits the original `predictions` or `prediction_grades` row. It is
+   a new `prediction_grades` row (e.g. `outcome = 'void'`) with enough
+   context to explain what happened, exactly as ADR-002 already
+   requires — this ADR just states it applies to *every* correction
+   source (a bad upstream data point, a scoring error, a duplicate),
+   not only to duplicate-match cleanup specifically.
+3. **Model version changes:** every prediction is tied to a
+   `model_version_id` (ADR-005's registry). Swapping which model is
+   live for future slates never touches past predictions' version
+   references — a model's entire graded history stays attributed to
+   the version that actually produced it.
+4. **Methodology changes** (a change to how a market is modeled,
+   calibrated, or graded — distinct from a routine retrain): requires
+   both a new `model_versions` row *and* an ADR if architectural (this
+   document's own convention — ADR-003's isotonic-calibration switch
+   is the precedent), plus an entry in `docs/EXPERIMENT_REGISTRY.md`
+   if it started as a hypothesis under `docs/RESEARCH_PROTOCOL.md`.
+5. **Correction history is public, not swept into the original
+   claim's row.** The Track Record page's calibration/scorecard views
+   already read from `prediction_grades`, so a voided or corrected
+   prediction's history is visible in the same place a clean one is —
+   there is no separate, hidden "corrections log."
+
+**Consequences:** No prior claim can be quietly rewritten to look
+better after the fact, for any of the reasons corrections normally
+happen (bad data, bad match state, a bad model) — the same guarantee
+ADR-002 gives for simple edits now explicitly covers the messier real
+cases. The cost is the same one ADR-002 already accepts: every
+correction is slower and more visible than `UPDATE ... WHERE`, which
+is the entire point.
+
+---
+
+## ADR-009: NBA cross-sport expansion — retired, not continued, as of 2026-09-21
+
+**Status:** Accepted
+
+**Context:** The original multi-sport comparison plan considered NBA
+alongside NFL as a candidate third sport, and a real NBA vertical
+slice was in fact built and shipped — `src/models/nba_power_ratings.py`
+and `src/models/nba_player_points.py`, predicting `TOTAL_POINTS` and
+`PLAYER_POINTS` (see `README.md`, `CLAIMS.md`; live-verified 2026-09-06
+against 1230 real 2025-26 games). The open question was whether to
+continue investing in NBA as one of the platform's core cross-sport
+comparison points, alongside soccer and NFL.
+
+**Decision:** Soccer and NFL remain the platform's primary structural
+contrast (continuous clock vs. discrete downs, frequent low-variance
+scoring vs. infrequent high-variance scoring, draws exist vs. don't —
+see `docs/RESEARCH_CHARTER.md`). Further NBA expansion work beyond the
+already-shipped `TOTAL_POINTS`/`PLAYER_POINTS` slice is not being
+pursued. The shipped model is not deleted or deprecated — it keeps
+running, keeps getting graded, and stays visible on the Track Record
+page with its honest uncalibrated status — but it is not receiving the
+calibration, player-props expansion, or market-line work the other
+sports are getting.
+
+**Consequences:** NBA is intentionally retired from further
+*expansion*, not silently abandoned — this ADR is the record of why.
+Anyone revisiting cross-sport scope later has a real decision to
+un-make here, not an unexplained gap to reverse-engineer from git
+history. Soccer and NFL's structural contrast (continuous vs. discrete
+play, scoring frequency, draws) was judged the stronger comparison for
+`docs/RESEARCH_CHARTER.md`'s central question than adding a third,
+higher-scoring, near-continuous-possession sport on top of it, given
+NBA's own player-availability and calibration data-gap costs were
+already the same as NFL's without a comparably distinct structural
+payoff.
