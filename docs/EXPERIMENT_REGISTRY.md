@@ -88,6 +88,32 @@ spec/backfill-list only).
 | **Limitations** | Same live-timing gap as CARDS: `absence_rate_r10` is a real per-player prior, but the *actual* confirmed lineup is rarely known at original slate-generation time — see ADR-010's final pass for the partial fix. MLS-only backtest; not yet validated for EPL/SERIE_A/LA_LIGA. | Goalkeeper sample is ~9x smaller than outfield players (737 vs 6360 held-out rows) — may be genuine noise rather than a real negative effect, same "not enough data to tell" caveat as the open 1X2/TOTAL_GOALS calibration question. |
 | **Decision** | **Retain.** Wired into the live `fit_player_goals_model()`. | **Remove (don't ship).** `fit_player_saves_model()` deliberately excludes it — doesn't clear the beat-baseline bar this session's data supports. Revisit once goalkeeper sample size grows or once EPL/SERIE_A/LA_LIGA injuries backfill exists. |
 
+### 2026-09-29: Elo vs. Dixon-Coles for 1X2 (Phase 1 of Todoist `6hf55hCCX78Wc6m7`)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | An independent outcome-rating signal (Elo) can match or beat Dixon-Coles' 1X2 probabilities standalone, or reveal complementary errors worth blending. |
+| **Proposed change** | Standalone Elo model: match-by-match rating updates (home advantage +100, standard published value, not tuned), pre-match `elo_diff` mapped to 1X2 via multinomial logistic regression. |
+| **Expected effect** | Unknown going in — genuinely exploratory, not assumed to add independent signal (per the ticket's own framing). |
+| **Data cutoff** | 2025-26 holdout season (2026 for MLS); trained on all seasons strictly before, weekly walk-forward refit — same harness `scripts/train_dixon_coles.py` already uses, for a fair comparison. |
+| **Evaluation method** | RPS (primary) and log-loss (secondary), paired per-league, `scripts/experiment_elo_vs_dixon_coles.py`. |
+| **Result** | EPL: DC wins both (RPS 0.2078 vs 0.2100). SERIE_A: DC wins RPS (0.1995 vs 0.2036), Elo wins log-loss. LA_LIGA: DC wins RPS narrowly (0.2014 vs 0.2019), Elo wins log-loss. **MLS: Elo wins BOTH (RPS 0.2209 vs 0.2269, log-loss 1.0506 vs 1.0679).** |
+| **Limitations** | Single scalar feature (elo_diff) — a deliberately simple baseline, not a tuned Elo variant. Home-advantage constant (100) is a standard published value, not fit to this data. One holdout season per league — not yet checked for stability across multiple seasons. |
+| **Decision** | **Remove (as a standalone replacement) for EPL/SERIE_A/LA_LIGA** — Dixon-Coles stays. MLS result below. |
+
+### 2026-09-29: 1X2 blend (Dixon-Coles + Elo) for MLS — Phase 1 step 2
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Phase 1's MLS result (Elo beats DC on both RPS and log-loss, 2026 holdout) is a real, complementary signal worth a small fixed blend, not noise. |
+| **Proposed change** | `p_blend = alpha * p_dixon_coles + (1-alpha) * p_elo`, alpha swept 0.0-1.0 in steps of 0.1. |
+| **Expected effect** | A blend RPS beating both single models on a genuinely untouched season. |
+| **Data cutoff** | Alpha selected ONLY on the 2025 validation season (532 matches); scored on the 2026 test season (402 matches), completely untouched during alpha selection — per this ticket's own explicit methodology requirement. `scripts/experiment_blend_1x2_mls.py`. |
+| **Evaluation method** | RPS on the held-out 2026 season, alpha chosen by minimum RPS on the separate 2025 validation season. |
+| **Result** | **Validation (2025): alpha=1.0 (pure Dixon-Coles) was BEST** — RPS monotonically improved from 0.2248 (pure Elo) to 0.2205 (pure DC) as alpha increased. This is the OPPOSITE of Phase 1's finding on the 2026 test season (pure Elo RPS 0.2209 vs pure DC 0.2269). The selected blend (alpha=1.0, i.e. pure DC) scores 0.2269 on test — identical to plain Dixon-Coles, worse than plain Elo (0.2209). |
+| **Limitations** | Only two MLS seasons compared (2025 vs 2026) — a direction flip on n=2 is not enough to call either season's result noise with confidence, same honest limitation as the open 1X2/TOTAL_GOALS calibration question elsewhere in this doc. Real, not hypothetical: this is the exact failure mode walk-forward validation-then-test is supposed to catch, and it did. |
+| **Decision** | **Do not promote.** Phase 1's MLS signal did not survive out-of-sample validation on a different season — textbook direction-instability, the same signature that already correctly held back the 1X2/TOTAL_GOALS calibration fix elsewhere in this project. Steps 3-4 of the parent ticket (score-matrix residual diagnosis, bivariate Poisson) are **not started** — their own trigger ("if persistent") is now unmet for MLS too, same as it already was for EPL/SERIE_A/LA_LIGA. Revisit if a 3rd MLS season's result is available to break the tie, not before. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
