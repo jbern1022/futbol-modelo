@@ -103,6 +103,11 @@ case "$TARGET" in
         # Added with futbol-pipeline-health (k8s/cronjobs.yaml, 2026-09-22)
         # -- same stale-:latest trap the two odds CronJobs hit above.
         patch_cronjob "futbol-pipeline-health" "pipeline-health" "${REGISTRY}/futbol-modelo:${SHA}"
+        # Added with futbol-props-final-pass (k8s/cronjobs.yaml, ADR-010,
+        # 2026-09-29) -- adding it here on the SAME deploy that introduces
+        # the CronJob, specifically to not repeat the stale-:latest trap
+        # documented twice above.
+        patch_cronjob "futbol-props-final-pass" "props-final-pass" "${REGISTRY}/futbol-modelo:${SHA}"
         ;;
 
     *)
