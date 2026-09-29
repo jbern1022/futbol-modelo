@@ -305,6 +305,24 @@ JOIN (
     ORDER BY match_id, bookmaker_id, market, selection, fetched_at DESC
 ) c USING (match_id, bookmaker_id, market, selection);
 
+-- Live, re-fetched injury/availability snapshot -- same shape as
+-- match_odds above (a live line that can move, not a settled fact),
+-- not player_match_stats (which only ever holds players who actually
+-- featured in a finished match). See sql/migrations/0035 and
+-- src/ingestion/api_football.py's fetch_and_store_injuries(). The
+-- rolling absence-rate PRIOR derived from this (player_injury_features,
+-- sql/features.sql) is what PLAYER_GOALS/PLAYER_SAVES train on and fall
+-- back to at inference time when no fresh row exists here yet -- see
+-- generate_slate.py.
+CREATE TABLE IF NOT EXISTS player_injuries (
+    match_id    INT NOT NULL REFERENCES matches(match_id),
+    player_id   INT NOT NULL REFERENCES players(player_id),
+    status      TEXT NOT NULL CHECK (status IN ('out', 'questionable')),
+    reason      TEXT,
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (match_id, player_id)
+);
+
 -- ---------- Model registry ----------
 
 CREATE TABLE model_versions (
@@ -421,6 +439,18 @@ CREATE TRIGGER trg_prediction_grades_no_update
 -- somehow got slated twice can't double-count in the views below without
 -- touching the ledger itself -- every row still exists in `predictions`
 -- exactly as inserted. See sql/migrations/0003_dedupe_scorecard_views.sql.
+--
+-- ADR-010 exception, deliberate: a "final pass" close-to-kickoff refresh
+-- for PLAYER_GOALS/PLAYER_SAVES (scripts/generate_slate.py's
+-- generate_final_pass_for_fixture()) intentionally writes a SECOND row
+-- under the same natural key, using the real confirmed lineup instead
+-- of the early absence-rate prior -- a genuinely more-informed
+-- prediction, not a duplicate-slate bug. That row's model_versions.
+-- model_name is always 'player_props_lineup_confirmed_v1'; it wins the
+-- tie-break over an earlier prediction_id (the original "earliest wins"
+-- rule stays the fallback, so it still protects against the real
+-- duplicate-slate incident ADR-010 references -- two rows under the
+-- SAME model_name still resolve to the earliest one).
 CREATE OR REPLACE VIEW v_graded_predictions AS
 SELECT prediction_id, match_id, market, side, line, subject_team_id,
        subject_player_id, probability, outcome, league, season, sport
@@ -431,9 +461,11 @@ FROM (
            ROW_NUMBER() OVER (
                PARTITION BY p.match_id, p.market, p.side, p.line,
                             p.subject_team_id, p.subject_player_id
-               ORDER BY p.prediction_id
+               ORDER BY (mv.model_name = 'player_props_lineup_confirmed_v1') DESC,
+                        p.prediction_id
            ) AS rn
     FROM predictions p
+    JOIN model_versions mv ON mv.model_version_id = p.model_version_id
     JOIN prediction_grades g USING (prediction_id)
     JOIN matches m USING (match_id)
     JOIN seasons s USING (season_id)

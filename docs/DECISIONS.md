@@ -290,3 +290,74 @@ higher-scoring, near-continuous-possession sport on top of it, given
 NBA's own player-availability and calibration data-gap costs were
 already the same as NFL's without a comparably distinct structural
 payoff.
+
+---
+
+## ADR-010: close-to-kickoff "final pass" for player-prop markets — the
+first prediction-refresh mechanism in this codebase
+
+**Status:** Accepted
+
+**Context:** The lineup/injury-news feature (Todoist: "futbol-modelo:
+lineup/injury news as a model feature", Phase 2) hit the same timing
+gap CARDS' `referee_avg_cards_r10` feature already hit: a real
+confirmed absence is only reliably known ~1-2 hours pre-kickoff, but
+`auto_slate.py` generates each fixture's slate once, 7-45 days out
+depending on league, and `generate_for_fixture()` hard-blocks ever
+re-slating the same `match_id` (a real duplicate-slate incident sits
+behind that guard). CARDS' answer — fall back to a training-set-wide
+average at inference time — is honestly weaker than a true confirmed-
+absence signal, and was accepted as the baseline here too
+(`player_injury_features.absence_rate_r10`, `resolve_absence_feature()`
+in `scripts/generate_slate.py`). But unlike referee (never knowable
+ahead of a fixture, full stop), lineup/injury status genuinely becomes
+knowable in the hours before kickoff — discarding that improvement
+once it exists was a real, avoidable gap, not an architectural
+necessity.
+
+**Decision:** For `PLAYER_GOALS`/`PLAYER_SAVES` only, a new CronJob
+(`futbol-props-final-pass`, every 15 min) polls the real `/injuries`
+endpoint for fixtures kicking off within ~2 hours and, when a fresher
+signal is available, writes a **second, additive** prediction under a
+distinct `model_version_id` (`player_props_lineup_confirmed_v1`) —
+never a rewrite of the original slate row
+(`generate_final_pass_for_fixture()`, deliberately not sharing
+`generate_for_fixture()`'s one-slate-ever guard, which exists to catch
+an *accidental* double-slate, not to block this *intentional* one).
+This keeps ADR-002 (append-only ledger) and ADR-008 (corrections are
+new rows, never rewrites) fully intact — the original prediction stays
+in the ledger forever, exactly as inserted.
+
+The final pass is the **official** prediction once it exists: both
+`v_graded_predictions` (the calibration/Track Record source) and
+`api/main.py`'s `get_slate()` (the live site) apply the same tie-break
+— prefer `player_props_lineup_confirmed_v1` over the base model
+version for the same natural key
+(`sql/migrations/0036_final_pass_tiebreak.sql`). Two rows under the
+*same* model version still resolve earliest-wins, so the original
+duplicate-slate protection is unchanged for the case it exists to
+catch — this ADR only changes behavior when the second row is
+genuinely the intentional final-pass one.
+
+**Consequences:** This is the first prediction-refresh mechanism ever
+built in this codebase — every other market still gets exactly one
+slate, ever. Scoped deliberately narrow (two markets, one new model
+version, one new CronJob) rather than generalized into a platform-wide
+"refresh" concept, since the timing justification (lineup data becomes
+knowable close to kickoff; nothing else currently does) doesn't hold
+for any other market today. A future market with a similar
+close-to-kickoff-only signal should get its own ADR reusing this
+pattern, not an assumption that this mechanism generalizes silently.
+Real cost: `futbol-props-final-pass` runs far more frequently (every 15
+min) than any other CronJob here, and burns real API-Football quota
+per tick even when nothing qualifies — worth watching over the first
+week of live operation.
+
+One honest asymmetry, backtested 2026-09-29
+(`docs/EXPERIMENT_REGISTRY.md`): `absence_rate_r10` only actually beat
+baseline for `PLAYER_GOALS` (+0.33% log-loss); `PLAYER_SAVES` regressed
+(-0.12%) on a much smaller goalkeeper sample and was deliberately left
+out of `fit_player_saves_model()`. The final-pass mechanism still runs
+for `PLAYER_SAVES` too (fresh `current_form`, same model), just gets no
+benefit from the `/injuries` poll specifically until that market's own
+sample grows enough to revisit.

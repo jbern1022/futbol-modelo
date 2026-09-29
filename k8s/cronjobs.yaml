@@ -351,3 +351,56 @@ spec:
             envFrom:
             - secretRef:
                 name: futbol-secrets
+---
+# ADR-010 (docs/DECISIONS.md), Todoist: "futbol-modelo: lineup/injury
+# news as a model feature". Runs every 15 min -- much more frequent
+# than any other CronJob here -- but scripts/auto_final_pass.py's own
+# query only ever matches fixtures within the next 2 hours that
+# already have an original slate and no final pass yet, so the real
+# per-tick cost is a handful of fixtures at most, not a full-league
+# sweep. Writes a SECOND prediction row per player/market under a
+# distinct model_version (player_props_lineup_confirmed_v1) -- never
+# touches the original slate row. Same pgBouncer canary identity as
+# every other consumer here (see k8s/pgbouncer.yaml).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: futbol-props-final-pass
+  namespace: default
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/hostname: k3s-control-plane
+          imagePullSecrets:
+          - name: gitea-registry
+          containers:
+          - name: props-final-pass
+            image: gitea.josephbernal.com/joe/futbol-modelo:latest
+            imagePullPolicy: IfNotPresent
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                python scripts/auto_final_pass.py --league MLS --hours-ahead 2 &&
+                python scripts/auto_final_pass.py --league EPL --hours-ahead 2 &&
+                python scripts/auto_final_pass.py --league SERIE_A --hours-ahead 2 &&
+                python scripts/auto_final_pass.py --league LA_LIGA --hours-ahead 2
+            env:
+            - name: PGBOUNCER_CANARY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: futbol-secrets
+                  key: PGBOUNCER_CANARY_PASSWORD
+            - name: FUTBOL_DSN
+              value: "host=futbol-pgbouncer-svc port=6432 dbname=futbol user=futbol_canary password=$(PGBOUNCER_CANARY_PASSWORD)"
+            envFrom:
+            - secretRef:
+                name: futbol-secrets

@@ -699,18 +699,35 @@ def get_slate(match_id: int):
             if not fixture:
                 raise HTTPException(status_code=404, detail="Fixture not found")
 
+            # ADR-010: a fixture can carry a final-pass PLAYER_GOALS/
+            # PLAYER_SAVES prediction alongside the original one for the
+            # same player/market/line (same natural key, different
+            # model_version) -- same dedup rule as v_graded_predictions
+            # (sql/migrations/0036_final_pass_tiebreak.sql): the
+            # lineup-confirmed row wins when both exist, otherwise
+            # earliest-wins (unchanged for every other market).
             cur.execute(
                 """SELECT p.prediction_id, p.market, p.statement, p.side,
                           p.line, p.probability, p.locked_at, p.context,
                           tt.name AS subject_team,
                           pl.full_name AS subject_player,
                           g.outcome, g.actual_value
-                   FROM futbol.predictions p
+                   FROM (
+                       SELECT p.*, ROW_NUMBER() OVER (
+                           PARTITION BY p.match_id, p.market, p.side, p.line,
+                                        p.subject_team_id, p.subject_player_id
+                           ORDER BY (mv.model_name = 'player_props_lineup_confirmed_v1') DESC,
+                                    p.prediction_id
+                       ) AS rn
+                       FROM futbol.predictions p
+                       JOIN futbol.model_versions mv ON mv.model_version_id = p.model_version_id
+                       WHERE p.match_id = %s
+                   ) p
                    LEFT JOIN futbol.teams tt ON tt.team_id = p.subject_team_id
                    LEFT JOIN futbol.players pl ON pl.player_id = p.subject_player_id
                    LEFT JOIN futbol.prediction_grades g
                      ON g.prediction_id = p.prediction_id
-                   WHERE p.match_id = %s
+                   WHERE p.rn = 1
                    ORDER BY p.probability DESC""", (match_id,))
             predictions = cur.fetchall()
         return {"fixture": fixture, "predictions": predictions}

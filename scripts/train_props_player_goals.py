@@ -30,6 +30,7 @@ HOLDOUT_SEASON = "2026"
 Q = """
 SELECT
     f.p_shots_r5, f.p_minutes_r5, f.p_goals_r10, f.p_key_passes_r5,
+    pif.absence_rate_r10,
     p.full_name, th.name AS team_name, s.label AS season,
     CASE WHEN f.team_id = m.home_team_id THEN ta.name ELSE th2.name END AS opponent,
     m.kickoff_utc,
@@ -41,13 +42,22 @@ JOIN futbol.teams th ON th.team_id = f.team_id
 JOIN futbol.teams th2 ON th2.team_id = m.home_team_id
 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
 JOIN futbol.player_match_stats pms ON pms.match_id = f.match_id AND pms.player_id = f.player_id
+LEFT JOIN futbol.player_injury_features pif
+  ON pif.match_id = f.match_id AND pif.player_id = f.player_id
 JOIN futbol.seasons s ON s.season_id = m.season_id
 JOIN futbol.leagues l ON l.league_id = s.league_id
 WHERE l.code = 'MLS' AND pms.minutes >= 45
 ORDER BY m.kickoff_utc;
 """
 
+# Baseline is the live features as of before the lineup/injury-news
+# feature (Todoist: "futbol-modelo: lineup/injury news as a model
+# feature"); WITH_ABSENCE is the candidate this A/B is gating before
+# generate_slate.py's fit_player_goals_model() gets to rely on it live
+# -- same discipline CARDS' referee_avg_cards_r10 went through
+# (scripts/train_props.py) before being wired in.
 FEATURES = ["p_shots_r5", "p_minutes_r5", "p_goals_r10", "p_key_passes_r5"]
+FEATURES_WITH_ABSENCE = FEATURES + ["absence_rate_r10"]
 LINES = [0.5, 1.5]
 
 
@@ -59,43 +69,49 @@ def main():
     df = pd.read_sql(Q, conn)
     conn.close()
 
-    df[FEATURES] = df[FEATURES].apply(pd.to_numeric, errors="coerce")
-    df = df.dropna(subset=FEATURES + ["goals_actual"])
-    print(f"\n{len(df)} player-match rows across {df['season'].nunique()} seasons "
+    df[FEATURES_WITH_ABSENCE] = df[FEATURES_WITH_ABSENCE].apply(pd.to_numeric, errors="coerce")
+    df_base = df.dropna(subset=FEATURES + ["goals_actual"])
+    df_absence = df.dropna(subset=FEATURES_WITH_ABSENCE + ["goals_actual"])
+    print(f"\n{len(df_base)} player-match rows across {df_base['season'].nunique()} seasons "
           f"(players with >=45 min, complete rolling features)\n")
-
-    train = df[df.season != HOLDOUT_SEASON]
-    test = df[df.season == HOLDOUT_SEASON]
-    print(f"Train: {len(train)} rows (seasons {sorted(train.season.unique())})")
-    print(f"Test:  {len(test)} rows (held-out season {HOLDOUT_SEASON})\n")
-
-    X_train, y_train = train[FEATURES], train["goals_actual"]
-    X_test, y_test = test[FEATURES], test["goals_actual"]
-
-    model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
-                              num_leaves=20, min_child_samples=30, verbose=-1)
-    model.fit(X_train, y_train)
-    pred_mu = np.clip(model.predict(X_test), 0.02, None)
-    baseline_mu = y_train.mean()
+    print(f"{len(df_absence)} rows also have absence_rate_r10 populated "
+          f"(player_injury_features requires >=5 career team appearances)\n")
 
     def poisson_log_loss(y_true, mu):
         mu = np.clip(mu, 1e-6, None)
         return -np.mean(poisson.logpmf(y_true.astype(int), mu))
 
-    model_ll = poisson_log_loss(y_test, pred_mu)
-    baseline_ll = poisson_log_loss(y_test, np.full(len(y_test), baseline_mu))
-    improvement = (baseline_ll - model_ll) / baseline_ll * 100
+    def run(df_variant, features, label):
+        train = df_variant[df_variant.season != HOLDOUT_SEASON]
+        test = df_variant[df_variant.season == HOLDOUT_SEASON]
+        model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
+                                  num_leaves=20, min_child_samples=30, verbose=-1)
+        model.fit(train[features], train["goals_actual"])
+        pred_mu = np.clip(model.predict(test[features]), 0.02, None)
+        baseline_mu = train["goals_actual"].mean()
+        model_ll = poisson_log_loss(test["goals_actual"], pred_mu)
+        baseline_ll = poisson_log_loss(test["goals_actual"], np.full(len(test), baseline_mu))
+        improvement = (baseline_ll - model_ll) / baseline_ll * 100
+        print(f"--- {label}: train {len(train)}, test {len(test)} "
+              f"(held-out season {HOLDOUT_SEASON}) ---")
+        print(f"Naive baseline ({baseline_mu:.3f} goals/appearance): log-loss {baseline_ll:.3f}")
+        print(f"Model log-loss: {model_ll:.3f} "
+              f"({'BEATS' if model_ll < baseline_ll else 'does NOT beat'} baseline, "
+              f"{improvement:+.1f}%)\n")
+        return model, pred_mu, test, model_ll
 
-    print("--- Held-out season evaluation (Poisson log-loss, lower=better) ---")
-    print(f"Baseline ({baseline_mu:.3f} goals/appearance): log-loss {baseline_ll:.3f}")
-    print(f"Model:                                  log-loss {model_ll:.3f}")
-    verdict = "BEATS baseline" if model_ll < baseline_ll else "does NOT beat baseline"
-    print(f"-> {verdict} ({improvement:+.1f}%)\n")
+    model_base, _, _, ll_base = run(df_base, FEATURES, "WITHOUT absence_rate_r10 (current live)")
+    model, pred_mu, test, ll_absence = run(
+        df_absence, FEATURES_WITH_ABSENCE, "WITH absence_rate_r10 (candidate)")
+    delta = (ll_base - ll_absence) / ll_base * 100
+    print(f"--- A/B: absence_rate_r10 vs current live features ---")
+    print(f"WITHOUT: log-loss {ll_base:.4f}   WITH: log-loss {ll_absence:.4f}   "
+          f"delta {delta:+.2f}% ({'improvement' if delta > 0 else 'regression'})\n")
 
-    print("--- Anytime goalscorer calibration ---\n")
+    print("--- Anytime goalscorer calibration (WITH absence_rate_r10) ---\n")
     for line in LINES:
         raw_p = 1 - poisson.cdf(np.floor(line), pred_mu)
-        actual = (y_test.values > line).astype(int)
+        actual = (test["goals_actual"].values > line).astype(int)
         print(f"Over {line} goals: avg stated {raw_p.mean():.1%}, "
               f"realized {actual.mean():.1%} (n={len(actual)})")
 

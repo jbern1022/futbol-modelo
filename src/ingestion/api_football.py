@@ -409,6 +409,132 @@ def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
     return stored
 
 
+# Confirmed live 2026-09-27 against a real MLS fixture (1490500, 32
+# entries): player.type is literally "Missing Fixture" or "Questionable"
+# -- no other values seen, but default to "questionable" (the more
+# conservative read -- weaker signal, not a hard absence) rather than
+# raise, since a genuinely new type value shouldn't take down a whole
+# ingestion run over one row.
+_INJURY_STATUS = {"Missing Fixture": "out", "Questionable": "questionable"}
+
+
+def normalize_injuries(response: list[dict]) -> list[dict]:
+    """Flatten API-Football's /injuries response into database-ready
+    records. One real API call per fixture -- no bulk-by-season
+    equivalent (see scripts/backfill_injuries.py)."""
+    records = []
+    for entry in response:
+        player = entry.get("player", {})
+        fixture = entry.get("fixture", {})
+        api_player_id = player.get("id")
+        fixture_id = fixture.get("id")
+        if api_player_id is None or fixture_id is None:
+            continue
+        records.append({
+            "fixture_id": fixture_id,
+            "api_player_id": api_player_id,
+            "player_name": player.get("name"),
+            "status": _INJURY_STATUS.get(player.get("type"), "questionable"),
+            "reason": player.get("reason"),
+        })
+    return records
+
+
+def fetch_and_store_injuries(session: requests.Session, cur, fixture_id: int) -> int:
+    """
+    Fetches and upserts injury/availability status for one fixture.
+    Looked up by external_ref (api-football:<fixture_id>) rather than
+    team+date matching -- injuries is already fixture-id-scoped, and
+    every match this can apply to already carries that ref (MLS via
+    backfill_primary(), EPL/SERIE_A/LA_LIGA via link_fixture_ids()).
+    A fixture with no matching match_id (not yet linked, or genuinely
+    unknown) is skipped rather than guessed at.
+    """
+    cur.execute(
+        "SELECT match_id FROM futbol.matches WHERE external_ref = %s",
+        (f"api-football:{fixture_id}",))
+    row = cur.fetchone()
+    if not row:
+        log.info("no linked match_id for fixture %d -- skipping injuries", fixture_id)
+        return 0
+    match_id = row[0]
+
+    response = _get(session, "injuries", {"fixture": fixture_id})
+    records = normalize_injuries(response)
+    stored = 0
+    for r in records:
+        # Deliberately NOT resolve_or_create_player_id() when the player
+        # already exists -- real bug found live 2026-09-29: /injuries
+        # gives abbreviated names ("A. Thomas"), and
+        # resolve_or_create_player_id's ON CONFLICT unconditionally
+        # overwrites full_name with whatever the latest caller passed,
+        # silently downgrading a player's site-wide display name
+        # (already-correct "Andrew Thomas" from fixtures/players ->
+        # "A. Thomas") every time their injury status got polled. Only
+        # falls through to resolve_or_create for a genuinely new player
+        # (a rotation player with no player_match_stats history yet),
+        # where an abbreviated name beats no player row at all.
+        cur.execute("SELECT player_id FROM futbol.players WHERE api_football_id = %s",
+                   (r["api_player_id"],))
+        existing = cur.fetchone()
+        player_id = existing[0] if existing else resolve_or_create_player_id(
+            cur, r["api_player_id"], r["player_name"])
+        cur.execute(
+            """INSERT INTO futbol.player_injuries
+                 (match_id, player_id, status, reason, fetched_at)
+               VALUES (%s,%s,%s,%s,now())
+               ON CONFLICT (match_id, player_id) DO UPDATE SET
+                 status = EXCLUDED.status, reason = EXCLUDED.reason,
+                 fetched_at = now()""",
+            (match_id, player_id, r["status"], r["reason"]))
+        stored += 1
+    return stored
+
+
+def fetch_and_store_injuries_for_league(league_code: str, days_ahead: int = 2) -> int:
+    """
+    Injuries mode's league-scoped entry point -- same shape as
+    fetch_and_store_odds() (one real API call per matching fixture, no
+    bulk-by-season equivalent for /injuries). days_ahead defaults much
+    tighter than odds' 7: injury/lineup status is only meaningfully
+    fresh close to kickoff (see PLAYER_PROPS_LEAGUES' fallback-prior
+    design in generate_slate.py) -- polling every scheduled fixture a
+    full week out would burn real API-Football quota for data that's
+    still just going to be a guess (most players "Missing Fixture" for
+    International duty this far out aside).
+    """
+    session = _session()
+    conn = psycopg2.connect(DSN)
+    stored = 0
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT m.external_ref
+                   FROM futbol.matches m
+                   JOIN futbol.seasons s ON s.season_id = m.season_id
+                   JOIN futbol.leagues l ON l.league_id = s.league_id
+                   WHERE l.code = %s AND m.status = 'scheduled'
+                     AND m.external_ref IS NOT NULL
+                     AND m.kickoff_utc BETWEEN now() AND now() + (%s || ' days')::interval""",
+                (league_code, days_ahead))
+            fixtures = cur.fetchall()
+
+        log.info("%d scheduled %s fixture(s) in the next %d day(s)",
+                 len(fixtures), league_code, days_ahead)
+
+        for (external_ref,) in fixtures:
+            fixture_id = _api_football_fixture_id(external_ref)
+            if fixture_id is None:
+                continue
+            with conn.cursor() as cur:
+                stored += fetch_and_store_injuries(session, cur, fixture_id)
+            conn.commit()
+    finally:
+        conn.close()
+    log.info("done: %d injury record(s) stored/updated", stored)
+    return stored
+
+
 def _load_cache() -> dict:
     if CACHE_FILE.exists():
         return json.loads(CACHE_FILE.read_text())
@@ -804,15 +930,15 @@ def backfill(league_code: str, season_start_year: int):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["backfill", "link-fixtures", "odds"])
+    ap.add_argument("mode", choices=["backfill", "link-fixtures", "odds", "injuries"])
     ap.add_argument("--league", required=True, choices=list(LEAGUE_SEARCH))
     ap.add_argument("--season", type=int,
                     help="Season START year, e.g. 2025 for the 2025-26 season "
-                         "(required for backfill and link-fixtures, unused for odds)")
+                         "(required for backfill and link-fixtures, unused for odds/injuries)")
     ap.add_argument("--primary", action="store_true",
                     help="Use API-Football as the sole source for future/unplayed seasons")
     ap.add_argument("--days-ahead", type=int, default=7,
-                    help="odds mode only: fetch odds for fixtures within this many days (default 7)")
+                    help="odds/injuries mode only: fetch for fixtures within this many days (default 7)")
     args = ap.parse_args()
     from ops.json_logging import configure_json_logging
     from ops.pipeline_run import track_run
@@ -822,6 +948,7 @@ def main():
     # the same invocation carry an identical label.
     job_name = {
         "odds": f"odds:{args.league}",
+        "injuries": f"injuries:{args.league}",
         "link-fixtures": f"link_fixtures:{args.league}",
     }.get(args.mode, f"nightly_refresh:{args.league}")
     configure_json_logging(job_name)
@@ -829,6 +956,12 @@ def main():
     if args.mode == "odds":
         with track_run(f"odds:{args.league}") as set_rows_written:
             n = fetch_and_store_odds(args.league, args.days_ahead)
+            set_rows_written(n)
+        return
+
+    if args.mode == "injuries":
+        with track_run(f"injuries:{args.league}") as set_rows_written:
+            n = fetch_and_store_injuries_for_league(args.league, args.days_ahead)
             set_rows_written(n)
         return
 

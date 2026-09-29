@@ -66,13 +66,22 @@ actually the right finish line, or whether it should be something
 else entirely (a specific date, a specific external validation, a
 specific readership/usage milestone) is genuinely your call.
 
+## Resolved (2026-09-29)
+
+- **NBA's ADR-009 retirement is an unrelated scope decision, not an
+  answer to this document's falsification question.** Confirmed by the
+  user: NBA was retired for sourcing/product-coherence reasons —
+  basketball would have muddied the original soccer/NFL structural
+  contrast — not because the shared ledger/grading architecture needed
+  an exception or failed to calibrate after a full graded season (it
+  never got that season of dedicated investment to even test). The
+  falsification question (see above) stays fully open; nothing about
+  it has been answered one way or the other yet.
+
 ## What I did not attempt to decide for you
 
 - Whether "project completion" should have a calendar deadline at all,
   independent of the evidence bar above.
-- Whether NBA's ADR-009 retirement should be treated as already having
-  answered part of this document's "what invalidates the thesis"
-  question, or as an unrelated scope decision.
 - Whether an external/independent statistical review (the still-open
   "Plan independent statistical and reproducibility review" ticket)
   should be a prerequisite for calling any sport "validated," not just

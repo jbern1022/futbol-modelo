@@ -39,14 +39,17 @@ def main():
                 n_player = cur.fetchone()[0]
                 cur.execute("SELECT COUNT(*) FROM referee_match_features")
                 n_referee = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM player_injury_features")
+                n_injury = cur.fetchone()[0]
             conn.commit()
         finally:
             conn.close()
-        set_rows_written(n_team + n_player + n_referee)
+        set_rows_written(n_team + n_player + n_referee + n_injury)
         log.info("rebuild_features done", extra={
             "n_team_match_features": n_team,
             "n_player_match_features": n_player,
             "n_referee_match_features": n_referee,
+            "n_player_injury_features": n_injury,
         })
 
 

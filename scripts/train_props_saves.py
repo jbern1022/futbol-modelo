@@ -31,6 +31,7 @@ Q = """
 SELECT
     pf.p_saves_r5, pf.p_minutes_r5,
     tf.shots_against_r5, tf.corners_against_r5,
+    pif.absence_rate_r10,
     p.full_name, th.name AS team_name, s.label AS season,
     CASE WHEN pf.team_id = m.home_team_id THEN ta.name ELSE th2.name END AS opponent,
     pms.saves AS saves_actual
@@ -42,6 +43,8 @@ JOIN futbol.teams th2 ON th2.team_id = m.home_team_id
 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
 JOIN futbol.player_match_stats pms ON pms.match_id = pf.match_id AND pms.player_id = pf.player_id
 JOIN futbol.team_match_features tf ON tf.match_id = pf.match_id AND tf.team_id = pf.team_id
+LEFT JOIN futbol.player_injury_features pif
+  ON pif.match_id = pf.match_id AND pif.player_id = pf.player_id
 JOIN futbol.seasons s ON s.season_id = m.season_id
 JOIN futbol.leagues l ON l.league_id = s.league_id
 WHERE l.code = 'MLS' AND p.position = 'G' AND pms.minutes >= 45
@@ -50,6 +53,7 @@ ORDER BY m.kickoff_utc;
 """
 
 FEATURES = ["p_saves_r5", "p_minutes_r5", "shots_against_r5", "corners_against_r5"]
+FEATURES_WITH_ABSENCE = FEATURES + ["absence_rate_r10"]
 LINES = [2.5, 3.5, 4.5]
 
 
@@ -61,46 +65,50 @@ def main():
     df = pd.read_sql(Q, conn)
     conn.close()
 
-    df[FEATURES] = df[FEATURES].apply(pd.to_numeric, errors="coerce")
-    df = df.dropna(subset=FEATURES + ["saves_actual"])
-    print(f"\n{len(df)} goalkeeper-match rows across {df['season'].nunique()} seasons\n")
+    df[FEATURES_WITH_ABSENCE] = df[FEATURES_WITH_ABSENCE].apply(pd.to_numeric, errors="coerce")
+    df_base = df.dropna(subset=FEATURES + ["saves_actual"])
+    df_absence = df.dropna(subset=FEATURES_WITH_ABSENCE + ["saves_actual"])
+    print(f"\n{len(df_base)} goalkeeper-match rows across {df_base['season'].nunique()} seasons\n")
 
-    if len(df) < 200:
+    if len(df_base) < 200:
         print("Too few goalkeeper rows for a meaningful holdout yet. Exiting.")
         return
-
-    train = df[df.season != HOLDOUT_SEASON]
-    test = df[df.season == HOLDOUT_SEASON]
-    print(f"Train: {len(train)} rows (seasons {sorted(train.season.unique())})")
-    print(f"Test:  {len(test)} rows (held-out season {HOLDOUT_SEASON})\n")
-
-    X_train, y_train = train[FEATURES], train["saves_actual"]
-    X_test, y_test = test[FEATURES], test["saves_actual"]
-
-    model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
-                              num_leaves=20, min_child_samples=25, verbose=-1)
-    model.fit(X_train, y_train)
-    pred_mu = np.clip(model.predict(X_test), 0.1, None)
-    baseline_mu = y_train.mean()
 
     def poisson_log_loss(y_true, mu):
         mu = np.clip(mu, 1e-6, None)
         return -np.mean(poisson.logpmf(y_true.astype(int), mu))
 
-    model_ll = poisson_log_loss(y_test, pred_mu)
-    baseline_ll = poisson_log_loss(y_test, np.full(len(y_test), baseline_mu))
-    improvement = (baseline_ll - model_ll) / baseline_ll * 100
+    def run(df_variant, features, label):
+        train = df_variant[df_variant.season != HOLDOUT_SEASON]
+        test = df_variant[df_variant.season == HOLDOUT_SEASON]
+        model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
+                                  num_leaves=20, min_child_samples=25, verbose=-1)
+        model.fit(train[features], train["saves_actual"])
+        pred_mu = np.clip(model.predict(test[features]), 0.1, None)
+        baseline_mu = train["saves_actual"].mean()
+        model_ll = poisson_log_loss(test["saves_actual"], pred_mu)
+        baseline_ll = poisson_log_loss(test["saves_actual"], np.full(len(test), baseline_mu))
+        improvement = (baseline_ll - model_ll) / baseline_ll * 100
+        print(f"--- {label}: train {len(train)}, test {len(test)} "
+              f"(held-out season {HOLDOUT_SEASON}) ---")
+        print(f"Naive baseline ({baseline_mu:.2f} saves/appearance): log-loss {baseline_ll:.3f}")
+        print(f"Model log-loss: {model_ll:.3f} "
+              f"({'BEATS' if model_ll < baseline_ll else 'does NOT beat'} baseline, "
+              f"{improvement:+.1f}%)\n")
+        return model, pred_mu, test, model_ll
 
-    print("--- Held-out season evaluation (Poisson log-loss, lower=better) ---")
-    print(f"Baseline ({baseline_mu:.2f} saves/appearance): log-loss {baseline_ll:.3f}")
-    print(f"Model:                                 log-loss {model_ll:.3f}")
-    verdict = "BEATS baseline" if model_ll < baseline_ll else "does NOT beat baseline"
-    print(f"-> {verdict} ({improvement:+.1f}%)\n")
+    _, _, _, ll_base = run(df_base, FEATURES, "WITHOUT absence_rate_r10 (current live)")
+    _, pred_mu, test, ll_absence = run(
+        df_absence, FEATURES_WITH_ABSENCE, "WITH absence_rate_r10 (candidate)")
+    delta = (ll_base - ll_absence) / ll_base * 100
+    print(f"--- A/B: absence_rate_r10 vs current live features ---")
+    print(f"WITHOUT: log-loss {ll_base:.4f}   WITH: log-loss {ll_absence:.4f}   "
+          f"delta {delta:+.2f}% ({'improvement' if delta > 0 else 'regression'})\n")
 
-    print("--- Calibration by line ---\n")
+    print("--- Calibration by line (WITH absence_rate_r10) ---\n")
     for line in LINES:
         raw_p = 1 - poisson.cdf(np.floor(line), pred_mu)
-        actual = (y_test.values > line).astype(int)
+        actual = (test["saves_actual"].values > line).astype(int)
         print(f"Over {line} saves: avg stated {raw_p.mean():.1%}, "
               f"realized {actual.mean():.1%} (n={len(actual)})")
 

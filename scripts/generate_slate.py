@@ -34,6 +34,7 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 
 from dixon_coles import DixonColes, derive_markets, knockout_extension
+from ingestion.api_football import _api_football_fixture_id, _session as api_football_session, fetch_and_store_injuries
 from ops.pipeline_run import record_model_version_history
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
@@ -352,29 +353,49 @@ def likely_goalkeeper(cur, team_id: int) -> tuple[int, str] | None:
     return (row[0], row[1]) if row else None
 
 
-def fit_player_goals_model(cur) -> tuple[Any, list[str]]:
-    features = ["p_shots_r5", "p_minutes_r5", "p_goals_r10", "p_key_passes_r5"]
+def fit_player_goals_model(cur) -> tuple[Any, list[str], dict]:
+    # absence_rate_r10: same structural problem as CARDS'
+    # referee_avg_cards_r10 (see PROPS_MARKETS["CARDS"]'s comment) --
+    # trailing rotation/absence rate joined leakage-safe as-of, real
+    # per-player fallback (not just a population average) resolved at
+    # inference time by resolve_absence_feature() below.
+    features = ["p_shots_r5", "p_minutes_r5", "p_goals_r10", "p_key_passes_r5",
+               "absence_rate_r10"]
     cur.execute(
         """SELECT f.p_shots_r5, f.p_minutes_r5, f.p_goals_r10, f.p_key_passes_r5,
-                  pms.goals
+                  pif.absence_rate_r10, pms.goals
            FROM futbol.player_match_features f
            JOIN futbol.matches m ON m.match_id = f.match_id
            JOIN futbol.player_match_stats pms
              ON pms.match_id = f.match_id AND pms.player_id = f.player_id
+           LEFT JOIN futbol.player_injury_features pif
+             ON pif.match_id = f.match_id AND pif.player_id = f.player_id
            JOIN futbol.seasons s ON s.season_id = m.season_id
            JOIN futbol.leagues l ON l.league_id = s.league_id
            WHERE l.code = ANY(%s) AND pms.minutes >= 45""",
         (list(PLAYER_PROPS_LEAGUES),))
     rows = cur.fetchall()
     df = pd.DataFrame(rows, columns=features + ["goals"])
-    df = df.apply(pd.to_numeric, errors="coerce").dropna()
+    df = df.apply(pd.to_numeric, errors="coerce")
+    absence_fallback = float(df["absence_rate_r10"].mean())
+    df = df.dropna()
     model = lgb.LGBMRegressor(objective="poisson", n_estimators=300, learning_rate=0.03,
                               num_leaves=20, min_child_samples=30, verbose=-1)
     model.fit(df[features], df["goals"])
-    return model, features
+    return model, features, {"absence_fallback": absence_fallback}
 
 
 def fit_player_saves_model(cur) -> tuple[Any, list[str]]:
+    # absence_rate_r10 deliberately NOT included here -- backtested
+    # 2026-09-29 (scripts/train_props_saves.py, MLS, season holdout):
+    # a -0.12% log-loss REGRESSION on n=737 held-out goalkeeper-match
+    # rows, unlike PLAYER_GOALS' +0.33% improvement on the same feature.
+    # Honest "doesn't clear the bar" result (see EXPERIMENT_REGISTRY.md)
+    # -- goalkeeper sample is much smaller than outfield players
+    # (~750 vs ~6300 held-out rows), so this may just be too little
+    # data to tell rather than a real negative effect, same as the
+    # 1X2/TOTAL_GOALS calibration question elsewhere in this codebase.
+    # Not wired in until it actually beats baseline.
     features = ["p_saves_r5", "p_minutes_r5", "shots_against_r5", "corners_against_r5"]
     cur.execute(
         """SELECT pf.p_saves_r5, pf.p_minutes_r5, tf.shots_against_r5, tf.corners_against_r5,
@@ -398,6 +419,53 @@ def fit_player_saves_model(cur) -> tuple[Any, list[str]]:
                               num_leaves=20, min_child_samples=25, verbose=-1)
     model.fit(df[features], df["saves"])
     return model, features
+
+
+# Real status polled close to kickoff (see generate_final_pass_for_fixture)
+# maps to a stronger/weaker version of the same 0..1 absence-rate scale
+# the model trained on -- 'out' at the scale's ceiling, 'questionable'
+# at its midpoint (genuine uncertainty, not a hard absence).
+_LIVE_ABSENCE_VALUE = {"out": 1.0, "questionable": 0.5}
+
+
+def player_absence_prior(cur, player_id: int) -> float | None:
+    """This specific player's own most recent trailing absence rate --
+    a real, per-player fallback, stronger than CARDS' population-wide
+    referee_fallback since (unlike an unknown future referee) the
+    player is already known at slate-generation time."""
+    cur.execute(
+        """SELECT absence_rate_r10 FROM futbol.player_injury_features
+           WHERE player_id = %s ORDER BY kickoff_utc DESC LIMIT 1""", (player_id,))
+    row = cur.fetchone()
+    return float(row[0]) if row and row[0] is not None else None
+
+
+def resolve_absence_feature(cur, match_id: int, player_id: int,
+                            population_fallback: float | None) -> float:
+    """
+    Three tiers, most-informed first:
+    1. A real, freshly-polled status for THIS fixture (player_injuries)
+       -- only reliably present close to kickoff, written by
+       generate_final_pass_for_fixture()'s own /injuries poll.
+    2. This player's own trailing absence_rate_r10 (player_absence_prior)
+       -- what every early slate generation actually uses in practice,
+       since #1 is essentially never populated 21-45 days out (same
+       timing gap as CARDS' referee -- see PROPS_MARKETS["CARDS"]).
+    3. The training population's average (fit_player_goals_model's
+       absence_fallback) -- last resort for a brand-new player with no
+       rolling window yet. Only called for PLAYER_GOALS -- PLAYER_SAVES
+       doesn't use absence_rate_r10 at all (see fit_player_saves_model).
+    """
+    cur.execute(
+        """SELECT status FROM futbol.player_injuries
+           WHERE match_id = %s AND player_id = %s""", (match_id, player_id))
+    row = cur.fetchone()
+    if row:
+        return _LIVE_ABSENCE_VALUE.get(row[0], 0.5)
+    personal = player_absence_prior(cur, player_id)
+    if personal is not None:
+        return personal
+    return population_fallback if population_fallback is not None else 0.0
 
 
 def build_player_goal_inference(model: Any, features_list: list[str], form: dict,
@@ -425,6 +493,147 @@ def build_player_saves_inference(model: Any, features_list: list[str], form: dic
     return Inference(market="PLAYER_SAVES", statement=f"{player_name} over {line} saves",
                      line=line, side="over", probability=round(p, 5),
                      subject_player_id=player_id, context={**form, **impacts})
+
+
+def build_player_props_candidates(cur, match_id: int, kickoff: datetime,
+                                  home_id: int, away_id: int) -> list[Inference]:
+    """
+    Shared by the original slate (generate_for_fixture) and the
+    close-to-kickoff final pass (generate_final_pass_for_fixture) --
+    same candidate players (top_goal_threats/likely_goalkeeper), same
+    models, the only difference is which player_injuries data
+    resolve_absence_feature() finds already fetched for this match_id
+    when each caller runs. PLAYER_SAVES doesn't use absence_rate_r10 at
+    all (backtested regression, see fit_player_saves_model's comment) --
+    still worth including in the final pass for its OTHER features
+    (fresh current_form), just gets no benefit from the injuries poll.
+    """
+    goals_model, goals_feats, goals_meta = fit_player_goals_model(cur)
+    saves_model, saves_feats = fit_player_saves_model(cur)
+
+    candidates: list[Inference] = []
+    for tid in (home_id, away_id):
+        for pid, pname in top_goal_threats(cur, tid, n=2):
+            form = player_goals_form(cur, pid)
+            if form:
+                form["absence_rate_r10"] = resolve_absence_feature(
+                    cur, match_id, pid, goals_meta["absence_fallback"])
+                inf = build_player_goal_inference(goals_model, goals_feats, form, pid, pname)
+                if inf:
+                    candidates.append(inf)
+
+        gk = likely_goalkeeper(cur, tid)
+        if gk:
+            pid, pname = gk
+            cur.execute(
+                """SELECT pms.saves, pms.minutes
+                   FROM futbol.player_match_stats pms
+                   JOIN futbol.matches m ON m.match_id = pms.match_id
+                   WHERE pms.player_id = %s AND m.status='final'
+                     AND pms.minutes >= 45
+                   ORDER BY m.kickoff_utc DESC LIMIT 5""", (pid,))
+            srows = cur.fetchall()
+            if len(srows) >= 3:
+                sdf = pd.DataFrame(srows, columns=["saves", "minutes"])
+                sdf = sdf.apply(pd.to_numeric, errors="coerce")
+                team_form = current_form(cur, tid, kickoff)
+                if team_form:
+                    save_form = {
+                        "p_saves_r5": sdf["saves"].mean(),
+                        "p_minutes_r5": sdf["minutes"].mean(),
+                        "shots_against_r5": team_form["shots_against_r5"],
+                        "corners_against_r5": team_form.get("corners_against_r5"),
+                    }
+                    if save_form["corners_against_r5"] is not None:
+                        inf = build_player_saves_inference(
+                            saves_model, saves_feats, save_form, pid, pname)
+                        if inf:
+                            candidates.append(inf)
+    return candidates
+
+
+def generate_final_pass_for_fixture(conn, cur, league: str, home: str, away: str,
+                                    match_id: int, kickoff: datetime,
+                                    home_id: int, away_id: int,
+                                    verbose: bool = True) -> int | None:
+    """
+    ADR-010: a SECOND, close-to-kickoff pass for PLAYER_GOALS/
+    PLAYER_SAVES only, run by scripts/auto_final_pass.py for fixtures
+    within roughly 1-2 hours of kickoff that already have an original
+    slate. Deliberately does NOT call generate_for_fixture() or share
+    its "one slate, ever" guard (SELECT 1 FROM predictions WHERE
+    match_id = %s) -- that guard exists to prevent an accidental
+    duplicate full slate (real incident, see its own comment), not to
+    block this intentional, additive second prediction. Writes under a
+    distinct model_version (player_props_lineup_confirmed_v1) so the
+    ledger keeps both rows (ADR-002/008, append-only) -- see
+    sql/migrations/0036_final_pass_tiebreak.sql for how v_graded_predictions
+    picks this one as "official" once it exists.
+    """
+    now = datetime.now(timezone.utc)
+    kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
+    if now >= kickoff_aware:
+        if verbose:
+            log.info("skip final pass: kickoff already passed",
+                     extra={"league": league, "home": home, "away": away})
+        return None
+
+    cur.execute(
+        """SELECT 1 FROM futbol.predictions p
+           JOIN futbol.model_versions mv ON mv.model_version_id = p.model_version_id
+           WHERE p.match_id = %s AND mv.model_name = 'player_props_lineup_confirmed_v1'
+           LIMIT 1""", (match_id,))
+    if cur.fetchone():
+        if verbose:
+            log.info("skip final pass: already has one",
+                     extra={"league": league, "home": home, "away": away})
+        return None
+
+    cur.execute("SELECT external_ref FROM futbol.matches WHERE match_id = %s", (match_id,))
+    row = cur.fetchone()
+    fixture_id = _api_football_fixture_id(row[0]) if row else None
+    if fixture_id is not None:
+        try:
+            session = api_football_session()
+            fetch_and_store_injuries(session, cur, fixture_id)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            if verbose:
+                log.warning("final pass: /injuries poll failed -- proceeding with "
+                           "whatever was already fetched (falls back further if none)",
+                           extra={"league": league, "home": home, "away": away},
+                           exc_info=True)
+
+    candidates = build_player_props_candidates(cur, match_id, kickoff, home_id, away_id)
+    candidates = log_degenerate_candidates(cur, match_id, candidates, verbose)
+    # size=20 (same as the original slate's build_slate call) even though
+    # this candidate pool is small (at most ~6 players) -- build_slate's
+    # own in_band[:size-5] slicing goes wrong for size < 5, and every
+    # real candidate already passed its own probability-band filter in
+    # build_player_goal_inference/build_player_saves_inference, so a
+    # generous size here just means "keep everything that qualified."
+    slate = build_slate(candidates, band=TARGET_BAND, size=20)
+
+    _mv_params = json.dumps({"note": "close-to-kickoff refresh of PLAYER_GOALS/"
+                                     "PLAYER_SAVES using real /injuries + "
+                                     "/fixtures/lineups data where available; "
+                                     "see docs/DECISIONS.md ADR-010"})
+    cur.execute(
+        """INSERT INTO futbol.model_versions (model_name, version_tag, params)
+           VALUES ('player_props_lineup_confirmed_v1', 'v1', %s)
+           ON CONFLICT (model_name, version_tag) DO UPDATE SET params = EXCLUDED.params
+           RETURNING model_version_id""",
+        (_mv_params,))
+    mvid = cur.fetchone()[0]
+
+    n = persist_slate(conn, match_id, mvid, slate)
+    if verbose:
+        log.info("final pass written", extra={
+            "league": league, "home": home, "away": away,
+            "n_predictions": n, "match_id": match_id, "model_version_id": mvid,
+        })
+    return n
 
 
 def generate_for_fixture(conn, cur, league: str, home: str, away: str,
@@ -500,45 +709,8 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
 
         if league in PLAYER_PROPS_LEAGUES:
             try:
-                goals_model, goals_feats = fit_player_goals_model(cur)
-                saves_model, saves_feats = fit_player_saves_model(cur)
-
-                for tid in (home_id, away_id):
-                    for pid, pname in top_goal_threats(cur, tid, n=2):
-                        form = player_goals_form(cur, pid)
-                        if form:
-                            inf = build_player_goal_inference(
-                                goals_model, goals_feats, form, pid, pname)
-                            if inf:
-                                candidates.append(inf)
-
-                    gk = likely_goalkeeper(cur, tid)
-                    if gk:
-                        pid, pname = gk
-                        cur.execute(
-                            """SELECT pms.saves, pms.minutes
-                               FROM futbol.player_match_stats pms
-                               JOIN futbol.matches m ON m.match_id = pms.match_id
-                               WHERE pms.player_id = %s AND m.status='final'
-                                 AND pms.minutes >= 45
-                               ORDER BY m.kickoff_utc DESC LIMIT 5""", (pid,))
-                        srows = cur.fetchall()
-                        if len(srows) >= 3:
-                            sdf = pd.DataFrame(srows, columns=["saves", "minutes"])
-                            sdf = sdf.apply(pd.to_numeric, errors="coerce")
-                            team_form = current_form(cur, tid, kickoff)
-                            if team_form:
-                                save_form = {
-                                    "p_saves_r5": sdf["saves"].mean(),
-                                    "p_minutes_r5": sdf["minutes"].mean(),
-                                    "shots_against_r5": team_form["shots_against_r5"],
-                                    "corners_against_r5": team_form.get("corners_against_r5"),
-                                }
-                                if save_form["corners_against_r5"] is not None:
-                                    inf = build_player_saves_inference(
-                                        saves_model, saves_feats, save_form, pid, pname)
-                                    if inf:
-                                        candidates.append(inf)
+                candidates += build_player_props_candidates(
+                    cur, match_id, kickoff, home_id, away_id)
             except Exception:
                 if verbose:
                     log.warning("player props skipped",

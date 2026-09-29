@@ -122,3 +122,49 @@ WINDOW
             ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING);
 
 CREATE INDEX idx_pmf ON player_match_features (match_id, player_id);
+
+-- Absence-rate prior (Todoist: "futbol-modelo: lineup/injury news as a
+-- model feature", Phase 2) -- same leakage-safe as-of pattern as
+-- referee_match_features above, and the same structural problem it
+-- solves: whether a rotation player actually featured is essentially
+-- never known 21-45 days out (a fixture only ever gets slated once),
+-- so PLAYER_GOALS/PLAYER_SAVES fall back to this trailing rate at
+-- slate-generation time instead of waiting. player_match_stats only
+-- ever has a row for a match a player actually played, so "did NOT
+-- play" has to be reconstructed: every finished match the player's
+-- team played (team_match_stats), LEFT JOINed against whether this
+-- specific player has a real appearance (minutes >= 1) in it.
+-- Restricted to players with >= 5 career appearances for that team
+-- (player_pool) so a single substitute cameo doesn't get treated as a
+-- "rotation player" whose every other team match counts as an absence.
+DROP TABLE IF EXISTS player_injury_features;
+CREATE TABLE player_injury_features AS
+WITH team_matches AS (
+    SELECT tms.team_id, tms.match_id, m.kickoff_utc
+    FROM team_match_stats tms
+    JOIN matches m USING (match_id)
+    WHERE m.status = 'final'
+),
+player_pool AS (
+    SELECT player_id, team_id
+    FROM player_match_stats
+    GROUP BY player_id, team_id
+    HAVING COUNT(*) >= 5
+),
+appearances AS (
+    SELECT pp.player_id, tm.match_id, tm.kickoff_utc,
+           (pms.player_id IS NOT NULL AND pms.minutes >= 1) AS played
+    FROM player_pool pp
+    JOIN team_matches tm ON tm.team_id = pp.team_id
+    LEFT JOIN player_match_stats pms
+      ON pms.match_id = tm.match_id AND pms.player_id = pp.player_id
+)
+SELECT
+    player_id, match_id, kickoff_utc,
+    1 - AVG(played::int) OVER w10 AS absence_rate_r10,
+    COUNT(*)             OVER w10 AS n_prior
+FROM appearances
+WINDOW w10 AS (PARTITION BY player_id ORDER BY kickoff_utc
+               ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING);
+
+CREATE INDEX idx_pif ON player_injury_features (player_id);
