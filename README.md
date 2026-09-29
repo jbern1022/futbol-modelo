@@ -129,6 +129,17 @@ rows written, failure traceback) in `futbol.pipeline_runs`, exposed via
 last generated Xh ago" — the freshness signal that's supposed to make
 a silently-stalled pipeline visible instead of quietly stale.
 
+## Data sources & attribution
+
+NFL schedule, results, and real closing market lines come from
+[nflverse](https://github.com/nflverse), licensed
+[CC-BY](https://github.com/nflverse/nflverse-data/blob/main/LICENSE) —
+reuse permitted with attribution. This line is that attribution
+(previously present in the ingestion code's own header comment, per
+`docs/DATA_LICENSING.md`, but not on the public site until now). Full
+inventory of every data source this project uses, what's confirmed vs.
+still an open licensing question, in `docs/DATA_LICENSING.md`.
+
 ## Repo layout
 
 ```

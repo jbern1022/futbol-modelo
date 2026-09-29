@@ -56,11 +56,11 @@ over:
    well-known open-source wrapper, but the underlying endpoint has no
    published third-party data license; the project has not stated
    anywhere it accepted a specific risk here.
-3. **nflverse attribution is not yet visible on the live site** — the
-   code header correctly identifies CC-BY, but `README.md`'s current
-   text does not carry a public attribution line for it. This is a
-   real, cheap gap to close (add an attribution line to the site
-   footer or `README.md`), unlike gaps 1–2 which need actual research.
+3. ~~**nflverse attribution is not yet visible on the live site**~~ —
+   **Fixed 2026-09-29**: added a "Data sources & attribution" section
+   to `README.md`. (Still not on the live site's own footer/about
+   page, just the repo's README — a smaller remaining gap than before,
+   worth closing fully if/when the site gets an About page.)
 4. **API-Football's redistribution terms** for derived predictions
    (as opposed to raw data) were not re-read for this register.
 
