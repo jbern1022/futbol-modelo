@@ -408,9 +408,14 @@ spec:
 # ADR-011 (docs/DECISIONS.md), Todoist: "futbol-modelo: in-play/live
 # win-probability updates". Runs every minute -- scripts/poll_live_winprob.py
 # itself gates on our own matches table BEFORE calling the real API, so a
-# tick where nothing in EPL/SERIE_A could plausibly be live is a
-# near-zero-cost no-op, not a real API call. EPL/SERIE_A only for now
-# (gradual rollout, 2026-09-30 decision) -- MLS/LA_LIGA added later.
+# tick where nothing tracked could plausibly be live is a near-zero-cost
+# no-op, not a real API call. All 4 leagues as of 2026-09-30 (gradual
+# rollout completed -- EPL/SERIE_A first, MLS/LA_LIGA added once each
+# had its own real in-play validation: MLS via the new match_events
+# source, La Liga after the shots_natural_key dedup fix). Red-card
+# adjustment only calibrated for EPL/SERIE_A so far -- MLS/LA_LIGA fall
+# back to a 1.0 no-op factor (see RED_CARD_FACTORS in
+# src/predictions/live_winprob.py) until each gets its own calibration.
 # Backend only, no UI yet. Writes to live_win_probability, NOT the
 # predictions ledger -- see that table's own comment in sql/schema.sql.
 apiVersion: batch/v1
@@ -441,7 +446,9 @@ spec:
             args:
               - |
                 python scripts/poll_live_winprob.py --league EPL &&
-                python scripts/poll_live_winprob.py --league SERIE_A
+                python scripts/poll_live_winprob.py --league SERIE_A &&
+                python scripts/poll_live_winprob.py --league MLS &&
+                python scripts/poll_live_winprob.py --league LA_LIGA
             env:
             - name: PGBOUNCER_CANARY_PASSWORD
               valueFrom:
