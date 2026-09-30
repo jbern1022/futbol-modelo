@@ -334,6 +334,27 @@ CREATE TABLE IF NOT EXISTS player_injuries (
     PRIMARY KEY (match_id, player_id)
 );
 
+-- Event-level data from API-Football's /fixtures/events -- the MLS
+-- equivalent of Understat's shot-level `shots` table (zero MLS
+-- coverage there). See sql/migrations/0039_match_events.sql.
+CREATE TABLE IF NOT EXISTS match_events (
+    event_id        BIGSERIAL PRIMARY KEY,
+    match_id        INT NOT NULL REFERENCES matches(match_id),
+    team_id         INT REFERENCES teams(team_id),
+    player_id       INT REFERENCES players(player_id),
+    minute          INT NOT NULL,
+    extra_minute    INT,
+    type            TEXT NOT NULL,
+    detail          TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS match_events_natural_key ON match_events (
+    match_id, COALESCE(team_id, -1), COALESCE(player_id, -1),
+    minute, COALESCE(extra_minute, -1), type, COALESCE(detail, '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_events_match ON match_events (match_id);
+
 -- ADR-011: in-play win-probability, continuously updated during a live
 -- match -- NOT the immutable predictions ledger (that locks once
 -- pre-kickoff). Full history retained (like match_odds_history, not

@@ -14,9 +14,11 @@ in-play probability using the exact same fitted model, no new
 architecture.
 
 Proxy for real live score trajectories (no minute-by-minute history is
-stored anywhere in this project yet, live or otherwise): the existing
-`shots` table has real goal-minute data from Understat (EPL/SERIE_A/
-LA_LIGA only -- MLS has no shots data, out of scope here). Reconstructs
+stored anywhere in this project yet, live or otherwise): `shots` has
+real goal-minute data from Understat (EPL/SERIE_A/LA_LIGA); MLS has no
+Understat coverage, so it uses `match_events` (API-Football's
+/fixtures/events, scripts/backfill_match_events.py) instead -- same
+role, different source. Reconstructs
 each holdout match's TRUE running score at fixed checkpoints (15', 30',
 45', 60', 75') from real historical goal events, then checks whether
 the conditioned in-play probability at that checkpoint is well-
@@ -48,7 +50,7 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 CHECKPOINTS = [15, 30, 45, 60, 75]
 MAX_GOALS = 10
 
-GOALS_Q = """
+GOALS_Q_SHOTS = """
 SELECT s.match_id, s.team_id, s.minute
 FROM futbol.shots s
 JOIN futbol.matches m ON m.match_id = s.match_id
@@ -57,6 +59,24 @@ JOIN futbol.leagues l ON l.league_id = se.league_id
 WHERE l.code = %s AND s.result = 'Goal' AND s.minute IS NOT NULL
 ORDER BY s.match_id, s.minute;
 """
+
+# MLS has no Understat shots coverage -- uses match_events (API-Football,
+# scripts/backfill_match_events.py) instead. 'Normal Goal'/'Penalty'
+# only -- 'Missed Penalty' is an event marker, not a scored goal, and
+# 'Own Goal' is excluded (team attribution not yet confirmed either way,
+# same conservative call the shots-based query makes).
+GOALS_Q_EVENTS = """
+SELECT e.match_id, e.team_id, e.minute
+FROM futbol.match_events e
+JOIN futbol.matches m ON m.match_id = e.match_id
+JOIN futbol.seasons se ON se.season_id = m.season_id
+JOIN futbol.leagues l ON l.league_id = se.league_id
+WHERE l.code = %s AND e.type = 'Goal' AND e.detail IN ('Normal Goal', 'Penalty')
+ORDER BY e.match_id, e.minute;
+"""
+
+GOALS_SOURCE = {"EPL": GOALS_Q_SHOTS, "SERIE_A": GOALS_Q_SHOTS,
+                "LA_LIGA": GOALS_Q_SHOTS, "MLS": GOALS_Q_EVENTS}
 
 
 def inplay_probs(lam: float, mu: float, rho: float, h_now: int, a_now: int,
@@ -111,7 +131,7 @@ def reconstruct_trajectories(goals_df: pd.DataFrame, home_id: int, away_id: int)
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA"])
+    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA", "MLS"])
     ap.add_argument("--holdout", default="2025-26")
     ap.add_argument("--xi", type=float, default=0.0018)
     args = ap.parse_args()
@@ -135,7 +155,7 @@ def main():
     # team pair that played each other twice in different seasons.
     match_lookup = {(h, a, d): (mid, hid, aid) for mid, hid, aid, h, a, d in cur.fetchall()}
 
-    goals = pd.read_sql(GOALS_Q, conn, params=(args.league,))
+    goals = pd.read_sql(GOALS_SOURCE[args.league], conn, params=(args.league,))
     conn.close()
     print(f"loaded {len(matches)} finals, {len(goals)} real goal events for {args.league}\n")
 

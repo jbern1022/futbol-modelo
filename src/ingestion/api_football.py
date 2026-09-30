@@ -491,6 +491,75 @@ def fetch_and_store_injuries(session: requests.Session, cur, fixture_id: int) ->
     return stored
 
 
+def normalize_events(response: list[dict]) -> list[dict]:
+    """Flatten API-Football's /fixtures/events response into
+    database-ready records -- the MLS equivalent of Understat's
+    shot-level data (zero MLS coverage there). Confirmed live
+    2026-09-30 against a real MLS fixture: Goal, Card (Yellow/Red),
+    subst, and Var event types, all minute-precise including
+    stoppage time."""
+    records = []
+    for e in response:
+        team = e.get("team") or {}
+        player = e.get("player") or {}
+        time = e.get("time") or {}
+        if team.get("id") is None or time.get("elapsed") is None:
+            continue
+        records.append({
+            "api_team_id": team.get("id"),
+            "api_player_id": player.get("id"),
+            "player_name": player.get("name"),
+            "minute": time.get("elapsed"),
+            "extra_minute": time.get("extra"),
+            "type": e.get("type"),
+            "detail": e.get("detail"),
+        })
+    return records
+
+
+def fetch_and_store_events(session: requests.Session, cur, fixture_id: int) -> int:
+    """
+    Fetches and stores /fixtures/events for one fixture -- match_id
+    looked up by external_ref, same as fetch_and_store_injuries.
+    Idempotent (ON CONFLICT DO NOTHING on the natural key), safe to
+    re-run against an already-stored fixture.
+    """
+    cur.execute(
+        "SELECT match_id FROM futbol.matches WHERE external_ref = %s",
+        (f"api-football:{fixture_id}",))
+    row = cur.fetchone()
+    if not row:
+        log.info("no linked match_id for fixture %d -- skipping events", fixture_id)
+        return 0
+    match_id = row[0]
+
+    response = _get(session, "fixtures/events", {"fixture": fixture_id})
+    records = normalize_events(response)
+    stored = 0
+    for r in records:
+        team_id = resolve_team_id(cur, r["api_team_id"], "")
+        player_id = None
+        if r["api_player_id"] is not None:
+            # Same lookup-first pattern as fetch_and_store_injuries --
+            # never let an events-sourced name overwrite a better one.
+            cur.execute("SELECT player_id FROM futbol.players WHERE api_football_id = %s",
+                       (r["api_player_id"],))
+            existing = cur.fetchone()
+            player_id = existing[0] if existing else resolve_or_create_player_id(
+                cur, r["api_player_id"], r["player_name"])
+        cur.execute(
+            """INSERT INTO futbol.match_events
+                 (match_id, team_id, player_id, minute, extra_minute, type, detail)
+               VALUES (%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (match_id, COALESCE(team_id, -1), COALESCE(player_id, -1),
+                            minute, COALESCE(extra_minute, -1), type, COALESCE(detail, ''))
+               DO NOTHING""",
+            (match_id, team_id, player_id, r["minute"], r["extra_minute"],
+             r["type"], r["detail"]))
+        stored += cur.rowcount
+    return stored
+
+
 def fetch_and_store_injuries_for_league(league_code: str, days_ahead: int = 2) -> int:
     """
     Injuries mode's league-scoped entry point -- same shape as
