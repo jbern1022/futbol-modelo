@@ -108,6 +108,9 @@ case "$TARGET" in
         # the CronJob, specifically to not repeat the stale-:latest trap
         # documented twice above.
         patch_cronjob "futbol-props-final-pass" "props-final-pass" "${REGISTRY}/futbol-modelo:${SHA}"
+        # Added with futbol-live-winprob (k8s/cronjobs.yaml, ADR-011,
+        # 2026-09-30) -- same reason as the line above.
+        patch_cronjob "futbol-live-winprob" "live-winprob" "${REGISTRY}/futbol-modelo:${SHA}"
         ;;
 
     *)

@@ -361,3 +361,84 @@ out of `fit_player_saves_model()`. The final-pass mechanism still runs
 for `PLAYER_SAVES` too (fresh `current_form`, same model), just gets no
 benefit from the `/injuries` poll specifically until that market's own
 sample grows enough to revisit.
+
+---
+
+## ADR-011: in-play win-probability — conditioned Dixon-Coles, not a new model class
+
+**Status:** Accepted
+
+**Context:** Todoist's "in-play/live win-probability updates" ticket
+(Phase 3) was scoped from the start as "the hardest item — real-time
+pipeline, different model class than everything else built so far."
+Offline validation (2026-09-30,
+`scripts/experiment_inplay_dixon_coles.py`) found that assumption
+wrong: Dixon-Coles already fits per-team goal rates (λ home, μ away)
+for a full match. Re-deriving a scoreline distribution for the
+*remaining* time only (λ/μ scaled by the fraction of the match left),
+then combining with the already-banked current score, reuses the exact
+same fitted model — no new architecture. Validated against real
+historical goal-minute data (`futbol.shots`, Understat-sourced, used
+only as an offline backtest proxy — nothing here is live yet): beats
+the static pre-match probability at every checkpoint (15'/30'/45'/60'/
+75') for EPL, SERIE_A, and LA_LIGA (LA_LIGA only after fixing a real,
+separate bug — see below). An ablation showed Dixon-Coles' low-score
+correction (ρ), fit for a full 90' match, changes in-play results in
+the 4th decimal place — dropped as not worth the untested-extrapolation
+risk.
+
+Building this live surfaced a second, unrelated real bug:
+`shots_natural_key`'s UNIQUE CONSTRAINT included a nullable column
+(`situation`), and Postgres never treats two NULLs as equal in a
+unique constraint — `ON CONFLICT` silently failed to dedupe any shot
+with `situation IS NULL`. La Liga has ~6.7% NULL-situation rows vs ~1%
+for EPL/SERIE_A, so it took the brunt (1365 duplicate rows, 100% La
+Liga, confirmed live — a single goal had landed 5 times under 5
+different `shot_id`s). Fixed via
+`sql/migrations/0037_fix_shots_null_situation_dedup.sql` before this
+ADR's own work continued — unrelated to in-play specifically, but
+found *because of* the in-play validation cross-checking reconstructed
+scores against real final scores, exactly the kind of check that
+catches this class of bug.
+
+**Decision:** Build the backend only, no live UI yet (explicit
+2026-09-30 direction — validate real output against real matches
+before committing to any frontend work). `live_win_probability`
+(`sql/migrations/0038_live_win_probability.sql`) is a new, separate
+time series table — explicitly NOT the immutable predictions ledger
+(ADR-002): it updates continuously through a live match (every ~60s),
+while a prediction locks once, pre-kickoff, forever. Full history
+retained (not latest-snapshot-only), same precedent as
+`match_odds_history` — how win-probability moved during the match is
+the actually interesting signal for a future live chart.
+
+`scripts/poll_live_winprob.py` (new `futbol-live-winprob` CronJob,
+every minute) gates on our own `matches` table *before* ever calling
+the real API — a tick where nothing tracked could plausibly be live
+right now is a near-zero-cost no-op, not a real API call, so running
+every 60 seconds doesn't mean burning quota every 60 seconds.
+Data source: `/fixtures?live=all` (one call covers every live fixture
+across every league). Rolled out gradually — EPL and SERIE_A only for
+now (both have deep, validated multi-season history); MLS (no
+goal-minute data at all yet — `/fixtures/events` is the real candidate
+source, not yet built) and LA_LIGA (validated but only for the single
+season its `shots` table actually covers) come later.
+
+A red-card/major-incident adjustment is explicitly **not** built yet —
+`/fixtures/events` confirmed to give real minute-precise red-card data
+(2026-09-30), but the actual multiplier (how much should a sent-off
+team's remaining scoring rate drop) needs to be calibrated from this
+project's own historical data, not hardcoded from a guess. Stubbed as
+a no-op (implicit factor of 1.0) for this build; calibration is
+separate, scoped follow-up work.
+
+**Consequences:** The in-play feature didn't need the "different model
+class" the ticket assumed — worth remembering the next time a ticket's
+own framing turns out to be a bigger assumption than the evidence
+supports. `live_win_probability` is the first continuously-updating
+(non-locked) table in this schema's prediction-adjacent surface;
+future similar features should follow its "separate time-series table,
+not the ledger" pattern rather than trying to force a live value into
+`predictions`. No live UI exists yet — that's explicitly a separate,
+not-yet-made decision once the backend's real output has been checked
+against real matches.

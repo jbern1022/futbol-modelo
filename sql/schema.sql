@@ -334,6 +334,26 @@ CREATE TABLE IF NOT EXISTS player_injuries (
     PRIMARY KEY (match_id, player_id)
 );
 
+-- ADR-011: in-play win-probability, continuously updated during a live
+-- match -- NOT the immutable predictions ledger (that locks once
+-- pre-kickoff). Full history retained (like match_odds_history, not
+-- match_odds). See sql/migrations/0038_live_win_probability.sql and
+-- src/predictions/live_winprob.py.
+CREATE TABLE IF NOT EXISTS live_win_probability (
+    id              BIGSERIAL PRIMARY KEY,
+    match_id        INT NOT NULL REFERENCES matches(match_id),
+    computed_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    minute          INT NOT NULL,
+    home_score      INT NOT NULL,
+    away_score      INT NOT NULL,
+    home_win_prob   NUMERIC(6,5) NOT NULL,
+    draw_prob       NUMERIC(6,5) NOT NULL,
+    away_win_prob   NUMERIC(6,5) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_live_winprob_match
+    ON live_win_probability (match_id, computed_at);
+
 -- ---------- Model registry ----------
 
 CREATE TABLE model_versions (
