@@ -217,6 +217,17 @@ CREATE TABLE shots (
     source_xg       NUMERIC(6,4)                   -- Understat's xG, our benchmark
 );
 
+-- COALESCE(situation, '') matters: situation is nullable and Postgres
+-- never treats two NULLs as equal in a unique index, so a plain
+-- `situation` column here would silently let NULL-situation shots
+-- dedupe-fail on re-ingestion (real incident: 1365 duplicate rows,
+-- 100% La Liga, where NULL situation is ~6.7% of rows vs ~1% for
+-- EPL/SERIE_A -- see sql/migrations/0037_fix_shots_null_situation_dedup.sql
+-- and src/ingestion/loader.py's matching ON CONFLICT clause).
+CREATE UNIQUE INDEX shots_natural_key ON shots (
+    match_id, player_id, minute, x, y, COALESCE(situation, ''), result
+);
+
 -- Retention: rows older than the last 3 completed seasons per league
 -- get moved here by scripts/archive_old_shots.py, not deleted -- this
 -- data feeds the planned custom xG model. See
