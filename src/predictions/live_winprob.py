@@ -18,6 +18,40 @@ from scipy.stats import poisson
 
 MAX_GOALS = 10
 
+# Empirical red-card multipliers (scripts/experiment_redcard_calibration.py,
+# 2026-09-30): for each league, (down_factor, up_factor) applied to the
+# sent-off team's and their opponent's remaining-time goal rate from the
+# red-card minute onward. Derived from real EPL/SERIE_A matches with a
+# single red card between minute 10-80 (145/149 usable matches
+# respectively), comparing ACTUAL remaining-time goals (futbol.shots)
+# against Dixon-Coles' unadjusted expectation for that same window.
+# In-sample RPS improvement when applied: EPL +16.4%, SERIE_A +30.3% --
+# real, but in-sample only (not yet validated on a held-out red-card
+# set), see the calibration script's own printed caveat. No entry yet
+# for MLS/LA_LIGA -- default (1.0, 1.0) applies until each is
+# calibrated the same way.
+RED_CARD_FACTORS = {
+    "EPL": (0.475, 1.551),
+    "SERIE_A": (0.584, 1.850),
+}
+
+
+def apply_red_card(lam: float, mu: float, league: str, home_is_down: bool | None) -> tuple[float, float]:
+    """
+    Applies RED_CARD_FACTORS to whichever of lam (home)/mu (away) is
+    the sent-off team, the other gets the opponent (up) factor.
+    home_is_down=None means no red card has happened -- returns
+    lam/mu unchanged. Call this BEFORE inplay_win_probs, which stays
+    a plain conditioning function with no red-card knowledge of its
+    own.
+    """
+    if home_is_down is None:
+        return lam, mu
+    down_factor, up_factor = RED_CARD_FACTORS.get(league, (1.0, 1.0))
+    if home_is_down:
+        return lam * down_factor, mu * up_factor
+    return lam * up_factor, mu * down_factor
+
 
 def inplay_win_probs(lam: float, mu: float, h_now: int, a_now: int,
                      minute: int) -> tuple[float, float, float]:
@@ -27,7 +61,9 @@ def inplay_win_probs(lam: float, mu: float, h_now: int, a_now: int,
     fraction of the match left, builds a small scoreline matrix for
     ADDITIONAL goals only, then combines with the already-banked
     h_now/a_now lead -- the exact same fitted lam/mu the pre-match
-    slate used for this fixture, no separate live model.
+    slate used for this fixture, no separate live model. Pass lam/mu
+    already through apply_red_card() first if a red card applies --
+    this function itself has no red-card awareness.
     """
     remaining = max(90 - minute, 1) / 90.0
     lam_r, mu_r = lam * remaining, mu * remaining

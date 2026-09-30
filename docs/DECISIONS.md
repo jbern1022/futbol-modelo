@@ -424,13 +424,38 @@ goal-minute data at all yet — `/fixtures/events` is the real candidate
 source, not yet built) and LA_LIGA (validated but only for the single
 season its `shots` table actually covers) come later.
 
-A red-card/major-incident adjustment is explicitly **not** built yet —
-`/fixtures/events` confirmed to give real minute-precise red-card data
-(2026-09-30), but the actual multiplier (how much should a sent-off
-team's remaining scoring rate drop) needs to be calibrated from this
-project's own historical data, not hardcoded from a guess. Stubbed as
-a no-op (implicit factor of 1.0) for this build; calibration is
-separate, scoped follow-up work.
+**Update, same day:** the red-card adjustment moved from "stubbed at
+1.0" to calibrated and live within hours of this ADR being written.
+`scripts/experiment_redcard_calibration.py` backfilled real red-card
+minutes (`/fixtures/events`) for every EPL/SERIE_A match with a
+recorded red card, and compared the sent-off team's and their
+opponent's actual remaining-time goals (`futbol.shots`) against
+Dixon-Coles' unadjusted expectation. Real, consistent effect in both
+leagues (EPL: down 0.475×, up 1.551×, n=145; SERIE_A: down 0.584×, up
+1.850×, n=149) — large enough, and directionally consistent enough
+across two independent leagues, to ship over the previous no-op,
+despite being an in-sample-only check (see
+`docs/EXPERIMENT_REGISTRY.md` for the full honest caveat: factors
+weren't validated on a held-out red-card set, since neither league has
+enough red-card matches yet to split one out). `apply_red_card()` in
+`src/predictions/live_winprob.py` carries the calibrated constants;
+`scripts/poll_live_winprob.py` now calls `/fixtures/events` once per
+currently-live tracked fixture (not per tick) to detect a red card
+before computing that fixture's probability.
+
+Same in-passing discovery pattern as the shots-dedup bug above: while
+backfilling `/fixtures/events`, found that `matches.external_ref` is a
+single column overloaded by both Understat (`understat:<id>`) and
+API-Football (`api-football:<id>`) — `link_fixture_ids()`'s `WHERE
+external_ref IS NULL` guard means a historical EPL/SERIE_A/LA_LIGA
+match (Understat-sourced first) can never also get an API-Football
+ref. Confirmed NOT a production issue (every currently-*scheduled*
+fixture already has the right ref — odds/injuries/final-pass are
+unaffected), only blocks historical API-Football lookups for those 3
+leagues. Worked around locally in the calibration script (team+date
+matching, same technique `link_fixture_ids()` itself uses, just not
+persisted); real fix (a separate `api_football_fixture_id` column)
+logged as its own ticket, not urgent. See Todoist `6hfxhQccV87r4jcx`.
 
 **Consequences:** The in-play feature didn't need the "different model
 class" the ticket assumed — worth remembering the next time a ticket's

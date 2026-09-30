@@ -20,7 +20,7 @@ import psycopg2
 
 from generate_slate import fit_dixon_coles
 from ingestion.api_football import _api_football_fixture_id, _get, _session
-from predictions.live_winprob import inplay_win_probs
+from predictions.live_winprob import apply_red_card, inplay_win_probs
 from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
 
@@ -34,7 +34,8 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 MAX_MATCH_MINUTES = 130
 
 CANDIDATES_SQL = """
-SELECT m.match_id, m.external_ref, th.name, ta.name
+SELECT m.match_id, m.external_ref, th.name, ta.name,
+       th.api_football_id, ta.api_football_id
 FROM futbol.matches m
 JOIN futbol.teams th ON th.team_id = m.home_team_id
 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
@@ -47,6 +48,24 @@ WHERE l.code = %s AND m.status = 'scheduled'
 """
 
 
+def detect_red_card(session, fixture_id: int, home_api: int) -> bool | None:
+    """
+    None = no red card yet. True/False = home/away team has gone down
+    to 10 men. A real API call per currently-live tracked fixture (not
+    per tick across everything) -- bounded by how many of our tracked
+    leagues have concurrent live matches, same cost shape as the
+    live=all call itself.
+    """
+    try:
+        events = _get(session, "fixtures/events", {"fixture": fixture_id})
+    except Exception:
+        return None
+    for e in events:
+        if e.get("type") == "Card" and "red" in (e.get("detail") or "").lower():
+            return e["team"]["id"] == home_api
+    return None
+
+
 def poll_league(cur, session, league: str) -> int:
     cur.execute(CANDIDATES_SQL, (league, MAX_MATCH_MINUTES))
     candidates = cur.fetchall()
@@ -54,10 +73,10 @@ def poll_league(cur, session, league: str) -> int:
         return 0
 
     fixture_to_match = {}
-    for match_id, external_ref, home, away in candidates:
+    for match_id, external_ref, home, away, home_api, away_api in candidates:
         fid = _api_football_fixture_id(external_ref)
         if fid is not None:
-            fixture_to_match[fid] = (match_id, home, away)
+            fixture_to_match[fid] = (match_id, home, away, home_api, away_api)
 
     response = _get(session, "fixtures", {"live": "all"})
     live_by_fixture = {fx["fixture"]["id"]: fx for fx in response}
@@ -69,7 +88,7 @@ def poll_league(cur, session, league: str) -> int:
     dc, _ = fit_dixon_coles(cur, league)
     written = 0
     for fid, fx in matched.items():
-        match_id, home, away = fixture_to_match[fid]
+        match_id, home, away, home_api, away_api = fixture_to_match[fid]
         minute = fx["fixture"]["status"]["elapsed"]
         h_now = fx["goals"]["home"]
         a_now = fx["goals"]["away"]
@@ -79,6 +98,8 @@ def poll_league(cur, session, league: str) -> int:
             lam, mu, _rho = dc.rates(home, away)
         except KeyError:
             continue
+        home_is_down = detect_red_card(session, fid, home_api)
+        lam, mu = apply_red_card(lam, mu, league, home_is_down)
         home_p, draw_p, away_p = inplay_win_probs(lam, mu, h_now, a_now, minute)
         cur.execute(
             """INSERT INTO futbol.live_win_probability
