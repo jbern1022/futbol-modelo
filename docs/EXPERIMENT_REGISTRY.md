@@ -114,6 +114,19 @@ spec/backfill-list only).
 | **Limitations** | Only two MLS seasons compared (2025 vs 2026) — a direction flip on n=2 is not enough to call either season's result noise with confidence, same honest limitation as the open 1X2/TOTAL_GOALS calibration question elsewhere in this doc. Real, not hypothetical: this is the exact failure mode walk-forward validation-then-test is supposed to catch, and it did. |
 | **Decision** | **Do not promote.** Phase 1's MLS signal did not survive out-of-sample validation on a different season — textbook direction-instability, the same signature that already correctly held back the 1X2/TOTAL_GOALS calibration fix elsewhere in this project. Steps 3-4 of the parent ticket (score-matrix residual diagnosis, bivariate Poisson) are **not started** — their own trigger ("if persistent") is now unmet for MLS too, same as it already was for EPL/SERIE_A/LA_LIGA. Revisit if a 3rd MLS season's result is available to break the tie, not before. |
 
+### 2026-09-30: In-play win-probability via conditioned Dixon-Coles (Todoist `6h9M3GgfQ5ch7wXQ`, Phase 3)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | A live win-probability can reuse Dixon-Coles' already-fitted per-team goal rates (λ, μ, ρ), re-derived for remaining time and conditioned on the current score — no new model class needed, contrary to this ticket's own original framing. |
+| **Proposed change** | `inplay_probs()` in `scripts/experiment_inplay_dixon_coles.py`: scale λ/μ by `(90-minute)/90`, build a small additional-goals scoreline matrix, combine with the current score. Offline validation only — no live polling, no new tables, no UI, per explicit direction. |
+| **Expected effect** | In-play RPS should beat the static pre-match probability, improving as more of the match elapses. |
+| **Data cutoff** | 2025-26 holdout season, EPL/SERIE_A/LA_LIGA (MLS has no goal-minute data — `futbol.shots` is Understat-sourced only). Real historical goal-minute data (`futbol.shots`, `result='Goal'`) used as an offline proxy for live score trajectories at 5 checkpoints (15/30/45/60/75 min). |
+| **Evaluation method** | Paired RPS and log-loss vs. the static (unconditioned) pre-match probability, per checkpoint minute. |
+| **Result** | EPL: beats static at every checkpoint, +48.8% RPS by minute 75. SERIE_A: beats static at every checkpoint, +58.4% RPS by minute 75. **LA_LIGA: RPS improves (+35.7%) but log-loss WORSENS (0.9872 → 1.2139 at minute 75)** — opposite pattern, some confidently-wrong calls. |
+| **Limitations** | La Liga's `shots` coverage is much thinner (380/1973 matches have any rows, vs ~1900/1950 for EPL/SERIE_A) — anomaly may be a thin-data artifact, not investigated further yet. MLS entirely unvalidated (no data). Dixon-Coles' low-score correction (ρ) applied to a shortened remaining-time window is an untested approximation. No red-card/major-incident adjustment. |
+| **Decision** | **Promising, not yet promoted — real open questions remain** (La Liga anomaly, MLS data gap, ρ approximation, no live infra built). Full list in Todoist `6h9M3GgfQ5ch7wXQ`. Next step (live backend scoping) is a product decision, not yet made. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
