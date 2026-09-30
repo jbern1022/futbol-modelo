@@ -18,6 +18,25 @@
 #     --docker-username=joe \
 #     --docker-password=<GITEA_TOKEN>
 #   docker login gitea.josephbernal.com   # on docker-host
+#
+# IMPORTANT ORDERING when a CronJob's manifest itself also changed
+# (new args, new schedule, a brand-new CronJob -- not just a new image):
+# run `kubectl apply -f k8s/cronjobs.yaml` FIRST, then this script
+# SECOND (or re-run this script's patch_cronjob calls if the image was
+# already pushed). Real incident, 2026-09-30: running this script's
+# patch_cronjob step, then `kubectl apply -f k8s/cronjobs.yaml`
+# afterward to pick up an args change, silently reverted every
+# CronJob's image back to whatever k8s/cronjobs.yaml hardcodes
+# (:latest) -- `apply` does a full spec reconciliation, so it undoes
+# an out-of-band `kubectl patch`'s SHA pin, not just the fields you
+# meant to change. A Job spawned in the brief window between that
+# `apply` and the next SHA re-patch gets permanently stuck on the
+# stale spec (Job specs are immutable once created -- a later patch to
+# the CronJob only affects future ticks, not that already-created Job),
+# and fails until backoffLimit is exhausted. Harmless if it's a
+# frequent job (the next tick just works), but don't assume `apply`
+# is a no-op for image tracking just because you didn't touch the
+# image line yourself.
 
 set -euo pipefail
 
