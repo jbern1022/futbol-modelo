@@ -60,7 +60,7 @@ ORDER BY s.match_id, s.minute;
 
 
 def inplay_probs(lam: float, mu: float, rho: float, h_now: int, a_now: int,
-                 minute: int) -> list[float]:
+                 minute: int, use_rho: bool = True) -> list[float]:
     """1X2 probabilities conditioned on the current score at `minute`,
     derived from the SAME fitted pre-match lam/mu/rho -- no new model.
     Scales the remaining-time goal expectation by the fraction of the
@@ -76,18 +76,19 @@ def inplay_probs(lam: float, mu: float, rho: float, h_now: int, a_now: int,
     # approximation (real limitation, stated in the report below) --
     # applied anyway since it only meaningfully touches the 0-0/1-0/0-1/
     # 1-1 cells, which still make sense as "additional goals" outcomes.
-    for x in range(2):
-        for y in range(2):
-            tau = 1.0
-            if x == 0 and y == 0:
-                tau = 1 - lam_r * mu_r * rho
-            elif x == 0 and y == 1:
-                tau = 1 + lam_r * rho
-            elif x == 1 and y == 0:
-                tau = 1 + mu_r * rho
-            elif x == 1 and y == 1:
-                tau = 1 - rho
-            m[x, y] *= max(tau, 0)
+    if use_rho:
+        for x in range(2):
+            for y in range(2):
+                tau = 1.0
+                if x == 0 and y == 0:
+                    tau = 1 - lam_r * mu_r * rho
+                elif x == 0 and y == 1:
+                    tau = 1 + lam_r * rho
+                elif x == 1 and y == 0:
+                    tau = 1 + mu_r * rho
+                elif x == 1 and y == 1:
+                    tau = 1 - rho
+                m[x, y] *= max(tau, 0)
     m = m / m.sum()
 
     i, j = np.indices(m.shape)
@@ -144,9 +145,12 @@ def main():
         train.rename(columns=str).assign(date=pd.to_datetime(train.date)))
     print(f"fitted on {len(train)} matches, testing {len(test)} in holdout {args.holdout}\n")
 
-    # Per-checkpoint scoring: conditioned-in-play vs static pre-match
-    by_cp: dict[int, dict] = {cp: {"inplay_rps": [], "static_rps": [],
-                                   "inplay_ll": [], "static_ll": []}
+    # Per-checkpoint scoring: conditioned-in-play vs static pre-match vs
+    # in-play-without-rho (ablation -- is the low-score correction,
+    # fit for a full 90', actually pulling its weight on a shortened
+    # remaining-time window, or just adding noise?).
+    by_cp: dict[int, dict] = {cp: {"inplay_rps": [], "static_rps": [], "norho_rps": [],
+                                   "inplay_ll": [], "static_ll": [], "norho_ll": []}
                               for cp in CHECKPOINTS}
 
     n_matches_used = 0
@@ -172,20 +176,24 @@ def main():
         for cp in CHECKPOINTS:
             h_now, a_now = traj[cp]
             p = inplay_probs(lam, mu, rho, h_now, a_now, cp)
+            p_norho = inplay_probs(lam, mu, rho, h_now, a_now, cp, use_rho=False)
             by_cp[cp]["inplay_rps"].append(rps(p, actual))
             by_cp[cp]["static_rps"].append(rps(static_vec, actual))
+            by_cp[cp]["norho_rps"].append(rps(p_norho, actual))
             by_cp[cp]["inplay_ll"].append(-np.log(max(p[actual], 1e-9)))
             by_cp[cp]["static_ll"].append(-np.log(max(static_vec[actual], 1e-9)))
+            by_cp[cp]["norho_ll"].append(-np.log(max(p_norho[actual], 1e-9)))
 
     print(f"scored {n_matches_used} matches with usable goal-minute data\n")
-    print(f"{'minute':>7} | {'in-play RPS':>12} | {'static RPS':>11} | "
-          f"{'in-play LL':>11} | {'static LL':>10}")
+    print(f"{'minute':>7} | {'in-play RPS':>12} | {'no-rho RPS':>11} | {'static RPS':>11} | "
+          f"{'in-play LL':>11} | {'no-rho LL':>10} | {'static LL':>10}")
     for cp in CHECKPOINTS:
         d = by_cp[cp]
         if not d["inplay_rps"]:
             continue
-        print(f"{cp:>7} | {np.mean(d['inplay_rps']):>12.4f} | {np.mean(d['static_rps']):>11.4f} | "
-              f"{np.mean(d['inplay_ll']):>11.4f} | {np.mean(d['static_ll']):>10.4f}")
+        print(f"{cp:>7} | {np.mean(d['inplay_rps']):>12.4f} | {np.mean(d['norho_rps']):>11.4f} | "
+              f"{np.mean(d['static_rps']):>11.4f} | {np.mean(d['inplay_ll']):>11.4f} | "
+              f"{np.mean(d['norho_ll']):>10.4f} | {np.mean(d['static_ll']):>10.4f}")
 
     print(f"\n--- Verdict ---")
     last_cp = CHECKPOINTS[-1]
