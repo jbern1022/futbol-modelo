@@ -24,11 +24,20 @@ spec:
         ports:
         - containerPort: 8000
         env:
-        - name: FUTBOL_RO_DSN
+        # Read path goes through pgBouncer's futbol_ro alias, same
+        # front-end-identity pattern as the CronJobs (k8s/cronjobs.yaml):
+        # futbol_ro_canary authenticates to pgBouncer, whose [databases]
+        # entry pins the backend to the real futbol_ro role. dbname MUST
+        # be futbol_ro -- dbname=futbol would route to the RW alias and
+        # silently give the API read-write privileges. The password var
+        # has to be listed before FUTBOL_RO_DSN for $(...) expansion.
+        - name: PGBOUNCER_RO_CANARY_PASSWORD
           valueFrom:
             secretKeyRef:
               name: futbol-secrets
-              key: FUTBOL_RO_DSN
+              key: PGBOUNCER_RO_CANARY_PASSWORD
+        - name: FUTBOL_RO_DSN
+          value: "host=futbol-pgbouncer-svc port=6432 dbname=futbol_ro user=futbol_ro_canary password=$(PGBOUNCER_RO_CANARY_PASSWORD)"
         - name: FUTBOL_OLLAMA_URL
           valueFrom:
             secretKeyRef:
