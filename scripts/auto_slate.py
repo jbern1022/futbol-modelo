@@ -4,7 +4,9 @@ in a supported league) that doesn't have a slate yet, and generates one.
 Reuses generate_for_fixture from generate_slate.py so behavior is
 identical whether triggered by hand or automatically.
 
-    python scripts/auto_slate.py --league MLS --days 7
+    python scripts/auto_slate.py --league MLS --days 3
+
+--days is capped at the 3-day slate window (ADR-012).
 """
 import argparse
 import os
@@ -18,10 +20,11 @@ import psycopg2
 from generate_slate import generate_for_fixture, PROPS_LEAGUES
 from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
+from predictions.slate_window import NO_LIVE_PREDICTION_SQL, SLATE_WINDOW_DAYS, clamp_days_ahead
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
-UPCOMING_UNSLATED_SQL = """
+UPCOMING_UNSLATED_SQL = f"""
 SELECT m.match_id, m.kickoff_utc, th.name AS home, ta.name AS away,
        m.home_team_id, m.away_team_id
 FROM futbol.matches m
@@ -29,12 +32,10 @@ JOIN futbol.teams th ON th.team_id = m.home_team_id
 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
 JOIN futbol.seasons s ON s.season_id = m.season_id
 JOIN futbol.leagues l ON l.league_id = s.league_id
-LEFT JOIN futbol.predictions p ON p.match_id = m.match_id
 WHERE l.code = %s
   AND m.status = 'scheduled'
   AND m.kickoff_utc BETWEEN now() AND now() + (%s || ' days')::interval
-  AND p.prediction_id IS NULL
-GROUP BY m.match_id, m.kickoff_utc, th.name, ta.name, m.home_team_id, m.away_team_id
+  AND {NO_LIVE_PREDICTION_SQL}
 ORDER BY m.kickoff_utc;
 """
 
@@ -42,8 +43,10 @@ ORDER BY m.kickoff_utc;
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--league", required=True)
-    ap.add_argument("--days", type=int, default=7)
+    ap.add_argument("--days", type=int, default=SLATE_WINDOW_DAYS,
+                    help=f"capped at {SLATE_WINDOW_DAYS} (ADR-012)")
     args = ap.parse_args()
+    args.days = clamp_days_ahead(args.days)
     log = configure_json_logging(f"auto_slate:{args.league}")
 
     with track_run(f"auto_slate:{args.league}") as set_rows_written:

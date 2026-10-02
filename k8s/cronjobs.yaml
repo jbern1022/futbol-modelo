@@ -124,11 +124,11 @@ spec:
             args:
               - |
                 python scripts/wait_for_pipeline_success.py --job compute_team_ratings --within-minutes 180 --timeout-minutes 45 &&
-                python scripts/auto_slate.py --league MLS --days 21 &&
-                python scripts/auto_slate.py --league EPL --days 45 &&
-                python scripts/auto_slate.py --league SERIE_A --days 45 &&
-                python scripts/auto_slate.py --league LA_LIGA --days 45 &&
-                python scripts/generate_nfl_slate.py --season 2026 --days-ahead 14 &&
+                python scripts/auto_slate.py --league MLS --days 3 &&
+                python scripts/auto_slate.py --league EPL --days 3 &&
+                python scripts/auto_slate.py --league SERIE_A --days 3 &&
+                python scripts/auto_slate.py --league LA_LIGA --days 3 &&
+                python scripts/generate_nfl_slate.py --season 2026 --days-ahead 3 &&
                 python scripts/generate_nba_slate.py --season 2026-27 --days-ahead 45
             # pgBouncer rollout, 5th consumer (2026-09-22). See
             # k8s/pgbouncer.yaml for the futbol_canary auth design.

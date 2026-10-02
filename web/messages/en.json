@@ -140,7 +140,8 @@
     "yourLocalTime": "(your local time)",
     "askPetey": "Ask Petey",
     "noPredictionsYet": "No predictions logged yet.",
-    "permalink": "Permalink"
+    "permalink": "Permalink",
+    "voided": "Voided"
   },
   "PredictionPage": {
     "backToFixtures": "Back to fixtures",
@@ -150,6 +151,7 @@
     "actualResult": "Actual result",
     "hit": "Hit",
     "miss": "Miss",
+    "voided": "Voided",
     "fixture": "Fixture",
     "kickoff": "Kickoff",
     "lockedAt": "Locked at",

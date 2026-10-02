@@ -42,7 +42,9 @@ JOIN futbol.leagues l ON l.league_id = s.league_id
 WHERE l.code = %s
   AND m.status = 'scheduled'
   AND m.kickoff_utc BETWEEN now() AND now() + (%s || ' hours')::interval
-  AND EXISTS (SELECT 1 FROM futbol.predictions p WHERE p.match_id = m.match_id)
+  AND EXISTS (SELECT 1 FROM futbol.predictions p
+              LEFT JOIN futbol.prediction_grades g ON g.prediction_id = p.prediction_id
+              WHERE p.match_id = m.match_id AND g.outcome IS DISTINCT FROM 'void')
   AND NOT EXISTS (
       SELECT 1 FROM futbol.predictions p2
       JOIN futbol.model_versions mv ON mv.model_version_id = p2.model_version_id

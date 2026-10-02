@@ -467,3 +467,69 @@ not the ledger" pattern rather than trying to force a live value into
 `predictions`. No live UI exists yet — that's explicitly a separate,
 not-yet-made decision once the backend's real output has been checked
 against real matches.
+
+---
+
+## ADR-012: 3-day slate window for NFL and soccer; stale slates are voided and regenerated
+
+**Status:** Accepted (2026-10-02)
+
+**Context:** The Dolphins' slate kept predicting De'Von Achane's rushing
+yards after he tore his ACL in Week 3 and went on IR. The depth-chart
+gate in `nfl_player_props.current_depth_chart()` was working: today's
+nflverse chart no longer lists him. The real cause was timing. A manual
+`generate_nfl_slate.py` run on 2026-09-06 slated 180 NFL games through
+December in one batch. Every generator only fills fixtures with *no*
+predictions, so the daily cron wrote 0 NFL rows from then on, and the
+whole season stayed locked on the 2026-09-06 depth chart and form. The
+receiving/receptions/anytime-TD markets added 2026-09-14 never reached
+those games. Soccer had the same exposure by design: the cron slated
+EPL/Serie A/La Liga 45 days out and MLS 21 days out. Injury and
+suspension news only exists in the last few days before kickoff, so a
+slate locked weeks earlier can never use it.
+
+**Decision:**
+
+1. **One 3-day window** (`predictions/slate_window.py`,
+   `SLATE_WINDOW_DAYS = 3`) for NFL, EPL, Serie A, La Liga and MLS.
+   It's enforced inside the generators, not only in `cronjobs.yaml`:
+   `clamp_days_ahead()` caps any `--days`/`--days-ahead`, and
+   `generate_for_fixture()` refuses a fixture outside the window
+   whoever calls it. NBA (retired, ADR-009) is unchanged.
+2. **"Already slated" means a live slate.** A fixture whose predictions
+   are all voided counts as unslated (`NO_LIVE_PREDICTION_SQL`,
+   `has_live_slate()`), so it gets regenerated.
+3. **Regeneration runs under a new model version tag** (`v2` for
+   `slate_generator_nfl` and `slate_generator_<league>`). The
+   predictions natural key includes `model_version_id`, so a `v1`
+   rerun would collide with the voided row and be dropped silently by
+   `ON CONFLICT DO NOTHING`.
+4. **Stale predictions are voided, never deleted or edited**
+   (ADR-002/ADR-008). `scripts/void_stale_slates.py` adds one
+   `prediction_grades` row per ungraded prediction locked more than 3
+   days before kickoff, with `grader_version = 'stale-slate-void-1.0'`
+   and a `void_reason`. When the subject player is known to be out,
+   the reason names the absence first: NFL from the nflverse weekly
+   roster (`RES`/`R01` → IR, and so on), soccer from a
+   `player_injuries` row for that same match (cards → "suspended").
+   Otherwise it says the slate was locked N days out, outside the
+   window. Fixtures within 6 hours of kickoff are left alone, so none
+   loses its slate before the regenerating run.
+5. **Voiding before kickoff is allowed only under this rule:** a
+   slate locked outside the published window, before any outcome
+   could be known. That makes it a correction of *when* a claim was
+   made, not a selective withdrawal of claims that look bad. It is
+   applied to every stale row, not a hand-picked subset.
+6. **Voids stay visible.** `get_slate()` ranks a voided row below a
+   live one for the same key. A voided row nothing replaced still
+   shows, with its reason, on the fixture and permalink pages.
+
+**Consequences:** Predictions appear on the site at most about 3 days
+before kickoff instead of weeks ahead. Every locked claim has seen the
+last few days of injury, suspension and depth-chart news. The first
+application voided every slate that ran weeks ahead (2026-10-02 dry
+run: 5,690 predictions across 341 fixtures, including 92 rows for 4
+NFL players on IR). That shows up publicly as void grades, not as a
+rewritten history. Upstream lag still applies: the window only helps
+as much as nflverse and API-Football keep their depth charts and
+injury lists current.

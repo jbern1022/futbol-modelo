@@ -49,6 +49,8 @@ from models.nfl_player_props import rolling_td_rate, rolling_yardage_stats
 from models.nfl_power_ratings import NFLPowerRatings
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
+from predictions.slate_window import (NO_LIVE_PREDICTION_SQL, SLATE_WINDOW_DAYS,
+                                      clamp_days_ahead)
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
@@ -69,7 +71,7 @@ WHERE l.code = 'NFL' AND m.status = 'final'
   AND s.label IN %s
 """
 
-UPCOMING_SQL = """
+UPCOMING_SQL = f"""
 SELECT m.match_id, m.external_ref, th.name AS home, ta.name AS away,
        th.team_id AS home_id, ta.team_id AS away_id,
        th.nfl_abbr AS home_abbr, ta.nfl_abbr AS away_abbr, m.kickoff_utc
@@ -78,13 +80,10 @@ JOIN futbol.teams th ON th.team_id = m.home_team_id
 JOIN futbol.teams ta ON ta.team_id = m.away_team_id
 JOIN futbol.seasons s ON s.season_id = m.season_id
 JOIN futbol.leagues l ON l.league_id = s.league_id
-LEFT JOIN futbol.predictions p ON p.match_id = m.match_id
 WHERE l.code = 'NFL' AND s.label = %s
   AND m.status = 'scheduled'
   AND m.kickoff_utc BETWEEN now() AND now() + (%s || ' days')::interval
-  AND p.prediction_id IS NULL
-GROUP BY m.match_id, m.external_ref, th.name, ta.name, th.team_id, ta.team_id,
-         th.nfl_abbr, ta.nfl_abbr, m.kickoff_utc
+  AND {NO_LIVE_PREDICTION_SQL}
 ORDER BY m.kickoff_utc
 """
 
@@ -228,8 +227,10 @@ def build_player_candidates(cur, depth_chart: dict, team_abbr: str,
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", type=int, required=True)
-    ap.add_argument("--days-ahead", type=int, default=14)
+    ap.add_argument("--days-ahead", type=int, default=SLATE_WINDOW_DAYS,
+                    help=f"capped at {SLATE_WINDOW_DAYS} (ADR-012)")
     args = ap.parse_args()
+    days_ahead = clamp_days_ahead(args.days_ahead)
     from ops.pipeline_run import track_run, record_model_version_history
 
     with track_run(f"nfl_slate:{args.season}") as set_rows_written:
@@ -247,21 +248,21 @@ def main() -> None:
             cur.execute(
                 """INSERT INTO futbol.model_versions
                      (model_name, version_tag, training_window, params, train_metrics)
-                   VALUES ('slate_generator_nfl', 'v1', %s, %s, %s)
+                   VALUES ('slate_generator_nfl', 'v2', %s, %s, %s)
                    ON CONFLICT (model_name, version_tag) DO UPDATE
                      SET training_window = EXCLUDED.training_window,
                          params = EXCLUDED.params, train_metrics = EXCLUDED.train_metrics
                    RETURNING model_version_id""",
                 (_mv_window, _mv_params, _mv_metrics))
             model_version_id = cur.fetchone()[0]
-            record_model_version_history(cur, "slate_generator_nfl", "v1",
+            record_model_version_history(cur, "slate_generator_nfl", "v2",
                                           _mv_window, _mv_params, _mv_metrics)
             conn.commit()
 
-            cur.execute(UPCOMING_SQL, (str(args.season), args.days_ahead))
+            cur.execute(UPCOMING_SQL, (str(args.season), days_ahead))
             fixtures = cur.fetchall()
             print(f"{len(fixtures)} upcoming NFL fixture(s) without a slate "
-                 f"(next {args.days_ahead} days)")
+                 f"(next {days_ahead} days)")
 
             lines_by_game_id = _market_lines(args.season)
             depth_chart = current_depth_chart(args.season)

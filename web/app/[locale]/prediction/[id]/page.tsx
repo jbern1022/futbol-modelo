@@ -22,6 +22,7 @@ interface PredictionDetail {
   outcome: string | null;
   actual_value: number | null;
   graded_at: string | null;
+  void_reason: string | null;
   model_name: string;
   version_tag: string;
   trained_at: string;
@@ -126,6 +127,12 @@ export default async function PredictionPage({
                 {p.outcome === "hit" ? t("hit") : t("miss")}
                 {p.actual_value !== null && ` (${p.actual_value})`}
               </span>
+            </div>
+          )}
+          {p.outcome === "void" && p.void_reason && (
+            <div className="mt-4 flex items-baseline justify-between gap-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+              <span className="text-sm text-zinc-500">{t("voided")}</span>
+              <span className="text-right text-sm text-black dark:text-zinc-50">{p.void_reason}</span>
             </div>
           )}
           {whyPanel(p.context)}

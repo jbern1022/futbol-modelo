@@ -36,6 +36,7 @@ from sklearn.model_selection import KFold
 from dixon_coles import DixonColes, derive_markets, knockout_extension
 from ingestion.api_football import _api_football_fixture_id, _session as api_football_session, fetch_and_store_injuries
 from ops.pipeline_run import record_model_version_history
+from predictions.slate_window import SLATE_WINDOW_DAYS, has_live_slate
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
 
@@ -647,6 +648,16 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                      extra={"league": league, "home": home, "away": away})
         return None
 
+    # ADR-012: never lock a slate more than SLATE_WINDOW_DAYS out, whoever
+    # the caller is -- injury and suspension news only arrives in the last
+    # few days, and a slate locked earlier can never see it.
+    if kickoff_aware - now > timedelta(days=SLATE_WINDOW_DAYS):
+        if verbose:
+            log.info("skip: kickoff outside the slate window",
+                     extra={"league": league, "home": home, "away": away,
+                            "window_days": SLATE_WINDOW_DAYS})
+        return None
+
     # A fixture gets one slate, ever -- persist_slate's ON CONFLICT dedupes
     # by (match_id, model_version_id, ...), which does NOT catch a re-run
     # under a different model_version_id (e.g. after a retrain), so a
@@ -657,11 +668,9 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     # entry point. (Real incident: match_id 4456 got slated twice, three
     # weeks apart under two different model_version_id rows, producing 14
     # duplicate prediction pairs that are now permanently unfixable since
-    # both copies were already graded before this was caught.)
-    cur.execute(
-        "SELECT 1 FROM futbol.predictions WHERE match_id = %s LIMIT 1",
-        (match_id,))
-    if cur.fetchone():
+    # both copies were already graded before this was caught.) A slate
+    # that was entirely voided as stale (ADR-012) doesn't count.
+    if has_live_slate(cur, match_id):
         if verbose:
             log.info("skip: already has a slate",
                      extra={"league": league, "home": home, "away": away})
@@ -726,7 +735,7 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     # previously f"{home}_v_{away}_{date}", which never conflicted and
     # minted one throwaway row per fixture forever).
     _mv_name = f"slate_generator_{league.lower()}"
-    _mv_tag = "v1"
+    _mv_tag = "v2"  # v2: 3-day slate window (ADR-012); voided v1 rows keep their own key
     _mv_window = dc_meta["training_window"]
     _mv_params = json.dumps({"dixon_coles": {"xi": dc_meta["xi"], "reg": dc_meta["reg"]},
                               "props": {m: meta["hyperparams"] | {"features": meta["features"]}

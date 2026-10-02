@@ -140,7 +140,8 @@
     "yourLocalTime": "(tu hora local)",
     "askPetey": "Pregúntale a Petey",
     "noPredictionsYet": "Aún no hay predicciones registradas.",
-    "permalink": "Enlace permanente"
+    "permalink": "Enlace permanente",
+    "voided": "Anulada"
   },
   "PredictionPage": {
     "backToFixtures": "Volver a los partidos",
@@ -150,6 +151,7 @@
     "actualResult": "Resultado real",
     "hit": "Acierto",
     "miss": "Fallo",
+    "voided": "Anulada",
     "fixture": "Partido",
     "kickoff": "Inicio",
     "lockedAt": "Fijada a las",

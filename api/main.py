@@ -291,6 +291,7 @@ class SlatePrediction(BaseModel):
     subject_player: Optional[str] = None
     outcome: Optional[str] = None
     actual_value: Optional[float] = None
+    void_reason: Optional[str] = None
 
 
 class SlateResponse(BaseModel):
@@ -313,6 +314,7 @@ class PredictionDetail(BaseModel):
     outcome: Optional[str] = None
     actual_value: Optional[float] = None
     graded_at: Optional[datetime] = None
+    void_reason: Optional[str] = None
     model_name: str
     version_tag: str
     trained_at: datetime
@@ -705,22 +707,26 @@ def get_slate(match_id: int):
             # model_version) -- same dedup rule as v_graded_predictions
             # (sql/migrations/0036_final_pass_tiebreak.sql): the
             # lineup-confirmed row wins when both exist, otherwise
-            # earliest-wins (unchanged for every other market).
+            # earliest-wins (unchanged for every other market). ADR-012: a
+            # voided row never outranks a live one for the same key -- a
+            # stale slate's void stays visible only where nothing replaced it.
             cur.execute(
                 """SELECT p.prediction_id, p.market, p.statement, p.side,
                           p.line, p.probability, p.locked_at, p.context,
                           tt.name AS subject_team,
                           pl.full_name AS subject_player,
-                          g.outcome, g.actual_value
+                          g.outcome, g.actual_value, g.void_reason
                    FROM (
                        SELECT p.*, ROW_NUMBER() OVER (
                            PARTITION BY p.match_id, p.market, p.side, p.line,
                                         p.subject_team_id, p.subject_player_id
-                           ORDER BY (mv.model_name = 'player_props_lineup_confirmed_v1') DESC,
+                           ORDER BY (vg.outcome IS NOT DISTINCT FROM 'void'),
+                                    (mv.model_name = 'player_props_lineup_confirmed_v1') DESC,
                                     p.prediction_id
                        ) AS rn
                        FROM futbol.predictions p
                        JOIN futbol.model_versions mv ON mv.model_version_id = p.model_version_id
+                       LEFT JOIN futbol.prediction_grades vg ON vg.prediction_id = p.prediction_id
                        WHERE p.match_id = %s
                    ) p
                    LEFT JOIN futbol.teams tt ON tt.team_id = p.subject_team_id
@@ -749,7 +755,7 @@ def get_prediction(prediction_id: int):
                           p.context,
                           tt.name AS subject_team,
                           pl.full_name AS subject_player,
-                          g.outcome, g.actual_value, g.graded_at,
+                          g.outcome, g.actual_value, g.graded_at, g.void_reason,
                           mv.model_name, mv.version_tag, mv.trained_at,
                           m.match_id, l.code AS league, th.name AS home,
                           ta.name AS away, m.kickoff_utc, m.status

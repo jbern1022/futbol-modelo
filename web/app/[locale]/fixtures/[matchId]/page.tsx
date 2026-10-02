@@ -34,6 +34,7 @@ interface Prediction {
   subject_player: string | null;
   outcome: string | null;
   actual_value: number | null;
+  void_reason: string | null;
   context: Record<string, number> | null;
 }
 
@@ -211,6 +212,11 @@ export default async function FixturePage({
                         {cleanStatement(p)}
                         {roleBadge(p.probability)}
                         {outcomeBadge(p.outcome)}
+                        {p.outcome === "void" && p.void_reason && (
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {t("voided")}: {p.void_reason}
+                          </p>
+                        )}
                         {whyPanel(p.context)}
                       </div>
                       <div className="text-right">
