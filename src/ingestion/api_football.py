@@ -534,6 +534,14 @@ def fetch_and_store_events(session: requests.Session, cur, fixture_id: int) -> i
     match_id = row[0]
 
     response = _get(session, "fixtures/events", {"fixture": fixture_id})
+    return store_events(cur, match_id, response)
+
+
+def store_events(cur, match_id: int, response: list[dict]) -> int:
+    """Stores an already-fetched /fixtures/events response. Split out so
+    poll_live_winprob.py can keep the response it already fetches for
+    red-card detection, with no extra API call. Append-only: an event
+    the API later withdraws (e.g. a VAR-cancelled goal) stays stored."""
     records = normalize_events(response)
     stored = 0
     for r in records:

@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "packages", "di
 import psycopg2
 
 from generate_slate import fit_dixon_coles
-from ingestion.api_football import _api_football_fixture_id, _get, _session
+from ingestion.api_football import _api_football_fixture_id, _get, _session, store_events
 from predictions.live_winprob import apply_red_card, inplay_win_probs
 from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
@@ -48,18 +48,23 @@ WHERE l.code = %s AND m.status = 'scheduled'
 """
 
 
-def detect_red_card(session, fixture_id: int, home_api: int) -> bool | None:
+def fetch_live_events(session, fixture_id: int) -> list[dict]:
     """
-    None = no red card yet. True/False = home/away team has gone down
-    to 10 men. A real API call per currently-live tracked fixture (not
+    One /fixtures/events call per currently-live tracked fixture (not
     per tick across everything) -- bounded by how many of our tracked
     leagues have concurrent live matches, same cost shape as the
-    live=all call itself.
+    live=all call itself. The response feeds both red_card_side() and
+    match_events (the in-play chart's goal/card markers).
     """
     try:
-        events = _get(session, "fixtures/events", {"fixture": fixture_id})
+        return _get(session, "fixtures/events", {"fixture": fixture_id})
     except Exception:
-        return None
+        return []
+
+
+def red_card_side(events: list[dict], home_api: int) -> bool | None:
+    """None = no red card yet. True/False = home/away team has gone
+    down to 10 men."""
     for e in events:
         if e.get("type") == "Card" and "red" in (e.get("detail") or "").lower():
             return e["team"]["id"] == home_api
@@ -98,7 +103,10 @@ def poll_league(cur, session, league: str) -> int:
             lam, mu, _rho = dc.rates(home, away)
         except KeyError:
             continue
-        home_is_down = detect_red_card(session, fid, home_api)
+        events = fetch_live_events(session, fid)
+        if events:
+            store_events(cur, match_id, events)
+        home_is_down = red_card_side(events, home_api)
         lam, mu = apply_red_card(lam, mu, league, home_is_down)
         home_p, draw_p, away_p = inplay_win_probs(lam, mu, h_now, a_now, minute, league=league)
         cur.execute(
