@@ -44,6 +44,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
 from api.judgment_filter import contains_unsupported_judgment as _contains_unsupported_judgment
+from api.live_winprob import live_events, live_series
 from api.petey_filter import FilterValidationError, validate_and_compile
 from api.petey_translate import build_prompt as build_query_prompt
 from ops.json_logging import configure_json_logging
@@ -297,6 +298,33 @@ class SlatePrediction(BaseModel):
 class SlateResponse(BaseModel):
     fixture: Fixture
     predictions: list[SlatePrediction]
+
+
+class LiveWinProbPoint(BaseModel):
+    minute: int
+    home_score: int
+    away_score: int
+    home: float
+    draw: float
+    away: float
+
+
+class LiveEvent(BaseModel):
+    minute: int
+    extra_minute: Optional[int] = None
+    type: str
+    detail: Optional[str] = None
+    side: str
+    player: Optional[str] = None
+
+
+class LiveWinProbResponse(BaseModel):
+    match_id: int
+    league: str
+    # False for leagues still on the 1.0 no-op red-card factor (ADR-011).
+    red_card_calibrated: bool
+    series: list[LiveWinProbPoint]
+    events: list[LiveEvent]
 
 
 class PredictionDetail(BaseModel):
@@ -737,6 +765,32 @@ def get_slate(match_id: int):
                    ORDER BY p.probability DESC""", (match_id,))
             predictions = cur.fetchall()
         return {"fixture": fixture, "predictions": predictions}
+    finally:
+        put_conn(conn)
+
+
+@app.get("/v1/fixtures/{match_id}/live-winprob", response_model=LiveWinProbResponse)
+def get_live_winprob(match_id: int):
+    """In-play home/draw/away probability over the match (ADR-011), with
+    goal and red-card markers. Not part of the immutable ledger: it's
+    recomputed every ~60s from the live score and never graded. Empty
+    series for a match the poller never saw live."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT l.code AS league FROM futbol.matches m
+                   JOIN futbol.seasons s ON s.season_id = m.season_id
+                   JOIN futbol.leagues l ON l.league_id = s.league_id
+                   WHERE m.match_id = %s""", (match_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Fixture not found")
+            series = live_series(cur, match_id)
+            events = live_events(cur, match_id) if series else []
+        return {"match_id": match_id, "league": row["league"],
+                "red_card_calibrated": row["league"] in ("EPL", "SERIE_A"),
+                "series": series, "events": events}
     finally:
         put_conn(conn)
 

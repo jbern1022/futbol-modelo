@@ -141,7 +141,16 @@
     "askPetey": "Ask Petey",
     "noPredictionsYet": "No predictions logged yet.",
     "permalink": "Permalink",
-    "voided": "Voided"
+    "voided": "Voided",
+    "voidedSection": "Voided predictions ({count})",
+    "voidedSectionNote": "Kept public, never deleted. Each one says why it was voided.",
+    "liveWinProbTitle": "In-play win probability",
+    "liveWinProbNote": "Recomputed about once a minute from the live score. Separate from the locked pre-match predictions above, and never graded.",
+    "liveWinProbSummary": "At {minute}' ({score}): home {home}, draw {draw}, away {away}.",
+    "draw": "Draw",
+    "goal": "Goal",
+    "redCard": "Red card",
+    "redCardUncalibrated": "Red-card adjustment isn't calibrated for this league yet."
   },
   "PredictionPage": {
     "backToFixtures": "Back to fixtures",

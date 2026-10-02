@@ -13,6 +13,9 @@ export const MARKET_LABELS: Record<string, string> = {
   PLAYER_POINTS: "Player Points",
   PLAYER_PASS_YARDS: "Passing Yards",
   PLAYER_RUSH_YARDS: "Rushing Yards",
+  PLAYER_RECEIVING_YARDS: "Receiving Yards",
+  PLAYER_RECEPTIONS: "Receptions",
+  PLAYER_ANYTIME_TD: "Anytime Touchdown",
 };
 
 export function marketLabel(market: string): string {

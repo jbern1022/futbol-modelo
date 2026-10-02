@@ -141,7 +141,16 @@
     "askPetey": "Pregúntale a Petey",
     "noPredictionsYet": "Aún no hay predicciones registradas.",
     "permalink": "Enlace permanente",
-    "voided": "Anulada"
+    "voided": "Anulada",
+    "voidedSection": "Predicciones anuladas ({count})",
+    "voidedSectionNote": "Siguen siendo públicas y nunca se borran. Cada una indica por qué se anuló.",
+    "liveWinProbTitle": "Probabilidad de victoria en vivo",
+    "liveWinProbNote": "Se recalcula aproximadamente cada minuto con el marcador en vivo. Es independiente de las predicciones fijadas antes del partido y nunca se califica.",
+    "liveWinProbSummary": "Al minuto {minute} ({score}): local {home}, empate {draw}, visitante {away}.",
+    "draw": "Empate",
+    "goal": "Gol",
+    "redCard": "Tarjeta roja",
+    "redCardUncalibrated": "El ajuste por tarjeta roja aún no está calibrado para esta liga."
   },
   "PredictionPage": {
     "backToFixtures": "Volver a los partidos",

@@ -6,6 +6,7 @@ import { plainOdds } from "@/lib/format";
 import { leagueBadge, cleanStatement, outcomeBadge, roleBadge, whyPanel } from "@/lib/prediction-display";
 import { LocalDate } from "../../local-date";
 import MarketComparisonSection from "../../track-record/market-comparison-section";
+import LiveWinProbChart, { type LiveWinProb } from "./live-winprob-chart";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -64,6 +65,20 @@ async function getSlate(matchId: string): Promise<SlateResponse | null> {
   }
 }
 
+// The poller writes a new tick about once a minute while a match is
+// live, so this one gets a 60s cache instead of the slate's hour.
+async function getLiveWinProb(matchId: string): Promise<LiveWinProb | null> {
+  try {
+    const res = await fetch(`${API_URL}/v1/fixtures/${matchId}/live-winprob`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 // /v1/odds-comparison only filters by league (real bookmaker odds are
 // scarce enough that a per-match endpoint isn't worth adding yet) --
 // fetch the league's rows and filter to this match_id client-side.
@@ -112,6 +127,7 @@ export default async function FixturePage({
   const t = await getTranslations("FixturePage");
   const data = await getSlate(matchId);
   const matchOdds = data ? await getMatchOdds(data.fixture.league, data.fixture.match_id) : [];
+  const liveWinProb = data ? await getLiveWinProb(matchId) : null;
 
   if (!data) {
     return (
@@ -128,7 +144,11 @@ export default async function FixturePage({
     );
   }
 
-  const { fixture, predictions } = data;
+  const { fixture } = data;
+  // Voided rows stay public (ADR-008/ADR-012) but sit in their own
+  // section, so a regenerated slate isn't interleaved with the stale one.
+  const predictions = data.predictions.filter((p) => p.outcome !== "void");
+  const voided = data.predictions.filter((p) => p.outcome === "void");
 
   const grouped = predictions.reduce<Record<string, Prediction[]>>((acc, p) => {
     (acc[p.market] ??= []).push(p);
@@ -212,11 +232,6 @@ export default async function FixturePage({
                         {cleanStatement(p)}
                         {roleBadge(p.probability)}
                         {outcomeBadge(p.outcome)}
-                        {p.outcome === "void" && p.void_reason && (
-                          <p className="mt-1 text-xs text-zinc-500">
-                            {t("voided")}: {p.void_reason}
-                          </p>
-                        )}
                         {whyPanel(p.context)}
                       </div>
                       <div className="text-right">
@@ -237,6 +252,37 @@ export default async function FixturePage({
             </div>
           ))}
         </div>
+
+        {liveWinProb && (
+          <LiveWinProbChart data={liveWinProb} home={fixture.home} away={fixture.away} />
+        )}
+
+        {voided.length > 0 && (
+          <details className="mt-10 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+            <summary className="cursor-pointer text-sm font-semibold text-zinc-600 dark:text-zinc-300">
+              {t("voidedSection", { count: voided.length })}
+            </summary>
+            <p className="mt-2 text-xs text-zinc-500">{t("voidedSectionNote")}</p>
+            <ul className="mt-3 space-y-2">
+              {voided.map((p) => (
+                <li key={p.prediction_id} className="border-t border-zinc-100 pt-2 text-sm dark:border-zinc-800">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-zinc-700 line-through decoration-zinc-400 dark:text-zinc-300">
+                      {cleanStatement(p)}
+                    </span>
+                    <Link
+                      href={`/prediction/${p.prediction_id}`}
+                      className="whitespace-nowrap text-xs text-zinc-400 hover:text-zinc-600 hover:underline dark:hover:text-zinc-300"
+                    >
+                      {t("permalink")}
+                    </Link>
+                  </div>
+                  {p.void_reason && <p className="mt-0.5 text-xs text-zinc-500">{p.void_reason}</p>}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
 
         {matchOdds.length > 0 && <MarketComparisonSection comparison={matchOdds} />}
       </main>
