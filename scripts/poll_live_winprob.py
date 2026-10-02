@@ -100,7 +100,7 @@ def poll_league(cur, session, league: str) -> int:
             continue
         home_is_down = detect_red_card(session, fid, home_api)
         lam, mu = apply_red_card(lam, mu, league, home_is_down)
-        home_p, draw_p, away_p = inplay_win_probs(lam, mu, h_now, a_now, minute)
+        home_p, draw_p, away_p = inplay_win_probs(lam, mu, h_now, a_now, minute, league=league)
         cur.execute(
             """INSERT INTO futbol.live_win_probability
                  (match_id, minute, home_score, away_score,

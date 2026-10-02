@@ -39,7 +39,7 @@ from generate_slate import fit_dixon_coles
 from ingestion.api_football import (
     _get, _session, resolve_league_id, resolve_team_id,
 )
-from predictions.live_winprob import inplay_win_probs
+from predictions.live_winprob import inplay_win_probs, remaining_share
 from train_dixon_coles import rps
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
@@ -161,7 +161,7 @@ def main():
             lam, mu, _rho = dc.rates(home, away)
         except KeyError:
             continue
-        remaining = max(90 - minute, 1) / 90.0
+        remaining = remaining_share(minute, args.league)
         down_rate = lam if down_is_home else mu
         up_rate = mu if down_is_home else lam
         expected_down = down_rate * remaining
@@ -190,7 +190,7 @@ def main():
             (home_id, away_id, match_id, minute))
         h_now, a_now = cur.fetchone()
         actual_outcome = 0 if hg > ag else (1 if hg == ag else 2)
-        p_no_adj = inplay_win_probs(lam, mu, h_now, a_now, minute)
+        p_no_adj = inplay_win_probs(lam, mu, h_now, a_now, minute, league=args.league)
         backtest_rows.append((p_no_adj, down_is_home, h_now, a_now, minute,
                               lam, mu, actual_outcome))
 
@@ -220,10 +220,10 @@ def main():
     # here rather than presented as proof it generalizes.
     rps_no_adj, rps_adj = [], []
     for p_no_adj, down_is_home, h_now, a_now, minute, lam, mu, actual in backtest_rows:
-        remaining = max(90 - minute, 1) / 90.0
+        remaining = remaining_share(minute, args.league)
         lam_adj = lam * (down_factor if down_is_home else up_factor)
         mu_adj = mu * (up_factor if down_is_home else down_factor)
-        p_adj = inplay_win_probs(lam_adj, mu_adj, h_now, a_now, minute)
+        p_adj = inplay_win_probs(lam_adj, mu_adj, h_now, a_now, minute, league=args.league)
         rps_no_adj.append(rps(list(p_no_adj), actual))
         rps_adj.append(rps(list(p_adj), actual))
 

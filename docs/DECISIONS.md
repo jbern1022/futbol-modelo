@@ -533,3 +533,37 @@ NFL players on IR). That shows up publicly as void grades, not as a
 rewritten history. Upstream lag still applies: the window only helps
 as much as nflverse and API-Football keep their depth charts and
 injury lists current.
+
+---
+
+## ADR-013: in-play remaining time uses an empirical goal-share curve, not 90 − minute
+
+**Status:** Accepted (2026-10-02)
+
+**Context:** ADR-011's in-play model scaled each team's remaining goal
+expectation by `max(90 - minute, 1) / 90`, and its offline validation
+stopped at 75'. Live, the poller reads API-Football's `status.elapsed`,
+which caps at 90 for all of stoppage time, so the model always treated
+stoppage as 1 minute. The first real series showed it: MLS match 4606
+sat at 1-1 in stoppage with the draw at 0.966, and the home side
+scored. Historically, 6.2% of EPL/SERIE_A goals come after minute 90;
+the linear rule allows 1.1%.
+
+**Decision:** For EPL, SERIE_A and LA_LIGA, remaining time is the
+empirical share of a match's goals scored after the current elapsed
+minute (`REMAINING_GOAL_SHARE`, pooled from 10,160 EPL + SERIE_A
+Understat goals). It beat the linear rule on 2025-26 holdouts at every
+checkpoint from 75' on, including La Liga, which never fed the curve
+(89' log loss 0.476 → 0.341). MLS keeps the linear rule: its holdout
+had 33 usable matches, under the research protocol's ~100 bar. The
+EPL/SERIE_A red-card factors were recalibrated against the new rule,
+since the old ones were measured against the linear expectation and
+had soaked up the same stoppage gap. Full numbers:
+`docs/EXPERIMENT_REGISTRY.md`.
+
+**Consequences:** Late-match probabilities stop collapsing toward
+certainty before the final whistle. The live table
+`futbol.live_win_probability` is outside the immutable ledger
+(ADR-011), so earlier ticks stay as computed and new ticks use the new
+rule. MLS will need its own check once more `match_events` data
+exists.

@@ -153,6 +153,19 @@ spec/backfill-list only).
 | **Limitations** | In-sample only — factors were derived from the same matches used to check whether they help, not a held-out set. Neither league currently has enough red-card matches to split into calibration/validation halves the way the Elo blend experiment did. Single-red-card, minute 10-80 only (multi-card and very-early/late-card matches excluded). Own goals excluded from the goal count (rare, risk of misattribution). No MLS/LA_LIGA calibration yet. |
 | **Decision** | **Wired into production** (`src/predictions/live_winprob.py`'s `RED_CARD_FACTORS`, `apply_red_card()`) — direction is strong and consistent across both leagues, and the in-sample effect size is large enough that shipping it is better than the previous 1.0 no-op stub, with the in-sample-only caveat stated plainly in the code. Revisit with an out-of-sample check once more red-card matches accumulate (more seasons, or MLS/LA_LIGA added). |
 
+### 2026-10-02: In-play stoppage time — empirical remaining-goal share (ADR-013)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | The in-play model's remaining-time rule, `max(90 - minute, 1) / 90`, undercounts late goals. API-Football's `status.elapsed` caps at 90 through stoppage, so all of stoppage counts as 1 minute. Found checking real live series (MLS match 4606: 1-1 in stoppage at draw 0.966, then a home winner). Across 4,180 EPL/SERIE_A/LA_LIGA matches, 0.197 goals per match come at minute ≥ 90 (18.4% of matches have one). |
+| **Proposed change** | Replace the linear rule with the empirical share of goals scored after each elapsed minute (0–90), pooled from EPL + SERIE_A Understat goals. |
+| **Expected effect** | Better late-match log loss/RPS. Roughly neutral early, since the two rules only diverge by stoppage time. |
+| **Data cutoff** | Holdout 2025-26 per league. Evaluation curve: EPL + SERIE_A goals from 2021-22 to 2024-25 only (no holdout leakage). La Liga has shots for 2025-26 only, so its run is an out-of-league test of a curve it never contributed to. MLS holdout 2025 via `match_events`. Production curve refit on all 10,160 EPL + SERIE_A goals after evaluation. `scripts/experiment_inplay_stoppage.py`. |
+| **Evaluation method** | Paired RPS and log loss, linear vs. empirical, on the same fitted Dixon-Coles rates, at checkpoints 15/30/45/60/75/80/85/88/89/90 (ADR-011's validation stopped at 75). |
+| **Result** | Empirical wins every checkpoint from 75' on, in all three Understat leagues. Log loss at 89': EPL 0.758 → 0.513 (377 matches), SERIE_A 0.492 → 0.352 (341), LA_LIGA 0.476 → 0.341 (335, out-of-league). Before 60': within ±0.001 (EPL/SERIE_A); slightly better throughout for LA_LIGA. MLS: linear better, on only 33 usable holdout matches. |
+| **Limitations** | Understat minute conventions for stoppage are taken as-is. Own goals excluded (same call as every other in-play query). The MLS result is below the ~100-match evidence bar and comes from a partial-season event backfill, so it neither confirms nor refutes. |
+| **Decision** | **Adopted for EPL/SERIE_A/LA_LIGA** (`REMAINING_GOAL_SHARE`, `remaining_share()` in `src/predictions/live_winprob.py`). **MLS stays linear** until it has 100+ usable holdout matches. **Red-card factors recalibrated against the new rule**, because the old ones had absorbed the stoppage-goal gap: EPL (0.475, 1.551) → (0.419, 1.370), in-sample RPS +16.0%; SERIE_A (0.584, 1.850) → (0.513, 1.629), +29.3%. Same 145/149 matches. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
