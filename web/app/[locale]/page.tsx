@@ -151,6 +151,9 @@ export default async function Home() {
   ]);
 
   function timeAgo(ms: number): string {
+    // force-dynamic server component: renders once per request, so reading
+    // the clock here is the point, not a re-render hazard.
+    // eslint-disable-next-line react-hooks/purity
     const mins = Math.floor((Date.now() - ms) / 60000);
     if (mins < 1) return t("justNow");
     if (mins < 60) return t("minutesAgo", { mins });

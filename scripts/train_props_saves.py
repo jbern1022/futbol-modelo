@@ -101,7 +101,7 @@ def main():
     _, pred_mu, test, ll_absence = run(
         df_absence, FEATURES_WITH_ABSENCE, "WITH absence_rate_r10 (candidate)")
     delta = (ll_base - ll_absence) / ll_base * 100
-    print(f"--- A/B: absence_rate_r10 vs current live features ---")
+    print("--- A/B: absence_rate_r10 vs current live features ---")
     print(f"WITHOUT: log-loss {ll_base:.4f}   WITH: log-loss {ll_absence:.4f}   "
           f"delta {delta:+.2f}% ({'improvement' if delta > 0 else 'regression'})\n")
 

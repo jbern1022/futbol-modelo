@@ -33,7 +33,6 @@ sys.path.insert(0, os.path.dirname(__file__))
 import numpy as np
 import pandas as pd
 import psycopg2
-from scipy.stats import poisson
 
 from generate_slate import fit_dixon_coles
 from ingestion.api_football import (
@@ -227,7 +226,7 @@ def main():
         rps_no_adj.append(rps(list(p_no_adj), actual))
         rps_adj.append(rps(list(p_adj), actual))
 
-    print(f"--- In-sample check: does the adjustment help on these same matches? ---")
+    print("--- In-sample check: does the adjustment help on these same matches? ---")
     print(f"RPS without adjustment: {np.mean(rps_no_adj):.4f}")
     print(f"RPS WITH adjustment:    {np.mean(rps_adj):.4f}")
     delta = (np.mean(rps_no_adj) - np.mean(rps_adj)) / np.mean(rps_no_adj) * 100

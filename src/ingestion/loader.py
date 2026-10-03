@@ -365,7 +365,8 @@ def _parse_score(raw) -> tuple[int | None, int | None, bool, bool]:
     90'-result goals are used for grading (standard convention);
     the paren group, if present, signals ET/pens occurred.
     """
-    import pandas as pd, re
+    import pandas as pd
+    import re
     if raw is None or (isinstance(raw, float) and pd.isna(raw)):
         return None, None, False, False
     s = str(raw).strip()

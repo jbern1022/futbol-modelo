@@ -132,7 +132,7 @@ def main():
     print(f"Elo alone:              {json.dumps(elo_only)}")
     print(f"Blend (alpha={best_alpha}):        {json.dumps(blend)}")
 
-    print(f"\n--- Verdict ---")
+    print("\n--- Verdict ---")
     best_single = dc_only if dc_only["rps"] <= elo_only["rps"] else elo_only
     if blend["rps"] < best_single["rps"]:
         print(f"Blend BEATS the best single model on the untouched test season "

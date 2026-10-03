@@ -45,7 +45,8 @@ ORDER BY m.kickoff_utc;
 
 def rps(probs: list[float], outcome_idx: int) -> float:
     """Ranked probability score for ordered outcomes [home, draw, away]."""
-    obs = np.zeros(3); obs[outcome_idx] = 1
+    obs = np.zeros(3)
+    obs[outcome_idx] = 1
     cp, co = np.cumsum(probs), np.cumsum(obs)
     return float(np.sum((cp - co) ** 2) / 2)
 

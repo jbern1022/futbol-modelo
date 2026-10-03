@@ -89,6 +89,8 @@ export default function Footer() {
           {t("sourceOnGitHub")}
         </a>
         {" "}&middot;{" "}
+        {/* /api/* is proxied to FastAPI, not a Next.js page -- <Link> would try client-side routing. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a href="/api/docs" className="hover:underline">
           {t("apiDocs")}
         </a>

@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import psycopg2
 
-from generate_slate import generate_for_fixture, PROPS_LEAGUES
+from generate_slate import generate_for_fixture
 from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
 from predictions.slate_window import NO_LIVE_PREDICTION_SQL, SLATE_WINDOW_DAYS, clamp_days_ahead

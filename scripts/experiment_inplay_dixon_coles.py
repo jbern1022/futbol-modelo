@@ -31,7 +31,6 @@ question: does conditioning on the live score add value at all).
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 
@@ -215,7 +214,7 @@ def main():
               f"{np.mean(d['static_rps']):>11.4f} | {np.mean(d['inplay_ll']):>11.4f} | "
               f"{np.mean(d['norho_ll']):>10.4f} | {np.mean(d['static_ll']):>10.4f}")
 
-    print(f"\n--- Verdict ---")
+    print("\n--- Verdict ---")
     last_cp = CHECKPOINTS[-1]
     if by_cp[last_cp]["inplay_rps"]:
         improvement = ((np.mean(by_cp[last_cp]["static_rps"]) - np.mean(by_cp[last_cp]["inplay_rps"]))

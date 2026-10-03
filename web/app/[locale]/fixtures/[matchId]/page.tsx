@@ -154,8 +154,11 @@ export default async function FixturePage({
     (acc[p.market] ??= []).push(p);
     return acc;
   }, {});
-  const marketOrder = ["1X2", "BTTS", "TOTAL_GOALS", "CORNERS", "SOT",
-                       "PLAYER_GOALS", "PLAYER_SAVES"];
+  const marketOrder = ["1X2", "BTTS", "TOTAL_GOALS", "CORNERS", "SOT", "CARDS",
+                       "PLAYER_GOALS", "PLAYER_SAVES",
+                       "MONEYLINE", "SPREAD", "TOTAL_POINTS",
+                       "PLAYER_PASS_YARDS", "PLAYER_RUSH_YARDS", "PLAYER_RECEIVING_YARDS",
+                       "PLAYER_RECEPTIONS", "PLAYER_ANYTIME_TD", "PLAYER_POINTS"];
   const orderedMarkets = Object.keys(grouped).sort(
     (a, b) => marketOrder.indexOf(a) - marketOrder.indexOf(b)
   );

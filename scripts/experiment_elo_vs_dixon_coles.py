@@ -34,7 +34,6 @@ import pandas as pd
 import psycopg2
 from sklearn.linear_model import LogisticRegression
 
-from dixon_coles import DixonColes, derive_markets
 from train_dixon_coles import Q, rps, walk_forward as dc_walk_forward  # noqa: E402
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")

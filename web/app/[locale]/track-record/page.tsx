@@ -132,6 +132,8 @@ export default async function TrackRecordPage() {
             >
               {t("biggestMisses")}
             </Link>
+            {/* /api/* is proxied to FastAPI (a CSV download), not a Next.js page. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/api/export"
               className="whitespace-nowrap rounded-md border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"

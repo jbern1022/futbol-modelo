@@ -131,7 +131,8 @@ def main():
 
     conn = psycopg2.connect(DSN)
     df = pd.read_sql(Q, conn, params=())
-    print(f"Fetching historical weather for {pd.read_sql('SELECT count(*) FROM futbol.team_venues', conn).iloc[0, 0]} venues...")
+    n_venues = pd.read_sql('SELECT count(*) FROM futbol.team_venues', conn).iloc[0, 0]
+    print(f"Fetching historical weather for {n_venues} venues...")
     weather = fetch_venue_weather(conn)
     conn.close()
 

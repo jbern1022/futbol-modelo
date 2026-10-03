@@ -1,0 +1,14 @@
+# `make lint`. Classic errors + pyflakes only; line length set to what
+# this codebase actually writes (only 7 lines exceeded 120 when this was
+# added, 2026-10-02 -- before that ruff was called by the Makefile but
+# never installed, so it had never run).
+line-length = 120
+
+[lint]
+select = ["E", "F", "W"]
+
+[lint.per-file-ignores]
+# Long lines here are string content (the Petey LLM prompt, an SVG
+# template), where wrapping would change the output itself.
+"api/petey_translate.py" = ["E501"]
+"scripts/make_coverage_badge.py" = ["E501"]

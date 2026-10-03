@@ -35,7 +35,6 @@ match_odds_history has rows for them.
 """
 import os
 import sys
-from datetime import timezone
 from typing import Any
 
 import psycopg2

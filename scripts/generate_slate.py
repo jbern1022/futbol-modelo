@@ -33,7 +33,7 @@ from scipy.stats import poisson
 from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 
-from dixon_coles import DixonColes, derive_markets, knockout_extension
+from dixon_coles import DixonColes, derive_markets
 from ingestion.api_football import _api_football_fixture_id, _session as api_football_session, fetch_and_store_injuries
 from ops.pipeline_run import record_model_version_history
 from predictions.slate_window import SLATE_WINDOW_DAYS, has_live_slate
