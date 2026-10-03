@@ -35,7 +35,8 @@
 # futbol-auto-slate and futbol-auto-grade each open with
 # scripts/wait_for_pipeline_success.py, blocking on the upstream
 # CronJob's actual last pipeline_runs success (compute_team_ratings for
-# nightly-refresh, nba_slate:<season> for auto-slate) instead of just
+# nightly-refresh, nfl_slate:<season> for auto-slate -- the last step of
+# auto-slate's chain since NBA slates stopped, 2026-10-03) instead of just
 # trusting the 15-minute schedule gap -- replaces a timing assumption
 # with a real dependency check; times out loud (non-zero exit + ntfy)
 # rather than silently running against stale/partial upstream data.
@@ -170,7 +171,7 @@ spec:
             command: ["/bin/sh", "-c"]
             args:
               - |
-                python scripts/wait_for_pipeline_success.py --job-prefix nba_slate: --within-minutes 180 --timeout-minutes 45 &&
+                python scripts/wait_for_pipeline_success.py --job-prefix nfl_slate: --within-minutes 180 --timeout-minutes 45 &&
                 python scripts/auto_grade.py &&
                 python scripts/simulate_bankroll.py
             # pgBouncer rollout, 4th consumer (2026-09-22). See
