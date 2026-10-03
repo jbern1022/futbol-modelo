@@ -8,14 +8,14 @@ creating a second, parallel set of match rows.
     (API-Football uses the year the season STARTS, e.g. 2025 = 2025-26)
 
     python -m ingestion.api_football link-fixtures --league EPL --season 2026
-    (one-time-per-season: stamps existing Understat/FBref match rows
-    with an api-football:<fixture_id> external_ref so odds mode can
-    look them up -- MLS already gets this for free from backfill_primary())
+    (once per season: fills matches.api_football_fixture_id on existing
+    Understat/FBref match rows so odds/injuries/events can look them up --
+    MLS already gets it from backfill_primary())
 
     python -m ingestion.api_football odds --league MLS --days-ahead 7
-    (odds mode: works for any league whose matches carry an
-    api-football:<fixture_id> external_ref -- MLS via backfill_primary(),
-    EPL/SERIE_A/LA_LIGA via link-fixtures above; see _api_football_fixture_id())
+    (odds mode: works for any match with matches.api_football_fixture_id
+    set -- MLS via backfill_primary(), EPL/SERIE_A/LA_LIGA via
+    link-fixtures above. Migration 0041.)
 """
 from __future__ import annotations
 
@@ -178,11 +178,10 @@ _API_FOOTBALL_REF_PATTERN = re.compile(r"^api-football:(\d+)$")
 
 def _api_football_fixture_id(external_ref: str | None) -> int | None:
     """
-    Matches get this external_ref format either from backfill_primary()
-    (MLS, automatic) or from a one-time link_fixture_ids() run
-    (EPL/SERIE_A/LA_LIGA, since those rows come from Understat/FBref via
-    loader.py and don't get a mapping to an API-Football fixture id for
-    free). A match with neither simply has no odds available yet.
+    Parses an 'api-football:<id>' external_ref. Kept for scripts that
+    still read external_ref; code that needs a match's fixture id should
+    read matches.api_football_fixture_id instead (migration 0041), which
+    historical Understat-created rows can also carry.
     """
     if not external_ref:
         return None
@@ -192,14 +191,15 @@ def _api_football_fixture_id(external_ref: str | None) -> int | None:
 
 def link_fixture_ids(league_code: str, season_start_year: int) -> int:
     """
-    Populates external_ref on existing EPL/SERIE_A/LA_LIGA match rows
-    (created from Understat/FBref via loader.py, so they never got an
-    api-football:<fixture_id> ref the way backfill_primary() gives MLS
-    rows) so fetch_and_store_odds() has something to look odds up by.
-    Matches API-Football's fixture list onto the *existing* rows by
-    team + date, same technique backfill() already uses for stats --
-    this never creates match rows, only fills in a missing ref on ones
-    that already exist. Never overwrites an existing external_ref.
+    Fills matches.api_football_fixture_id on existing EPL/SERIE_A/LA_LIGA
+    rows (created from Understat/FBref via loader.py) so odds, injuries
+    and events can look them up. Matches API-Football's fixture list onto
+    the *existing* rows by team + date, same technique backfill() uses
+    for stats -- never creates match rows, never overwrites an id.
+
+    Before migration 0041 this wrote external_ref WHERE external_ref IS
+    NULL, which could never link a row that already had an Understat ref
+    (every historical EPL/SERIE_A/LA_LIGA match).
     """
     session = _session()
     league_id = resolve_league_id(session, league_code)
@@ -228,9 +228,11 @@ def link_fixture_ids(league_code: str, season_start_year: int) -> int:
                 continue
 
             cur.execute(
-                """UPDATE futbol.matches SET external_ref = %s
-                   WHERE match_id = %s AND external_ref IS NULL""",
-                (f"api-football:{fixture_id}", match_id))
+                """UPDATE futbol.matches SET api_football_fixture_id = %s
+                   WHERE match_id = %s AND api_football_fixture_id IS NULL
+                     AND NOT EXISTS (SELECT 1 FROM futbol.matches
+                                     WHERE api_football_fixture_id = %s)""",
+                (fixture_id, match_id, fixture_id))
             if cur.rowcount:
                 linked += 1
             else:
@@ -323,7 +325,7 @@ def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT m.match_id, m.external_ref, th.name, ta.name,
+                """SELECT m.match_id, m.api_football_fixture_id, th.name, ta.name,
                           th.team_id, ta.team_id
                    FROM futbol.matches m
                    JOIN futbol.teams th ON th.team_id = m.home_team_id
@@ -338,8 +340,7 @@ def fetch_and_store_odds(league_code: str, days_ahead: int = 7) -> int:
         log.info("%d scheduled %s fixture(s) in the next %d day(s)",
                  len(fixtures), league_code, days_ahead)
 
-        for match_id, external_ref, home, away, home_team_id, away_team_id in fixtures:
-            fixture_id = _api_football_fixture_id(external_ref)
+        for match_id, fixture_id, home, away, home_team_id, away_team_id in fixtures:
             if fixture_id is None:
                 log.info("no API-Football fixture id for %s vs %s -- skipping odds", home, away)
                 continue
@@ -443,16 +444,15 @@ def normalize_injuries(response: list[dict]) -> list[dict]:
 def fetch_and_store_injuries(session: requests.Session, cur, fixture_id: int) -> int:
     """
     Fetches and upserts injury/availability status for one fixture.
-    Looked up by external_ref (api-football:<fixture_id>) rather than
-    team+date matching -- injuries is already fixture-id-scoped, and
-    every match this can apply to already carries that ref (MLS via
-    backfill_primary(), EPL/SERIE_A/LA_LIGA via link_fixture_ids()).
+    Looked up by matches.api_football_fixture_id rather than team+date
+    matching -- injuries is already fixture-id-scoped (MLS rows get the
+    id via backfill_primary(), EPL/SERIE_A/LA_LIGA via link_fixture_ids()).
     A fixture with no matching match_id (not yet linked, or genuinely
     unknown) is skipped rather than guessed at.
     """
     cur.execute(
-        "SELECT match_id FROM futbol.matches WHERE external_ref = %s",
-        (f"api-football:{fixture_id}",))
+        "SELECT match_id FROM futbol.matches WHERE api_football_fixture_id = %s",
+        (fixture_id,))
     row = cur.fetchone()
     if not row:
         log.info("no linked match_id for fixture %d -- skipping injuries", fixture_id)
@@ -520,13 +520,13 @@ def normalize_events(response: list[dict]) -> list[dict]:
 def fetch_and_store_events(session: requests.Session, cur, fixture_id: int) -> int:
     """
     Fetches and stores /fixtures/events for one fixture -- match_id
-    looked up by external_ref, same as fetch_and_store_injuries.
+    looked up by api_football_fixture_id, same as fetch_and_store_injuries.
     Idempotent (ON CONFLICT DO NOTHING on the natural key), safe to
     re-run against an already-stored fixture.
     """
     cur.execute(
-        "SELECT match_id FROM futbol.matches WHERE external_ref = %s",
-        (f"api-football:{fixture_id}",))
+        "SELECT match_id FROM futbol.matches WHERE api_football_fixture_id = %s",
+        (fixture_id,))
     row = cur.fetchone()
     if not row:
         log.info("no linked match_id for fixture %d -- skipping events", fixture_id)
@@ -586,12 +586,12 @@ def fetch_and_store_injuries_for_league(league_code: str, days_ahead: int = 2) -
     try:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT m.external_ref
+                """SELECT m.api_football_fixture_id
                    FROM futbol.matches m
                    JOIN futbol.seasons s ON s.season_id = m.season_id
                    JOIN futbol.leagues l ON l.league_id = s.league_id
                    WHERE l.code = %s AND m.status = 'scheduled'
-                     AND m.external_ref IS NOT NULL
+                     AND m.api_football_fixture_id IS NOT NULL
                      AND m.kickoff_utc BETWEEN now() AND now() + (%s || ' days')::interval""",
                 (league_code, days_ahead))
             fixtures = cur.fetchall()
@@ -599,10 +599,7 @@ def fetch_and_store_injuries_for_league(league_code: str, days_ahead: int = 2) -
         log.info("%d scheduled %s fixture(s) in the next %d day(s)",
                  len(fixtures), league_code, days_ahead)
 
-        for (external_ref,) in fixtures:
-            fixture_id = _api_football_fixture_id(external_ref)
-            if fixture_id is None:
-                continue
+        for (fixture_id,) in fixtures:
             with conn.cursor() as cur:
                 stored += fetch_and_store_injuries(session, cur, fixture_id)
             conn.commit()
@@ -876,8 +873,11 @@ def backfill_primary(league_code: str, season_start_year: int):
             # external_ref first; only fall back to the natural key for
             # a genuinely new fixture (which also covers the case where
             # another source already created this real match under a
-            # different external_ref format).
-            cur.execute("SELECT match_id FROM futbol.matches WHERE external_ref = %s", (ext_ref,))
+            # different external_ref format). By api_football_fixture_id
+            # (migration 0041), which an Understat-created row can carry
+            # too -- external_ref alone holds only one provider's id.
+            cur.execute("SELECT match_id FROM futbol.matches WHERE api_football_fixture_id = %s",
+                        (fixture_id,))
             existing = cur.fetchone()
             if existing:
                 match_id = existing[0]
@@ -890,15 +890,17 @@ def backfill_primary(league_code: str, season_start_year: int):
                 cur.execute(
                     """INSERT INTO futbol.matches
                          (season_id, home_team_id, away_team_id, kickoff_utc,
-                          home_score, away_score, status, external_ref)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                          home_score, away_score, status, external_ref, api_football_fixture_id)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (season_id, home_team_id, away_team_id, kickoff_utc)
                        DO UPDATE SET home_score = EXCLUDED.home_score,
                                      away_score = EXCLUDED.away_score,
                                      status     = EXCLUDED.status,
-                                     external_ref = COALESCE(futbol.matches.external_ref, EXCLUDED.external_ref)
+                                     external_ref = COALESCE(futbol.matches.external_ref, EXCLUDED.external_ref),
+                                     api_football_fixture_id = COALESCE(futbol.matches.api_football_fixture_id,
+                                                                        EXCLUDED.api_football_fixture_id)
                        RETURNING match_id""",
-                    (season_id, home_id, away_id, kickoff, hg, ag, status, ext_ref))
+                    (season_id, home_id, away_id, kickoff, hg, ag, status, ext_ref, fixture_id))
                 match_id = cur.fetchone()[0]
             created += 1
 

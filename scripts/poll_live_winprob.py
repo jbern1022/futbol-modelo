@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "packages", "di
 import psycopg2
 
 from generate_slate import fit_dixon_coles
-from ingestion.api_football import _api_football_fixture_id, _get, _session, store_events
+from ingestion.api_football import _get, _session, store_events
 from predictions.live_winprob import apply_red_card, inplay_win_probs
 from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
@@ -34,7 +34,7 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 MAX_MATCH_MINUTES = 130
 
 CANDIDATES_SQL = """
-SELECT m.match_id, m.external_ref, th.name, ta.name,
+SELECT m.match_id, m.api_football_fixture_id, th.name, ta.name,
        th.api_football_id, ta.api_football_id
 FROM futbol.matches m
 JOIN futbol.teams th ON th.team_id = m.home_team_id
@@ -44,7 +44,7 @@ JOIN futbol.leagues l ON l.league_id = s.league_id
 WHERE l.code = %s AND m.status = 'scheduled'
   AND m.kickoff_utc <= now()
   AND m.kickoff_utc >= now() - (%s || ' minutes')::interval
-  AND m.external_ref IS NOT NULL;
+  AND m.api_football_fixture_id IS NOT NULL;
 """
 
 
@@ -78,8 +78,7 @@ def poll_league(cur, session, league: str) -> int:
         return 0
 
     fixture_to_match = {}
-    for match_id, external_ref, home, away, home_api, away_api in candidates:
-        fid = _api_football_fixture_id(external_ref)
+    for match_id, fid, home, away, home_api, away_api in candidates:
         if fid is not None:
             fixture_to_match[fid] = (match_id, home, away, home_api, away_api)
 

@@ -34,7 +34,7 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 
 from dixon_coles import DixonColes, derive_markets
-from ingestion.api_football import _api_football_fixture_id, _session as api_football_session, fetch_and_store_injuries
+from ingestion.api_football import _session as api_football_session, fetch_and_store_injuries
 from models.dc_settings import dc_fit_settings
 from ops.pipeline_run import record_model_version_history
 from predictions.slate_window import SLATE_WINDOW_DAYS, has_live_slate
@@ -590,9 +590,9 @@ def generate_final_pass_for_fixture(conn, cur, league: str, home: str, away: str
                      extra={"league": league, "home": home, "away": away})
         return None
 
-    cur.execute("SELECT external_ref FROM futbol.matches WHERE match_id = %s", (match_id,))
+    cur.execute("SELECT api_football_fixture_id FROM futbol.matches WHERE match_id = %s", (match_id,))
     row = cur.fetchone()
-    fixture_id = _api_football_fixture_id(row[0]) if row else None
+    fixture_id = row[0] if row else None
     if fixture_id is not None:
         try:
             session = api_football_session()

@@ -27,17 +27,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import psycopg2
 
-from ingestion.api_football import _api_football_fixture_id, _get, _session
+from ingestion.api_football import _get, _session
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
 CANDIDATES_SQL = """
 SELECT DISTINCT ON (pl.player_id)
-    pl.player_id, pl.full_name, pl.api_football_id, m.external_ref
+    pl.player_id, pl.full_name, pl.api_football_id, m.api_football_fixture_id
 FROM futbol.players pl
 JOIN futbol.player_injuries pi ON pi.player_id = pl.player_id
 JOIN futbol.player_match_stats pms ON pms.player_id = pl.player_id AND pms.minutes >= 45
-JOIN futbol.matches m ON m.match_id = pms.match_id AND m.external_ref LIKE 'api-football:%%'
+JOIN futbol.matches m ON m.match_id = pms.match_id AND m.api_football_fixture_id IS NOT NULL
 WHERE pl.full_name ~ '^[A-Z]\\. '
 ORDER BY pl.player_id, m.kickoff_utc DESC
 LIMIT %s;
@@ -60,10 +60,7 @@ def main():
 
     fixed, confirmed_ok, no_data = 0, 0, 0
     with conn.cursor() as cur:
-        for player_id, current_name, api_player_id, external_ref in candidates:
-            fixture_id = _api_football_fixture_id(external_ref)
-            if fixture_id is None:
-                continue
+        for player_id, current_name, api_player_id, fixture_id in candidates:
             try:
                 resp = _get(session, "fixtures/players", {"fixture": fixture_id})
             except Exception as e:

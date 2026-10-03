@@ -26,14 +26,21 @@ def cur():
 
 
 def _row(cur, has_xg: bool):
+    # Any EPL row with xG; for the "missing" case, blank it inside this
+    # rolled-back transaction rather than depending on the live data
+    # still having gaps (it doesn't since the 2026-27 backfill).
     cur.execute(
-        f"""SELECT t.match_id, t.team_id, t.xg FROM futbol.team_match_stats t
-            JOIN futbol.matches m USING (match_id) JOIN futbol.seasons s USING (season_id)
-            JOIN futbol.leagues l USING (league_id)
-            WHERE l.code = 'EPL' AND t.xg IS {'NOT ' if has_xg else ''}NULL LIMIT 1""")
+        """SELECT t.match_id, t.team_id, t.xg FROM futbol.team_match_stats t
+           JOIN futbol.matches m USING (match_id) JOIN futbol.seasons s USING (season_id)
+           JOIN futbol.leagues l USING (league_id)
+           WHERE l.code = 'EPL' AND t.xg IS NOT NULL LIMIT 1""")
     row = cur.fetchone()
     if row is None:
-        pytest.skip("no suitable team_match_stats row")
+        pytest.skip("no EPL team_match_stats row with xG")
+    if not has_xg:
+        cur.execute("UPDATE futbol.team_match_stats SET xg = NULL WHERE match_id = %s AND team_id = %s",
+                    row[:2])
+        return (row[0], row[1], None)
     return row
 
 

@@ -128,8 +128,7 @@ spec:
                 python scripts/auto_slate.py --league EPL --days 3 &&
                 python scripts/auto_slate.py --league SERIE_A --days 3 &&
                 python scripts/auto_slate.py --league LA_LIGA --days 3 &&
-                python scripts/generate_nfl_slate.py --season 2026 --days-ahead 3 &&
-                python scripts/generate_nba_slate.py --season 2026-27 --days-ahead 45
+                python scripts/generate_nfl_slate.py --season 2026 --days-ahead 3
             # pgBouncer rollout, 5th consumer (2026-09-22). See
             # k8s/pgbouncer.yaml for the futbol_canary auth design.
             env:

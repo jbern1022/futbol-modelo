@@ -599,3 +599,51 @@ weighted matches against a 0.25 penalty). Promoted and very low-sample
 teams are pulled toward league average until they have played enough
 to stand on their own data. The degenerate-skip guard stays as a last
 line of defense.
+
+---
+
+## ADR-009 addendum (2026-10-03): NBA stops generating predictions
+
+ADR-009 retired NBA from further investment but left the shipped model
+slating and grading. That's now ended: NBA is out of the product, because
+a third sport with a frozen model muddies what the site claims to do.
+`generate_nba_slate.py` is removed from `futbol-auto-slate` and
+`nba_slate:2026-27` from the health check's expected jobs. NBA results
+ingestion stays in `futbol-nightly-refresh` for now, because 1,944 NBA
+2026-27 predictions were already locked (slated up to 45 days out)
+before this decision. Whether they're graded as they come due or voided
+before tip-off is still to be decided, and that decides whether the
+ingestion step stays.
+
+---
+
+## ADR-015: per-provider match id columns (migration 0041)
+
+**Status:** Accepted (2026-10-03)
+
+**Context:** `matches.external_ref` held exactly one source's id
+(`understat:…`, `api-football:…`, `nba:…`, `nflverse:…`). Historical
+EPL/SERIE_A/LA_LIGA rows were created by Understat, so they could never
+also carry an API-Football fixture id (`link_fixture_ids()` only wrote
+where `external_ref IS NULL`). And loading Understat data onto rows
+API-Football had created went wrong both ways: an exact kickoff match
+kept the API-Football ref and dropped the shots, while a kickoff
+mismatch created a duplicate match. The 2025-26 La Liga Understat load
+had made 4 duplicates.
+
+**Decision:** Add `matches.api_football_fixture_id` and
+`matches.understat_game_id` (unique when set), filled from
+`external_ref`, plus a trigger that keeps them filled whenever any
+existing writer sets an exact `<provider>:<id>` ref. `external_ref` is
+unchanged (NFL/NBA/WC still use it). Everything that needs an
+API-Football id (odds, injuries, events, live poller, final pass,
+`backfill_primary`'s lookup, `link_fixture_ids`) reads or writes the new
+column. The 4 La Liga duplicates were resolved ADR-005-style: the
+API-Football orphan gets `status = 'duplicate'` and a
+`-superseded-by-<keeper>` ref (nothing deleted, no predictions
+involved), and the Understat keeper takes over its fixture id.
+
+**Consequences:** A match can now carry both providers' ids, which
+unblocks the La Liga 2021–25 Understat shot backfill (linked onto
+existing rows, never creating matches) and historical API-Football
+lookups for EPL/SERIE_A/LA_LIGA.

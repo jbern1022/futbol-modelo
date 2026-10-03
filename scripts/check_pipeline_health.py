@@ -57,7 +57,6 @@ EXPECTED_JOBS = [
     "compute_team_ratings",
     "auto_slate:MLS", "auto_slate:EPL", "auto_slate:SERIE_A", "auto_slate:LA_LIGA",
     "nfl_slate:2026",
-    "nba_slate:2026-27",
     "auto_grade",
     "simulate_bankroll",
     "odds:MLS", "odds:EPL", "odds:SERIE_A", "odds:LA_LIGA",

@@ -25,7 +25,7 @@ import sys
 import psycopg2
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from ingestion.api_football import _api_football_fixture_id, _session, fetch_and_store_injuries
+from ingestion.api_football import _session, fetch_and_store_injuries
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -36,10 +36,10 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 def backfill_injuries_for_league(conn, session, league_code: str,
                                  season_labels: list[str] | None) -> tuple[int, int]:
     with conn.cursor() as cur:
-        query = """SELECT m.match_id, m.external_ref FROM futbol.matches m
+        query = """SELECT m.match_id, m.api_football_fixture_id FROM futbol.matches m
                    JOIN futbol.seasons s ON s.season_id = m.season_id
                    JOIN futbol.leagues l ON l.league_id = s.league_id
-                   WHERE l.code = %s AND m.external_ref LIKE 'api-football:%%'"""
+                   WHERE l.code = %s AND m.api_football_fixture_id IS NOT NULL"""
         params: list = [league_code]
         if season_labels:
             query += " AND s.label = ANY(%s)"
@@ -53,13 +53,10 @@ def backfill_injuries_for_league(conn, session, league_code: str,
     # limit, network blip, a Ctrl-C), and re-running from scratch would
     # waste real API-Football quota re-fetching fixtures already stored.
     stored, skipped = 0, 0
-    for i, (match_id, external_ref) in enumerate(matches, start=1):
-        # Real data: a handful of external_ref values carry a
-        # "-superseded-by-<id>" suffix from a past duplicate-match
-        # cleanup (see CLAUDE.md/ADR-005) -- _api_football_fixture_id's
-        # strict regex (same helper fetch_and_store_odds() already
-        # relies on) returns None for those instead of a garbage int.
-        fixture_id = _api_football_fixture_id(external_ref)
+    for i, (match_id, fixture_id) in enumerate(matches, start=1):
+        # The query already filters on api_football_fixture_id IS NOT
+        # NULL (migration 0041; superseded duplicate rows never get one),
+        # so this is only a guard.
         if fixture_id is None:
             skipped += 1
             continue

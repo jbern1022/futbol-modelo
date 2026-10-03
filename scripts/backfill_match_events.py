@@ -18,7 +18,7 @@ import sys
 import psycopg2
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from ingestion.api_football import _api_football_fixture_id, _session, fetch_and_store_events
+from ingestion.api_football import _session, fetch_and_store_events
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -29,10 +29,10 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 def backfill_events_for_league(conn, session, league_code: str,
                                season_labels: list[str] | None) -> tuple[int, int]:
     with conn.cursor() as cur:
-        query = """SELECT m.match_id, m.external_ref FROM futbol.matches m
+        query = """SELECT m.match_id, m.api_football_fixture_id FROM futbol.matches m
                    JOIN futbol.seasons s ON s.season_id = m.season_id
                    JOIN futbol.leagues l ON l.league_id = s.league_id
-                   WHERE l.code = %s AND m.external_ref LIKE 'api-football:%%'
+                   WHERE l.code = %s AND m.api_football_fixture_id IS NOT NULL
                      AND m.status = 'final'"""
         params: list = [league_code]
         if season_labels:
@@ -42,8 +42,7 @@ def backfill_events_for_league(conn, session, league_code: str,
         matches = cur.fetchall()
 
     stored, skipped = 0, 0
-    for i, (match_id, external_ref) in enumerate(matches, start=1):
-        fixture_id = _api_football_fixture_id(external_ref)
+    for i, (match_id, fixture_id) in enumerate(matches, start=1):
         if fixture_id is None:
             skipped += 1
             continue
