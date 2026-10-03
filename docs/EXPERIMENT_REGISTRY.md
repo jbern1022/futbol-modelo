@@ -166,6 +166,32 @@ spec/backfill-list only).
 | **Limitations** | Understat minute conventions for stoppage are taken as-is. Own goals excluded (same call as every other in-play query). The MLS result is below the ~100-match evidence bar and comes from a partial-season event backfill, so it neither confirms nor refutes. |
 | **Decision** | **Adopted for EPL/SERIE_A/LA_LIGA** (`REMAINING_GOAL_SHARE`, `remaining_share()` in `src/predictions/live_winprob.py`). **MLS stays linear** until it has 100+ usable holdout matches. **Red-card factors recalibrated against the new rule**, because the old ones had absorbed the stoppage-goal gap: EPL (0.475, 1.551) → (0.419, 1.370), in-sample RPS +16.0%; SERIE_A (0.584, 1.850) → (0.513, 1.629), +29.3%. Same 145/149 matches. |
 
+### 2026-10-02: Dynamic (score-driven) attack/defence ratings vs. Dixon-Coles (Todoist `6hf54hvcpV9p7Vff`)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Ratings updated after every match would track form changes faster than a weekly Dixon-Coles refit with time decay, and improve 1X2. |
+| **Proposed change** | Same parametrization as Dixon-Coles. Start each season from a DC fit (shrunk toward average by `shrink`), then after each match `atk_h, dfn_a += eta*(hg - lam)` and `atk_a, dfn_h += eta*(ag - mu)`. |
+| **Expected effect** | Lower RPS, especially early and mid season. |
+| **Data cutoff** | `eta` ∈ {0.01..0.08} and `shrink` ∈ {1.0, 0.8, 0.6} tuned on 2024-25 (MLS 2024); holdout 2025-26 (MLS 2025) scored once. `scripts/experiment_dynamic_ratings.py`. |
+| **Evaluation method** | Paired against production-settings DC (xi=0.0015, weekly refit) on matches both price; bootstrap 95% CIs on RPS and log loss. |
+| **Result** | RPS diff (dynamic − DC): EPL −0.0003 [−0.0066, +0.0052], SERIE_A −0.0007 [−0.0040, +0.0023], LA_LIGA −0.0012 [−0.0047, +0.0019], MLS −0.0004 [−0.0051, +0.0045]. Same direction in all four, none significant. The apparent log-loss win (EPL 1.062 → 1.031, LA_LIGA 1.014 → 0.980) is one match each where DC scored log loss 14.9 / 13.8. That's a DC bug, not a dynamic-ratings edge (see the next entry). |
+| **Limitations** | One holdout season per league. The update ignores xG and match importance. |
+| **Decision** | **Not promoted.** Honest negative result. Revisit only as part of the staged feature-integration task. |
+
+### 2026-10-02: Ridge penalty for full-league Dixon-Coles (ADR-014)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | With `reg=0`, a team with zero goals scored (or conceded) in its fit window has an unbounded MLE rating, producing near-zero probabilities. Seen live: promoted Coventry priced at 5e-8 to win (`degenerate_prediction_skips`, Sep 2026). |
+| **Proposed change** | `reg` 0 → 0.25 for full leagues (`src/models/dc_settings.py`). |
+| **Expected effect** | Bounded tails, with no cost on normal matches. |
+| **Data cutoff** | Tune 2024-25 (MLS 2024): reg ∈ {0, 0.25, 1, 4}. That season had **no blowups in any league** (worst log loss ≤ 2.98), so tuning by mean log loss picked reg=0 for three leagues. A rare failure can't be tuned on a season that doesn't contain it. So the candidate was fixed in advance as the smallest reg with no tune-season cost (log loss +0.0003 / 0.0000 / +0.0001 / −0.0023), then the 2025-26 holdout was scored once. `scripts/experiment_dc_ridge.py --fixed-reg 0.25`. |
+| **Evaluation method** | Paired weekly walk-forward vs. reg=0, bootstrap 95% CIs, plus worst-case log loss and lowest stated probability. |
+| **Result** | Lowest stated probability: EPL 3.4e-7 → 0.036, LA_LIGA 3.3e-7 → 0.030, MLS 6.5e-7 → 0.029 (SERIE_A already 0.042). Worst log loss: EPL 14.90 → 3.32, LA_LIGA 13.81 → 2.53. RPS: −0.0004, −0.0005, −0.0002, −0.0001 (no cost, slight gain). Mean log loss: EPL −0.031, LA_LIGA −0.031 (CIs just touch 0, because the gain comes from single matches). |
+| **Limitations** | Blowups are rare (one per league-season here), so mean-metric CIs are wide by nature. The case for the fix is the bounded worst case, which is unambiguous. |
+| **Decision** | **Adopted** (slate generator, final pass, live poller and team ratings, via one shared setting). Soccer slate model version → `v3`. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and

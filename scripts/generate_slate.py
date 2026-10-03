@@ -35,6 +35,7 @@ from sklearn.model_selection import KFold
 
 from dixon_coles import DixonColes, derive_markets
 from ingestion.api_football import _api_football_fixture_id, _session as api_football_session, fetch_and_store_injuries
+from models.dc_settings import dc_fit_settings
 from ops.pipeline_run import record_model_version_history
 from predictions.slate_window import SLATE_WINDOW_DAYS, has_live_slate
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
@@ -134,8 +135,7 @@ def fit_dixon_coles(cur, league: str) -> tuple[DixonColes, dict]:
     rows = cur.fetchall()
     df = pd.DataFrame(rows, columns=["date", "home", "away", "hg", "ag"])
     df["date"] = pd.to_datetime(df["date"])
-    reg = 8.0 if len(df) < 200 else 0.0
-    xi = 0.0005 if len(df) < 200 else 0.0015
+    xi, reg = dc_fit_settings(len(df))
     dc = DixonColes(xi=xi).fit(df, reg=reg)
     meta = {
         "xi": xi, "reg": reg, "n_matches": len(df),
@@ -735,7 +735,7 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     # previously f"{home}_v_{away}_{date}", which never conflicted and
     # minted one throwaway row per fixture forever).
     _mv_name = f"slate_generator_{league.lower()}"
-    _mv_tag = "v2"  # v2: 3-day slate window (ADR-012); voided v1 rows keep their own key
+    _mv_tag = "v3"  # v3: ridge reg=0.25 for full leagues (ADR-014); v2: 3-day window (ADR-012)
     _mv_window = dc_meta["training_window"]
     _mv_params = json.dumps({"dixon_coles": {"xi": dc_meta["xi"], "reg": dc_meta["reg"]},
                               "props": {m: meta["hyperparams"] | {"features": meta["features"]}

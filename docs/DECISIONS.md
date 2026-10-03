@@ -567,3 +567,33 @@ certainty before the final whistle. The live table
 (ADR-011), so earlier ticks stay as computed and new ticks use the new
 rule. MLS will need its own check once more `match_events` data
 exists.
+
+---
+
+## ADR-014: full-league Dixon-Coles fits use a small ridge penalty (reg=0.25)
+
+**Status:** Accepted (2026-10-02)
+
+**Context:** Production fit full leagues with `reg=0`. A team with zero
+goals scored (or conceded) in its fit window, common for a promoted
+side's first few games, then has an unbounded maximum-likelihood rating.
+Live, 2026-27 promoted Coventry was priced at a 5e-8 win probability.
+The degenerate-skip guard only drops outcomes that round to exactly 0 or
+1, so the opposite side (~99.99%) still reached slates. The 2025-26
+walk-forward reproduced it: log loss 14.9 (EPL) and 13.8 (La Liga) on
+single matches.
+
+**Decision:** `reg=0.25` for full leagues; small samples keep `reg=8`.
+Both come from one helper, `models.dc_settings.dc_fit_settings()`, used
+by the slate generator (and so the final pass and live poller) and by
+`compute_team_ratings.py`, which must match the live fit. On the
+2025-26 holdouts it lifted the lowest stated probability from ~3e-7 to
+~3% and cut the worst log loss to 2.5–3.3, at no RPS cost. Soccer slate
+model version moves to `v3`, so calibration can separate before and
+after. Evidence and the tuning caveat: `docs/EXPERIMENT_REGISTRY.md`.
+
+**Consequences:** Established teams barely move (they carry 100+
+weighted matches against a 0.25 penalty). Promoted and very low-sample
+teams are pulled toward league average until they have played enough
+to stand on their own data. The degenerate-skip guard stays as a last
+line of defense.

@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "packages", "di
 import pandas as pd
 import psycopg2
 
+from models.dc_settings import dc_fit_settings
 from models.team_ratings import bootstrap_team_ratings
 from ops.json_logging import configure_json_logging
 from ops.pipeline_run import track_run
@@ -68,13 +69,11 @@ def main():
         with conn.cursor() as cur:
             for league in LEAGUES:
                 df = matches_for_league(cur, league)
-                # Same low-data fallback thresholds as the live model
-                # (generate_slate.py's fit_dixon_coles) -- a league
-                # this sparse gets a wider ridge penalty and slower
-                # decay there too, so the CIs should reflect the same
-                # regularized fit predictions are actually made from.
-                reg = 8.0 if len(df) < 200 else 0.0
-                xi = 0.0005 if len(df) < 200 else 0.0015
+                # Same settings as the live model (models/dc_settings.py,
+                # shared with generate_slate.py's fit_dixon_coles), so the
+                # CIs reflect the same regularized fit predictions are
+                # actually made from.
+                xi, reg = dc_fit_settings(len(df))
                 if len(df) < 60:
                     log.info("skipping league, too little data",
                              extra={"league": league, "n_matches": len(df)})

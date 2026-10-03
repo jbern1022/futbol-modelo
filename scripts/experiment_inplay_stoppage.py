@@ -91,6 +91,13 @@ def main() -> None:
     rows = cur.fetchall()
     match_lookup = {(h, a, d): (mid, hid, aid) for mid, hid, aid, h, a, d, _ in rows}  # noqa: E501
     goals = pd.read_sql(GOALS_SOURCE[args.league], conn, params=(args.league,))
+    # Only matches whose event/shot data exists at all. "Has goals but no
+    # goal rows -> skip" alone lets every 0-0 match without data through:
+    # the first MLS run (2026-10-02) scored 33 "usable" 2025 matches that
+    # were exactly that -- MLS 2025 had no match_events yet -- a goalless
+    # sample that favors whichever rule expects fewer late goals.
+    coverage_table = "match_events" if args.league == "MLS" else "shots"
+    covered = set(pd.read_sql(f"SELECT DISTINCT match_id FROM futbol.{coverage_table}", conn).match_id)
     curve_minutes = pd.read_sql(
         """SELECT s.minute FROM futbol.shots s
            JOIN futbol.matches m ON m.match_id = s.match_id
@@ -114,6 +121,8 @@ def main() -> None:
         if key not in match_lookup:
             continue
         match_id, home_id, away_id = match_lookup[key]
+        if match_id not in covered:
+            continue
         mg = goals[goals.match_id == match_id]
         if mg.empty and (row.hg + row.ag) > 0:
             continue
