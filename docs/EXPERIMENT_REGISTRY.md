@@ -205,6 +205,19 @@ spec/backfill-list only).
 | **Limitations** | 79 matches, under the ~100 bar; per-season factors differ (0.40 vs 0.60 down). Dixon-Coles rates come from the production fit, which includes these seasons' results (same as the EPL/SERIE_A calibration). |
 | **Decision** | **Shipped pooled factors (0.488, 1.579).** The out-of-sample gain is significant and replicates in both directions. LA_LIGA remains the only uncalibrated league. |
 
+### 2026-10-03: API-Football expected_goals as the current-season xG source
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | API-Football's `expected_goals` can stand in for Understat xG, which stopped at 2025-26 (a one-off historical load; the nightly refresh only pulls API-Football). Every 2026-27 `team_match_stats.xg` was NULL, so the CORNERS/SOT models' `xg_for_r5`/`xg_against_r5` went down LightGBM's missing-value branch for EPL/SERIE_A/LA_LIGA all season. That branch was learned from MLS rows, which never had xG. |
+| **Proposed change** | Parse `expected_goals` in the existing `/fixtures/statistics` calls, rescale to Understat's scale, and fill `xg` only where NULL, for EPL/SERIE_A/LA_LIGA only. Keep the raw value in `team_match_stats_by_source` (migration 0040). |
+| **Expected effect** | Current-season props features match what the models were trained on. |
+| **Data cutoff** | 2025-26, 100 random matches (200 team-matches) per league with both sources. `scripts/experiment_api_football_xg.py`. |
+| **Evaluation method** | Correlation, mean bias and a linear fit, API-Football vs. Understat on the same team-matches. |
+| **Result** | Correlation EPL 0.915, SERIE_A 0.913, LA_LIGA 0.901. API-Football runs ~10% lower (slopes 0.77–0.83, mean abs diff 0.24–0.26). Pooled mean ratio Understat/API-Football = 1.108. |
+| **Limitations** | A linear rescale doesn't make the providers identical (r ≈ 0.91). The rolling 5-game features average much of the per-match difference away. Not yet measured on props-model accuracy directly. |
+| **Decision** | **Adopted** (`store_api_football_xg`, scale 1.108). Backfilled all 2026-27 EPL/SERIE_A/LA_LIGA matches (338 team-matches) on 2026-10-03; the nightly refresh fills new matches. MLS stays xG-less, matching its training data. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and

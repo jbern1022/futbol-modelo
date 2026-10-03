@@ -801,6 +801,33 @@ def season_label_for(league_code: str, season_start_year: int) -> str:
     return f"{season_start_year}"
 
 
+# Understat xG (the training data for the CORNERS/SOT models' xg_for_r5 /
+# xg_against_r5) stops at 2025-26: it was a one-off historical load, and
+# the nightly refresh only pulls API-Football. API-Football reports
+# expected_goals, which agrees well with Understat but runs ~10% lower
+# (scripts/experiment_api_football_xg.py, 2025-26, 200 team-matches per
+# league: corr EPL 0.915 / SERIE_A 0.913 / LA_LIGA 0.901; mean Understat
+# 4.443 vs API-Football 4.010 summed across the three -> scale 1.108).
+# Filled only where xg is NULL (never overwrites Understat), and only for
+# leagues whose training rows carry Understat xG -- MLS never had xG, so
+# giving it some now would be its own distribution shift.
+API_FOOTBALL_XG_SCALE = 1.108
+XG_FILL_LEAGUES = frozenset({"EPL", "SERIE_A", "LA_LIGA"})
+
+
+def store_api_football_xg(cur, league_code: str, match_id: int, team_id: int, raw) -> None:
+    if raw is None:
+        return
+    raw = float(raw)
+    entities.record_source_stats(cur, match_id, team_id, "api_football", xg=raw)
+    if league_code not in XG_FILL_LEAGUES:
+        return
+    cur.execute(
+        """UPDATE futbol.team_match_stats SET xg = %s
+           WHERE match_id = %s AND team_id = %s AND xg IS NULL""",
+        (round(raw * API_FOOTBALL_XG_SCALE, 3), match_id, team_id))
+
+
 def backfill_primary(league_code: str, season_start_year: int):
     """
     Full primary-source backfill for leagues with no Understat/FBref
@@ -913,6 +940,7 @@ def backfill_primary(league_code: str, season_start_year: int):
                         yellows=num("Yellow Cards"), reds=num("Red Cards"),
                         saves=num("Goalkeeper Saves"),
                         shots_on_target=num("Shots on Goal"), shots=num("Total Shots"))
+                    store_api_football_xg(cur, league_code, match_id, tid, vals.get("expected_goals"))
                 updated_stats += 1
 
                 load_fixture_players(session, cur, match_id, fixture_id,
@@ -993,6 +1021,7 @@ def backfill(league_code: str, season_start_year: int):
                     yellows=num("Yellow Cards"), reds=num("Red Cards"),
                     saves=num("Goalkeeper Saves"),
                     shots_on_target=num("Shots on Goal"), shots=num("Total Shots"))
+                store_api_football_xg(cur, league_code, match_id, tid, vals.get("expected_goals"))
             updated += 1
             if updated % 20 == 0:
                 conn.commit()

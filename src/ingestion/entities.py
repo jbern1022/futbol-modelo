@@ -231,7 +231,7 @@ def name_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, _norm(a), _norm(b)).ratio()
 
 
-_SOURCE_STATS_COLS = ("corners", "shots", "shots_on_target", "fouls", "yellows", "reds", "saves")
+_SOURCE_STATS_COLS = ("corners", "shots", "shots_on_target", "fouls", "yellows", "reds", "saves", "xg")
 
 
 def record_source_stats(cur, match_id: int, team_id: int, source: str, **fields) -> None:
