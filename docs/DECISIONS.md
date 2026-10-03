@@ -611,9 +611,13 @@ a third sport with a frozen model muddies what the site claims to do.
 `nba_slate:2026-27` from the health check's expected jobs. NBA results
 ingestion stays in `futbol-nightly-refresh` for now, because 1,944 NBA
 2026-27 predictions were already locked (slated up to 45 days out)
-before this decision. Whether they're graded as they come due or voided
-before tip-off is still to be decided, and that decides whether the
-ingestion step stays.
+before this decision. **Decided 2026-10-03: they grade as normal** as the
+games are played. They were real locked claims, so they keep their place
+in the ledger, and NBA results ingestion stays in the nightly refresh
+until the last of them (April 2027) is graded. No new NBA predictions
+are made. NBA's slate window was never moved to 3 days, so these
+predate the ADR-012 window and may include players who are out by
+tip-off.
 
 ---
 
