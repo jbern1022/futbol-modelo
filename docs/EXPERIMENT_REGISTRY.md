@@ -230,6 +230,7 @@ spec/backfill-list only).
 | **Result** | Tuned w per holdout: EPL 1.0 / 0.5 / 1.0, SERIE_A 0.0 / 0.75 / 0.75. RPS diffs: EPL +0.0006 / −0.0017 / −0.0026, SERIE_A 0 / −0.0018 / +0.0001. **Pooled (n=2,272): RPS 0.1980 → 0.1971, diff −0.0009, 95% CI [−0.0024, +0.0005]; log loss −0.0017 [−0.0067, +0.0030].** Not significant. Tuning on one prior season is noisy and keeps landing on extreme weights (w=1.0 hurt EPL 2023-24). Observed, but **not usable as evidence** because it was read off the holdouts: a fixed w=0.5 scored at or below goals-only RPS in all six holdouts. |
 | **Limitations** | Two leagues, three seasons each. Choosing w=0.5 now would be selection on the test data. |
 | **Decision** | **Not promoted.** Pre-registered follow-up: evaluate a fixed w=0.5 blend prospectively on 2026-27 EPL/SERIE_A once ~150+ matches have been played. Fixed before seeing any of that season's results; compute it from the same script with w pinned. |
+| **Pre-registration, La Liga (2026-10-03, committed before running)** | La Liga's 2021-25 Understat xG was backfilled today (ADR-015), and none of it was used to pick w=0.5. So it's a second untouched test of the same fixed blend. Test: `--league LA_LIGA --fixed-w 0.5`, holdouts 2022-23, 2023-24, 2024-25, 2025-26 (weekly walk-forward, each fit only on earlier seasons). Pool the per-match RPS differences vs. goals-only, bootstrap 95% CI. **Success = CI entirely below 0.** Anything else is a fail and gets recorded as one. |
 
 ### 2026-10-03: La Liga red-card multiplier
 
