@@ -67,6 +67,12 @@ TEAM_SEED: dict[str, dict[str, str]] = {
     "Espanyol":           {"fbref": "Espanyol", "understat": "Espanyol"},
     "Las Palmas":         {"fbref": "Las Palmas", "understat": "Las Palmas"},
     "Leganes":            {"fbref": "Leganés", "understat": "Leganes"},
+    # Relegated before 2025-26; canonical names are the rows API-Football
+    # already created (team_ids 177338/177339/177340), added 2026-10-03 for
+    # the La Liga 2021-25 Understat shot backfill.
+    "Almeria":            {"fbref": "Almería", "understat": "Almeria"},
+    "Cadiz":              {"fbref": "Cádiz", "understat": "Cadiz"},
+    "Granada CF":         {"fbref": "Granada", "understat": "Granada"},
     "Valladolid":         {"fbref": "Valladolid", "understat": "Real Valladolid"},
     "Levante":            {"fbref": "Levante", "understat": "Levante"},
     "Elche":              {"fbref": "Elche", "understat": "Elche"},
