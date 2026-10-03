@@ -218,6 +218,19 @@ spec/backfill-list only).
 | **Limitations** | A linear rescale doesn't make the providers identical (r ≈ 0.91). The rolling 5-game features average much of the per-match difference away. Not yet measured on props-model accuracy directly. |
 | **Decision** | **Adopted** (`store_api_football_xg`, scale 1.108). Backfilled all 2026-27 EPL/SERIE_A/LA_LIGA matches (338 team-matches) on 2026-10-03; the nightly refresh fills new matches. MLS stays xG-less, matching its training data. |
 
+### 2026-10-03: Goals + xG blend in the Dixon-Coles 1X2 fit (Todoist `6hf57MFQwFpGmp57`)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Team ratings fit partly to xG (less noisy than goals) improve 1X2. |
+| **Proposed change** | A second set of ratings fit to Understat xG (quasi-Poisson, same parametrization and production weighting: xi=0.0015, reg=0.25), blended on the log-rate scale: `log rate = (1-w) log rate_goals + w log rate_xg`, with the goals model's rho. |
+| **Expected effect** | Lower RPS, mostly early season. |
+| **Data cutoff** | EPL and SERIE_A (the only leagues with Understat xG for every season). **Rolling origin**: w ∈ {0, .25, .5, .75, 1} tuned on season k−1, scored once on season k, for k = 2023-24, 2024-25, 2025-26. `scripts/experiment_xg_blend.py`. |
+| **Evaluation method** | Paired weekly walk-forward vs. goals-only (w=0); per-match differences pooled across the six holdouts; bootstrap 95% CIs. |
+| **Result** | Tuned w per holdout: EPL 1.0 / 0.5 / 1.0, SERIE_A 0.0 / 0.75 / 0.75. RPS diffs: EPL +0.0006 / −0.0017 / −0.0026, SERIE_A 0 / −0.0018 / +0.0001. **Pooled (n=2,272): RPS 0.1980 → 0.1971, diff −0.0009, 95% CI [−0.0024, +0.0005]; log loss −0.0017 [−0.0067, +0.0030].** Not significant. Tuning on one prior season is noisy and keeps landing on extreme weights (w=1.0 hurt EPL 2023-24). Observed, but **not usable as evidence** because it was read off the holdouts: a fixed w=0.5 scored at or below goals-only RPS in all six holdouts. |
+| **Limitations** | Two leagues, three seasons each. Choosing w=0.5 now would be selection on the test data. |
+| **Decision** | **Not promoted.** Pre-registered follow-up: evaluate a fixed w=0.5 blend prospectively on 2026-27 EPL/SERIE_A once ~150+ matches have been played. Fixed before seeing any of that season's results; compute it from the same script with w pinned. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
