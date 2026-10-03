@@ -105,7 +105,7 @@ def fetch_red_cards(session, fixture_id: int) -> list[tuple[int, int]]:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A"])
+    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA"])
     args = ap.parse_args()
 
     session = _session()

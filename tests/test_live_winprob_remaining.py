@@ -40,9 +40,10 @@ def test_level_score_in_stoppage_is_no_longer_a_near_certain_draw():
     assert 0.80 < draw_curve < 0.88
 
 
-def test_mls_red_card_is_calibrated_and_la_liga_is_not():
+def test_every_live_league_has_a_red_card_factor_in_the_right_direction():
     from predictions.live_winprob import RED_CARD_FACTORS, apply_red_card
-    down, up = RED_CARD_FACTORS["MLS"]
-    assert down < 1 < up
-    assert apply_red_card(1.5, 1.2, "MLS", home_is_down=True) == pytest.approx((1.5 * down, 1.2 * up))
-    assert apply_red_card(1.5, 1.2, "LA_LIGA", home_is_down=True) == (1.5, 1.2)
+    for league in ("EPL", "SERIE_A", "MLS", "LA_LIGA"):
+        down, up = RED_CARD_FACTORS[league]
+        assert down < 1 < up
+        assert apply_red_card(1.5, 1.2, league, home_is_down=True) == pytest.approx((1.5 * down, 1.2 * up))
+    assert apply_red_card(1.5, 1.2, "WC", home_is_down=True) == (1.5, 1.2)

@@ -231,6 +231,19 @@ spec/backfill-list only).
 | **Limitations** | Two leagues, three seasons each. Choosing w=0.5 now would be selection on the test data. |
 | **Decision** | **Not promoted.** Pre-registered follow-up: evaluate a fixed w=0.5 blend prospectively on 2026-27 EPL/SERIE_A once ~150+ matches have been played. Fixed before seeing any of that season's results; compute it from the same script with w pinned. |
 
+### 2026-10-03: La Liga red-card multiplier
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Same 10-men effect as the other three leagues. |
+| **Proposed change** | `RED_CARD_FACTORS["LA_LIGA"]`. Blocked until now: La Liga had shots for 2025-26 only, and the 2021-25 Understat backfill (ADR-015) made multi-season calibration possible. |
+| **Expected effect** | down < 1, up > 1. |
+| **Data cutoff** | LA_LIGA 2021-26, single red card, minute 10–80. `scripts/experiment_redcard_calibration.py --league LA_LIGA` (same method as EPL/SERIE_A, remaining time via `remaining_share`). |
+| **Evaluation method** | In-sample, as for EPL/SERIE_A. |
+| **Result** | 204 usable matches: down 0.488, up 1.395. RPS 0.1398 → 0.1120 (+19.9%). |
+| **Limitations** | In-sample only. |
+| **Decision** | **Shipped.** All four live leagues now have red-card factors. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and

@@ -66,7 +66,7 @@ def remaining_share(minute: int, league: str | None = None) -> float:
 # In-sample RPS improvement when applied: EPL +16.0%, SERIE_A +29.3% --
 # real, but in-sample only (not yet validated on a held-out red-card
 # set), see the calibration script's own printed caveat. No entry yet
-# for LA_LIGA -- default (1.0, 1.0) applies until it is
+# for any other league -- default (1.0, 1.0) applies until it is
 # calibrated the same way.
 #
 # Recalibrated 2026-10-02 (ADR-013) against remaining_share() instead of
@@ -85,6 +85,10 @@ RED_CARD_FACTORS = {
     "EPL": (0.419, 1.370),
     "SERIE_A": (0.513, 1.629),
     "MLS": (0.488, 1.579),
+    # LA_LIGA (2026-10-03): possible once the 2021-25 Understat shots were
+    # backfilled (ADR-015). 204 single-red matches 2021-26, in-sample like
+    # EPL/SERIE_A: RPS 0.1398 -> 0.1120 (+19.9%).
+    "LA_LIGA": (0.488, 1.395),
 }
 
 
