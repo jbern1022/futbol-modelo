@@ -66,16 +66,25 @@ def remaining_share(minute: int, league: str | None = None) -> float:
 # In-sample RPS improvement when applied: EPL +16.0%, SERIE_A +29.3% --
 # real, but in-sample only (not yet validated on a held-out red-card
 # set), see the calibration script's own printed caveat. No entry yet
-# for MLS/LA_LIGA -- default (1.0, 1.0) applies until each is
+# for LA_LIGA -- default (1.0, 1.0) applies until it is
 # calibrated the same way.
 #
 # Recalibrated 2026-10-02 (ADR-013) against remaining_share() instead of
 # the linear rule. The old factors, (0.475, 1.551) and (0.584, 1.850),
 # had absorbed the stoppage-time goals the linear expectation left out;
 # keeping them alongside the new curve would count those goals twice.
+#
+# MLS (2026-10-03, scripts/experiment_redcard_calibration_mls.py): from
+# match_events, no API calls. 79 single-red matches across 2025+2026.
+# Unlike EPL/SERIE_A this one is OUT-OF-SAMPLE: each season scored with
+# factors calibrated on the other gave RPS +20.4% at the red-card minute,
+# 95% CI [-0.064, -0.005] on the paired difference. Shipped factors are
+# pooled over both seasons. Under the ~100-match bar, but cross-validated
+# both ways and the same direction as EPL/SERIE_A.
 RED_CARD_FACTORS = {
     "EPL": (0.419, 1.370),
     "SERIE_A": (0.513, 1.629),
+    "MLS": (0.488, 1.579),
 }
 
 

@@ -789,7 +789,7 @@ def get_live_winprob(match_id: int):
             series = live_series(cur, match_id)
             events = live_events(cur, match_id) if series else []
         return {"match_id": match_id, "league": row["league"],
-                "red_card_calibrated": row["league"] in ("EPL", "SERIE_A"),
+                "red_card_calibrated": row["league"] in ("EPL", "SERIE_A", "MLS"),
                 "series": series, "events": events}
     finally:
         put_conn(conn)

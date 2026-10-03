@@ -38,3 +38,11 @@ def test_level_score_in_stoppage_is_no_longer_a_near_certain_draw():
     _, draw_curve, _ = inplay_win_probs(lam, mu, 1, 1, 90, league="EPL")
     assert draw_linear > 0.96
     assert 0.80 < draw_curve < 0.88
+
+
+def test_mls_red_card_is_calibrated_and_la_liga_is_not():
+    from predictions.live_winprob import RED_CARD_FACTORS, apply_red_card
+    down, up = RED_CARD_FACTORS["MLS"]
+    assert down < 1 < up
+    assert apply_red_card(1.5, 1.2, "MLS", home_is_down=True) == pytest.approx((1.5 * down, 1.2 * up))
+    assert apply_red_card(1.5, 1.2, "LA_LIGA", home_is_down=True) == (1.5, 1.2)

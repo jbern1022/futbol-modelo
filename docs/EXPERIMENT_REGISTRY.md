@@ -192,6 +192,19 @@ spec/backfill-list only).
 | **Limitations** | Blowups are rare (one per league-season here), so mean-metric CIs are wide by nature. The case for the fix is the bounded worst case, which is unambiguous. |
 | **Decision** | **Adopted** (slate generator, final pass, live poller and team ratings, via one shared setting). Soccer slate model version → `v3`. |
 
+### 2026-10-03: MLS red-card multiplier, out-of-sample (ADR-011 follow-up)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | MLS shows the same 10-men effect as EPL/SERIE_A (fewer remaining goals for the sent-off team, more for its opponent). |
+| **Proposed change** | `RED_CARD_FACTORS["MLS"]`, from `match_events` (red-card minute/team and goals). No API calls. |
+| **Expected effect** | down < 1, up > 1; better in-play RPS after a red card. |
+| **Data cutoff** | MLS 2025 + 2026, single red card, minute 10–80 (42 + 37 matches). 2025 events backfilled 2026-10-02. `scripts/experiment_redcard_calibration_mls.py`. |
+| **Evaluation method** | **Out-of-sample**, which the EPL/SERIE_A factors never had: calibrate on one season, score in-play RPS at the red-card minute on the other (adjusted vs. unadjusted), both directions, then pool the 79 out-of-sample predictions with a bootstrap 95% CI. Same remaining-time rule as live (`remaining_share`, empirical for MLS). |
+| **Result** | 2025 factors (0.401, 1.420) → 2026 RPS +19.9%; 2026 factors (0.601, 1.759) → 2025 RPS +20.8%. Pooled: RPS 0.1690 → 0.1346 (+20.4%), diff −0.0344, 95% CI [−0.0644, −0.0049]. |
+| **Limitations** | 79 matches, under the ~100 bar; per-season factors differ (0.40 vs 0.60 down). Dixon-Coles rates come from the production fit, which includes these seasons' results (same as the EPL/SERIE_A calibration). |
+| **Decision** | **Shipped pooled factors (0.488, 1.579).** The out-of-sample gain is significant and replicates in both directions. LA_LIGA remains the only uncalibrated league. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
