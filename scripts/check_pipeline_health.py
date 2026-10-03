@@ -16,6 +16,9 @@ because job status alone missed the 2026-09-06 NFL freeze: nfl_slate
     auto-slate, whose 3-day window already covers that range.
   - out of window: a live, ungraded prediction locked more than
     SLATE_WINDOW_DAYS before its kickoff (what a wide manual run makes).
+  - duplicate match: two rows for the same real NFL/soccer game (same
+    season and teams, kickoffs within 3 days), the failure mode behind
+    ADR-005 and the 4 La Liga pairs found under ADR-015.
 
     python scripts/check_pipeline_health.py
     python scripts/check_pipeline_health.py --stale-after-hours 30
@@ -102,6 +105,24 @@ ORDER BY m.match_id
 """
 
 
+DUPLICATE_MATCH_SQL = f"""
+SELECT a.match_id, b.match_id, l.code, th.name || ' vs ' || ta.name
+FROM futbol.matches a
+JOIN futbol.matches b
+  ON b.season_id = a.season_id AND b.home_team_id = a.home_team_id
+ AND b.away_team_id = a.away_team_id AND b.match_id > a.match_id
+ AND abs(extract(epoch FROM b.kickoff_utc - a.kickoff_utc)) < 3 * 86400
+JOIN futbol.seasons s ON s.season_id = a.season_id
+JOIN futbol.leagues l ON l.league_id = s.league_id
+JOIN futbol.teams th ON th.team_id = a.home_team_id
+JOIN futbol.teams ta ON ta.team_id = a.away_team_id
+WHERE l.code IN {SLATED_LEAGUES}
+  -- resolved pairs: 'duplicate' (ADR-015) or 'canc' (the ADR-005 cleanup)
+  AND a.status NOT IN ('duplicate', 'canc') AND b.status NOT IN ('duplicate', 'canc')
+ORDER BY a.match_id
+"""
+
+
 def slate_problems(cur) -> list[str]:
     cur.execute(MISSING_SLATE_SQL)
     missing = cur.fetchall()
@@ -112,6 +133,9 @@ def slate_problems(cur) -> list[str]:
     problems += [f"slate outside {SLATE_WINDOW_DAYS}-day window: [{league}] match {mid}, "
                  f"{n} prediction(s) locked up to {days} days early"
                  for mid, league, n, days in early]
+    cur.execute(DUPLICATE_MATCH_SQL)
+    problems += [f"duplicate match: [{league}] {name} (match {a} and {b})"
+                 for a, b, league, name in cur.fetchall()]
     return problems
 
 

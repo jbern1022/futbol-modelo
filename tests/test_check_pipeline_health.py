@@ -119,3 +119,32 @@ def test_out_of_window_flags_a_prediction_locked_weeks_early(conn):
         (match_id, mvid))
     cur.execute(OUT_OF_WINDOW_SQL)
     assert match_id in [r[0] for r in cur.fetchall()]
+
+
+# --- Duplicate matches (ADR-015) --------------------------------------
+# The 2025-26 La Liga Understat load left 4 duplicate match pairs that
+# sat unnoticed for months; this catches the next one the night it lands.
+
+from check_pipeline_health import DUPLICATE_MATCH_SQL  # noqa: E402
+
+
+def test_no_unresolved_duplicates_today(conn):
+    cur = conn.cursor()
+    cur.execute(DUPLICATE_MATCH_SQL)
+    assert cur.fetchall() == []
+
+
+def test_flags_a_fresh_duplicate(conn):
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT m.match_id, m.season_id, m.home_team_id, m.away_team_id, m.kickoff_utc
+           FROM futbol.matches m JOIN futbol.seasons s USING (season_id)
+           JOIN futbol.leagues l USING (league_id)
+           WHERE l.code = 'EPL' AND m.status = 'final' LIMIT 1""")
+    match_id, season_id, home, away, kickoff = cur.fetchone()
+    cur.execute(
+        """INSERT INTO futbol.matches (season_id, home_team_id, away_team_id, kickoff_utc, status)
+           VALUES (%s, %s, %s, %s + interval '1 hour', 'final')""",
+        (season_id, home, away, kickoff))
+    cur.execute(DUPLICATE_MATCH_SQL)
+    assert match_id in [r[0] for r in cur.fetchall()]
