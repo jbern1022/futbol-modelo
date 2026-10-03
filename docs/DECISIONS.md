@@ -651,3 +651,36 @@ involved), and the Understat keeper takes over its fixture id.
 unblocks the La Liga 2021–25 Understat shot backfill (linked onto
 existing rows, never creating matches) and historical API-Football
 lookups for EPL/SERIE_A/LA_LIGA.
+
+---
+
+## ADR-016: 1X2 and goal markets blend goals and xG ratings 50/50 (EPL, SERIE_A, LA_LIGA)
+
+**Status:** Accepted (2026-10-03)
+
+**Context:** The goals + xG blend experiment (rolling origin, EPL +
+SERIE_A, 2,272 matches) was inconclusive with tuned weights (RPS −0.0009,
+CI [−0.0024, +0.0005]). A fixed 50/50 blend looked better in every
+holdout, but that was read off the test data, so it was pre-registered
+instead. La Liga's 2021-25 Understat history, backfilled the same day
+(ADR-015), had played no part in choosing it. The pre-registered test
+was committed before running and passed: pooled RPS −0.0026, 95% CI
+[−0.0037, −0.0014] over 1,514 matches, all four seasons improving.
+
+**Decision:** `fit_dixon_coles` returns a `BlendedDixonColes`
+(`src/models/xg_blend.py`) for EPL/SERIE_A/LA_LIGA: team ratings fit to
+xG (same parametrization, production xi and ridge), blended 50/50 with
+the goals fit on the log-rate scale, keeping the goals fit's rho. MLS
+has no xG and stays goals-only. Because it subclasses `DixonColes` and
+overrides only `rates()`, slates, the final pass and the live poller
+pick it up unchanged. Soccer slate model version → `v4`.
+
+**Consequences:** 1X2, totals, BTTS and the in-play model all use the
+blended rates. Two open caveats: (1) this season's xG is API-Football,
+rescaled ×1.108, not Understat, which is what the scheduled prospective
+EPL/SERIE_A test (Todoist, Dec 1) will check; (2) the red-card factors
+were calibrated against goals-only rates. They're ratios of actual to
+expected goals and the blend moves expected goals only slightly, but
+they should be re-run against the blended rates once convenient.
+`compute_team_ratings` still shows goals-only ratings (its CIs come from
+bootstrapping the goals fit).

@@ -34,12 +34,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "packages", "di
 import numpy as np
 import pandas as pd
 import psycopg2
-from scipy.optimize import minimize
 
 from dixon_coles import DixonColes
 from experiment_dc_ridge import ci
 from experiment_dynamic_ratings import DSN, probs_from_rates
 from models.dc_settings import dc_fit_settings
+from models.xg_blend import XgRatings
 
 WEIGHTS = (0.0, 0.25, 0.5, 0.75, 1.0)
 
@@ -57,45 +57,6 @@ LEFT JOIN futbol.team_match_stats a ON a.match_id = m.match_id AND a.team_id = m
 WHERE l.code = %s AND m.status = 'final'
 ORDER BY m.kickoff_utc
 """
-
-
-class XgRatings:
-    """Attack/defence ratings fit to xG by weighted quasi-Poisson likelihood."""
-
-    def fit(self, df: pd.DataFrame, xi: float, reg: float) -> "XgRatings":
-        df = df.dropna(subset=["hxg", "axg"])
-        self.teams = sorted(set(df.home) | set(df.away))
-        n = len(self.teams)
-        self.idx = {t: i for i, t in enumerate(self.teams)}
-        hi = df.home.map(self.idx).to_numpy()
-        ai = df.away.map(self.idx).to_numpy()
-        hx, ax = df.hxg.to_numpy(float), df.axg.to_numpy(float)
-        w = np.exp(-xi * (df.date.max() - df.date).dt.days.to_numpy())
-
-        def nll_and_grad(p):
-            atk, dfn, g = p[:n], p[n:2 * n], p[2 * n]
-            lh = atk[hi] + dfn[ai] + g
-            la = atk[ai] + dfn[hi]
-            eh, ea = np.exp(lh), np.exp(la)
-            nll = -np.sum(w * (hx * lh - eh + ax * la - ea)) + reg * (atk @ atk + dfn @ dfn)
-            rh, ra = w * (hx - eh), w * (ax - ea)   # d ll / d log-rate
-            grad = np.zeros_like(p)
-            np.add.at(grad, hi, -rh)
-            np.add.at(grad, n + ai, -rh)
-            np.add.at(grad, ai, -ra)
-            np.add.at(grad, n + hi, -ra)
-            grad[2 * n] = -rh.sum()
-            grad[:n] += 2 * reg * atk
-            grad[n:2 * n] += 2 * reg * dfn
-            return nll, grad
-
-        res = minimize(nll_and_grad, np.r_[np.zeros(2 * n), 0.25], jac=True, method="L-BFGS-B")
-        self.params = res.x
-        return self
-
-    def log_rates(self, home: str, away: str) -> tuple[float, float]:
-        n, p, i, j = len(self.teams), self.params, self.idx[home], self.idx[away]
-        return p[i] + p[n + j] + p[2 * n], p[j] + p[n + i]
 
 
 def season_preds(history: pd.DataFrame, season: pd.DataFrame) -> dict:

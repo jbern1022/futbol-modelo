@@ -36,6 +36,7 @@ from sklearn.model_selection import KFold
 from dixon_coles import DixonColes, derive_markets
 from ingestion.api_football import _session as api_football_session, fetch_and_store_injuries
 from models.dc_settings import dc_fit_settings
+from models.xg_blend import XG_BLEND_LEAGUES, XG_BLEND_WEIGHT, BlendedDixonColes
 from ops.pipeline_run import record_model_version_history
 from predictions.slate_window import SLATE_WINDOW_DAYS, has_live_slate
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
@@ -122,23 +123,32 @@ def find_fixture(cur, league: str, home: str, away: str) -> tuple | None:
 
 
 def fit_dixon_coles(cur, league: str) -> tuple[DixonColes, dict]:
+    """Goals Dixon-Coles, blended 50/50 with xG ratings for leagues that
+    have xG (ADR-016). Returns a DixonColes either way, so every caller
+    (slates, final pass, live poller) is unchanged."""
     cur.execute(
         """SELECT m.kickoff_utc::date AS date, th.name AS home, ta.name AS away,
-                  m.home_score AS hg, m.away_score AS ag
+                  m.home_score AS hg, m.away_score AS ag, h.xg AS hxg, a.xg AS axg
            FROM futbol.matches m
            JOIN futbol.teams th ON th.team_id = m.home_team_id
            JOIN futbol.teams ta ON ta.team_id = m.away_team_id
            JOIN futbol.seasons s ON s.season_id = m.season_id
            JOIN futbol.leagues l ON l.league_id = s.league_id
+           LEFT JOIN futbol.team_match_stats h ON h.match_id = m.match_id AND h.team_id = m.home_team_id
+           LEFT JOIN futbol.team_match_stats a ON a.match_id = m.match_id AND a.team_id = m.away_team_id
            WHERE l.code = %s AND m.status = 'final'
            ORDER BY m.kickoff_utc""", (league,))
     rows = cur.fetchall()
-    df = pd.DataFrame(rows, columns=["date", "home", "away", "hg", "ag"])
+    df = pd.DataFrame(rows, columns=["date", "home", "away", "hg", "ag", "hxg", "axg"])
     df["date"] = pd.to_datetime(df["date"])
+    df[["hxg", "axg"]] = df[["hxg", "axg"]].apply(pd.to_numeric, errors="coerce")
     xi, reg = dc_fit_settings(len(df))
-    dc = DixonColes(xi=xi).fit(df, reg=reg)
+    blend = league in XG_BLEND_LEAGUES and df["hxg"].notna().any()
+    dc: DixonColes = (BlendedDixonColes.fit(df, xi=xi, reg=reg) if blend
+                      else DixonColes(xi=xi).fit(df[["date", "home", "away", "hg", "ag"]], reg=reg))
     meta = {
         "xi": xi, "reg": reg, "n_matches": len(df),
+        "xg_blend_weight": XG_BLEND_WEIGHT if blend else 0.0,
         "training_window": (f"{df['date'].min().date()}..{df['date'].max().date()}"
                             if len(df) else None),
     }
@@ -735,9 +745,10 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     # previously f"{home}_v_{away}_{date}", which never conflicted and
     # minted one throwaway row per fixture forever).
     _mv_name = f"slate_generator_{league.lower()}"
-    _mv_tag = "v3"  # v3: ridge reg=0.25 for full leagues (ADR-014); v2: 3-day window (ADR-012)
+    _mv_tag = "v4"  # v4: 50/50 goals+xG blend (ADR-016); v3: ridge (ADR-014); v2: 3-day window (ADR-012)
     _mv_window = dc_meta["training_window"]
-    _mv_params = json.dumps({"dixon_coles": {"xi": dc_meta["xi"], "reg": dc_meta["reg"]},
+    _mv_params = json.dumps({"dixon_coles": {"xi": dc_meta["xi"], "reg": dc_meta["reg"],
+                                              "xg_blend_weight": dc_meta["xg_blend_weight"]},
                               "props": {m: meta["hyperparams"] | {"features": meta["features"]}
                                         for m, meta in props_meta.items()}})
     _mv_metrics = json.dumps({"dixon_coles_n_matches": dc_meta["n_matches"],

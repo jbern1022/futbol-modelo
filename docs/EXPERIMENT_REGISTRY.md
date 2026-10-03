@@ -231,6 +231,7 @@ spec/backfill-list only).
 | **Limitations** | Two leagues, three seasons each. Choosing w=0.5 now would be selection on the test data. |
 | **Decision** | **Not promoted.** Pre-registered follow-up: evaluate a fixed w=0.5 blend prospectively on 2026-27 EPL/SERIE_A once ~150+ matches have been played. Fixed before seeing any of that season's results; compute it from the same script with w pinned. |
 | **Pre-registration, La Liga (2026-10-03, committed before running)** | La Liga's 2021-25 Understat xG was backfilled today (ADR-015), and none of it was used to pick w=0.5. So it's a second untouched test of the same fixed blend. Test: `--league LA_LIGA --fixed-w 0.5`, holdouts 2022-23, 2023-24, 2024-25, 2025-26 (weekly walk-forward, each fit only on earlier seasons). Pool the per-match RPS differences vs. goals-only, bootstrap 95% CI. **Success = CI entirely below 0.** Anything else is a fail and gets recorded as one. |
+| **La Liga result (2026-10-03)** | **Passed.** RPS goals-only → blend: 2022-23 0.2122 → 0.2068, 2023-24 0.1871 → 0.1851, 2024-25 0.1957 → 0.1939, 2025-26 0.2008 → 0.1999. Pooled n=1,514: diff −0.0026, 95% CI [−0.0037, −0.0014]; log loss −0.0088 [−0.0130, −0.0049]. **Promoted** for EPL/SERIE_A/LA_LIGA (ADR-016). The EPL/SERIE_A prospective 2026-27 test stays scheduled; it's the first check on API-Football-sourced current-season xG. |
 
 ### 2026-10-03: La Liga red-card multiplier
 
