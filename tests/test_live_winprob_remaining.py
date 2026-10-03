@@ -17,15 +17,14 @@ def test_curve_covers_every_elapsed_minute_and_never_increases():
     assert all(a >= b for a, b in zip(REMAINING_GOAL_SHARE, REMAINING_GOAL_SHARE[1:]))
 
 
-def test_stoppage_time_keeps_real_goal_expectation_for_understat_leagues():
-    for league in ("EPL", "SERIE_A", "LA_LIGA"):
+def test_stoppage_time_keeps_real_goal_expectation_in_every_live_league():
+    for league in ("EPL", "SERIE_A", "LA_LIGA", "MLS"):
         assert remaining_share(90, league) == pytest.approx(0.0618)
         assert remaining_share(90, league) > 5 * remaining_share(90, None)
 
 
-def test_mls_and_unspecified_keep_the_linear_rule():
-    # MLS: 33-match holdout, below the ~100-match evidence bar -- not switched.
-    assert remaining_share(60, "MLS") == pytest.approx(30 / 90)
+def test_unspecified_league_keeps_the_linear_rule():
+    assert remaining_share(60, None) == pytest.approx(30 / 90)
     assert remaining_share(90, None) == pytest.approx(1 / 90)
 
 

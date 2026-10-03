@@ -554,8 +554,11 @@ empirical share of a match's goals scored after the current elapsed
 minute (`REMAINING_GOAL_SHARE`, pooled from 10,160 EPL + SERIE_A
 Understat goals). It beat the linear rule on 2025-26 holdouts at every
 checkpoint from 75' on, including La Liga, which never fed the curve
-(89' log loss 0.476 → 0.341). MLS keeps the linear rule: its holdout
-had 33 usable matches, under the research protocol's ~100 bar. The
+(89' log loss 0.476 → 0.341). MLS was first left on the linear rule
+after a 33-match holdout; that sample turned out to be all goalless
+games with no event data. After backfilling MLS 2025 events it scored
+532 matches, 89' log loss 0.611 → 0.423, and was switched the same day
+(2026-10-02). The
 EPL/SERIE_A red-card factors were recalibrated against the new rule,
 since the old ones were measured against the linear expectation and
 had soaked up the same stoppage gap. Full numbers:
@@ -565,8 +568,7 @@ had soaked up the same stoppage gap. Full numbers:
 certainty before the final whistle. The live table
 `futbol.live_win_probability` is outside the immutable ledger
 (ADR-011), so earlier ticks stay as computed and new ticks use the new
-rule. MLS will need its own check once more `match_events` data
-exists.
+rule.
 
 ---
 

@@ -29,8 +29,10 @@ MAX_GOALS = 10
 # stoppage time. Holdout 2025-26, 89' log loss vs the linear rule:
 # EPL 0.758 -> 0.513, SERIE_A 0.492 -> 0.352, LA_LIGA (never in the
 # curve, so an out-of-league test) 0.476 -> 0.341; within +-0.001 before
-# 60'. MLS is NOT switched: its holdout had 33 usable matches, under the
-# ~100 bar in docs/RESEARCH_PROTOCOL.md, and leaned the other way.
+# 60'. MLS (532-match 2025 holdout via match_events, also never in the
+# curve) 0.611 -> 0.423. An earlier MLS run that "favored linear" scored
+# only 33 matches -- all goalless games with no event data -- and was
+# a sampling artifact (corrected 2026-10-02 after the 2025 backfill).
 REMAINING_GOAL_SHARE = (
     0.9951, 0.9879, 0.9803, 0.9725, 0.9624, 0.9522, 0.9430, 0.9358, 0.9269, 0.9187,  # 0-9
     0.9091, 0.9002, 0.8901, 0.8796, 0.8707, 0.8626, 0.8521, 0.8419, 0.8319, 0.8232,  # 10-19
@@ -43,13 +45,13 @@ REMAINING_GOAL_SHARE = (
     0.1685, 0.1577, 0.1463, 0.1349, 0.1252, 0.1148, 0.1040, 0.0934, 0.0828, 0.0723,  # 80-89
     0.0618,  # 90 (all of stoppage time)
 )
-EMPIRICAL_REMAINING_LEAGUES = frozenset({"EPL", "SERIE_A", "LA_LIGA"})
+EMPIRICAL_REMAINING_LEAGUES = frozenset({"EPL", "SERIE_A", "LA_LIGA", "MLS"})
 
 
 def remaining_share(minute: int, league: str | None = None) -> float:
     """Fraction of a full match's expected goals still to come at
-    `minute` elapsed. league=None (or MLS) keeps the original linear
-    rule."""
+    `minute` elapsed. league=None (or any league outside
+    EMPIRICAL_REMAINING_LEAGUES) keeps the original linear rule."""
     if league in EMPIRICAL_REMAINING_LEAGUES:
         return REMAINING_GOAL_SHARE[min(max(minute, 0), 90)]
     return max(90 - minute, 1) / 90.0
