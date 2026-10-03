@@ -17,6 +17,8 @@ CIs. EPL and SERIE_A only -- the leagues with Understat xG for every
 season (La Liga has 2025-26 only, MLS none).
 
     python scripts/experiment_xg_blend.py --league EPL --tune 2024-25 --holdout 2025-26
+    # pre-registered prospective test (EXPERIMENT_REGISTRY):
+    python scripts/experiment_xg_blend.py --league EPL --tune 2025-26 --holdout 2026-27 --fixed-w 0.5
 """
 from __future__ import annotations
 
@@ -137,6 +139,8 @@ def main() -> None:
     ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A"])
     ap.add_argument("--tune", required=True)
     ap.add_argument("--holdout", required=True)
+    ap.add_argument("--fixed-w", type=float, choices=WEIGHTS, default=None,
+                    help="skip tuning and score this weight (the pre-registered 2026-27 test uses 0.5)")
     ap.add_argument("--dump", help="write per-match (rps_goals, rps_blend, ll_goals, ll_blend) to this .npy, "
                                    "for pooling rolling-origin holdouts")
     args = ap.parse_args()
@@ -148,14 +152,17 @@ def main() -> None:
     seasons = list(dict.fromkeys(df.season))
     ti, hi = seasons.index(args.tune), seasons.index(args.holdout)
 
-    tune = df[df.season == args.tune]
-    tune_preds = season_preds(df[df.season.isin(seasons[:ti])], tune)
-    tuned = []
-    for w in WEIGHTS:
-        r, ll = scores(tune_preds, tune, w)
-        tuned.append((float(r.mean()), w))
-        print(f"{args.league} tune {args.tune} w={w:<4} RPS {r.mean():.4f}  LL {ll.mean():.4f}  n={len(r)}")
-    best_w = min(tuned)[1]
+    if args.fixed_w is not None:
+        best_w = args.fixed_w
+    else:
+        tune = df[df.season == args.tune]
+        tune_preds = season_preds(df[df.season.isin(seasons[:ti])], tune)
+        tuned = []
+        for w in WEIGHTS:
+            r, ll = scores(tune_preds, tune, w)
+            tuned.append((float(r.mean()), w))
+            print(f"{args.league} tune {args.tune} w={w:<4} RPS {r.mean():.4f}  LL {ll.mean():.4f}  n={len(r)}")
+        best_w = min(tuned)[1]
 
     hold = df[df.season == args.holdout]
     preds = season_preds(df[df.season.isin(seasons[:hi])], hold)
