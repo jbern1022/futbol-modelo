@@ -1,6 +1,6 @@
 # Futbol Modelo — Research & Evaluation Protocol
 
-**Status:** Draft — first pass, not yet reviewed by the project owner.
+**Status:** Accepted research protocol. Project-level evidence gates and success/retirement governance are defined by `docs/RESEARCH_SUCCESS_CRITERIA.md`; where older working thresholds in this protocol conflict, the accepted Success Criteria govern.
 Predefining these rules *before* looking at more results is the point;
 changing them after seeing how a model performs defeats the purpose
 (see "Protections against retrospective metric selection" below).
@@ -59,32 +59,16 @@ count as validated:
 
 ## Calibration standards
 
-- A market is not claimed "calibrated" until there is enough graded
-  history in the high-confidence band (stated probability ≥ 0.7) to
-  distinguish a real miscalibration from noise. The working threshold,
-  set by precedent: **~100+ graded predictions in that band**, the
-  same bar corners and SOT actually cleared before their isotonic fix
-  was validated (see ADR-003 and the 2026-09-21 recheck in Todoist).
-  Below that, the honest answer is "not enough data yet," not a
-  premature pass or fail — 1X2/TOTAL_GOALS sat at n=9–18 as of
-  2026-09-21 and are explicitly not being treated as calibrated or
-  miscalibrated on that sample.
-- NFL and NBA are **explicitly uncalibrated** until each has a full
-  graded season (or close to it) to fit against — stated plainly in
-  `CLAIMS.md` today and not to be quietly upgraded to "calibrated"
-  without a real isotonic-on-out-of-fold fit backing the claim, per
-  ADR-003's own standard.
-- Calibration is checked via `v_calibration` (see `sql/schema.sql`),
-  segmented by market and league — the same view already backing the
-  Track Record page.
+- Calibration remains mandatory and is evaluated by league, market/prop and relevant confidence band.
+- The former ~100-observation working precedent is superseded for formal decisions by the accepted evidence gates in `docs/RESEARCH_SUCCESS_CRITERIA.md`: **N=350** is the first formal calibration/evidence gate, **N=750** is Strong/meaningful evidence, and **N=1,250** is Mature Evidence.
+- Below N=350, results may be shown descriptively but are not assigned formal On Track / At Risk / Projected Failure status.
+- Calibration uses out-of-fold methods where applicable and is never allowed to be masked by raw accuracy.
+- NFL/NBA or any market without sufficient graded evidence remains explicitly labeled insufficient/uncalibrated rather than prematurely passed or failed.
+- Calibration is checked via `v_calibration` (see `sql/schema.sql`), segmented by market and league.
 
 ## Minimum sample sizes
 
-- Same ~100+ high-confidence-band graded predictions bar as
-  calibration, above.
-- Below that bar, a result is reported as "insufficient data," never
-  silently omitted or (worse) reported with a misleadingly precise
-  percentage.
+Formal project-level sample-size, cohort and status rules are canonical in `docs/RESEARCH_SUCCESS_CRITERIA.md`. This protocol does not maintain a competing threshold.
 
 ## Uncertainty reporting
 
@@ -100,22 +84,15 @@ count as validated:
 
 ## Success/failure thresholds and model-retirement rules
 
-- A model's threshold for being retired: it fails to beat its
-  baseline (above) on the current season's holdout, or a full
-  recalibration shows the realized rate materially outside its stated
-  confidence band at the ~100+ sample threshold, for two consecutive
-  evaluation windows.
-- Retirement does not mean deleting history. Consistent with ADR-002
-  (append-only ledger) and ADR-005 (`model_versions` registry), a
-  retired model's past predictions stay in the ledger exactly as
-  graded; only its use for *future* slates stops. `model_versions`
-  already carries `trained_at`/`training_window`/`train_metrics` per
-  version, so "which version was live when" is always answerable from
-  the schema itself, not from memory.
-- See `docs/RESEARCH_SUCCESS_CRITERIA.md` (draft, pending your
-  sign-off) for the project-level version of this question — when a
-  *sport*, not just a model, should be considered to have failed the
-  shared-platform thesis.
+The canonical rules are in `docs/RESEARCH_SUCCESS_CRITERIA.md`:
+- >=80% raw accuracy per league is the success target at Mature Evidence (N>=1,250), with calibration/probabilistic quality and benchmark outperformance also required.
+- >=80% is the universal prop/market stretch objective, subject to the same safeguards.
+- At N>=350, Bayesian projected-success probability drives On Track / At Risk / Projected Failure status; <5% triggers mandatory review.
+- Champion/challenger promotion and retirement are gate-based, preregistered where confirmatory, and preserve symmetric public evidence for wins and failures.
+- Routine retraining does not reset N; material methodology changes create a new evidence lineage at N=0.
+- Model history is never deleted or rewritten.
+
+These accepted rules supersede the earlier two-window/~100-sample retirement heuristic.
 
 ## Protections against retrospective metric selection
 
