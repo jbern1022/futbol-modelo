@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import psycopg2
 
+from models.nfl_player_props import current_roster_status as nfl_roster_status
 from predictions.slate_window import (SLATE_WINDOW_DAYS, STALE_SLATE_GRADER_VERSION,
                                       nfl_reserve_reason, soccer_absence_reason,
                                       stale_void_reason)
@@ -63,16 +64,6 @@ SOCCER_ABSENCE_SQL = """
 SELECT reason FROM futbol.player_injuries
 WHERE match_id = %s AND player_id = %s AND status = 'out'
 """
-
-
-def nfl_roster_status(season: int) -> dict[str, tuple[str, str]]:
-    """gsis_id (weekly rosters call it player_id) -> (status, status_description_abbr),
-    from the latest week."""
-    import nfl_data_py as nfl
-    r = nfl.import_weekly_rosters([season])
-    r = r[r["week"] == r["week"].max()]
-    return {row.player_id: (row.status, row.status_description_abbr)
-            for row in r.itertuples() if row.player_id}
 
 
 def soccer_absence(cur, player_id: int, match_id: int) -> str | None:

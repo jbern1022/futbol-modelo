@@ -27,6 +27,8 @@ from datetime import datetime
 
 from scipy.stats import norm
 
+from predictions.slate_window import nfl_reserve_reason
+
 MIN_GAMES = 4           # fewer than this and recency-weighting has nothing to weight
 ROLLING_WINDOW = 8       # most recent N games
 # Floor sigma, per stat -- NOT one constant across every column. Yards
@@ -185,3 +187,35 @@ def current_depth_chart(season: int) -> dict[tuple[str, str], list[str]]:
         key = (row[team_col], position)
         chart.setdefault(key, []).append(row["gsis_id"])
     return chart
+
+
+def current_roster_status(season: int) -> dict[str, tuple[str, str]]:
+    """gsis_id -> (status, status_description_abbr) from the latest
+    nflverse weekly roster. Unlike the depth chart, the roster carries
+    reserve-list designations (RES + R01 = IR, R04 = PUP, R05 = NFI), so
+    it catches a player the depth chart still lists. Weekly rosters call
+    the gsis id ``player_id``."""
+    import nfl_data_py as nfl
+    r = nfl.import_weekly_rosters([season])
+    r = r[r["week"] == r["week"].max()]
+    return {row.player_id: (row.status, row.status_description_abbr)
+            for row in r.itertuples() if row.player_id}
+
+
+def reserved_players(roster: dict[str, tuple[str, str]]) -> dict[str, str]:
+    """gsis_id -> reason, for every player on a reserve list."""
+    out = {}
+    for gsis_id, (status, code) in roster.items():
+        reason = nfl_reserve_reason(status, code)
+        if reason:
+            out[gsis_id] = reason
+    return out
+
+
+def depth_roster_disagreement(depth_chart: dict[tuple[str, str], list[str]],
+                              reserved: dict[str, str]) -> list[tuple[str, str, str]]:
+    """(team, position, gsis_id) for each depth-chart player the roster
+    puts on a reserve list -- the cases this gate exists to catch."""
+    return [(team, position, gsis_id)
+            for (team, position), ids in sorted(depth_chart.items())
+            for gsis_id in ids if gsis_id in reserved]
