@@ -246,6 +246,20 @@ spec/backfill-list only).
 | **Limitations** | In-sample only. |
 | **Decision** | **Shipped.** All four live leagues now have red-card factors. |
 
+### 2026-10-08: Treat NULL goalkeeper saves as zero (Todoist `6hhr9v69Mw2hwmVf`)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | API-Football returns `saves: null` (not 0) for a keeper with no saves, so zero-save games are stored as NULL and dropped from PLAYER_SAVES' training label (`saves IS NOT NULL`) and from the rolling `p_saves_r5` (`AVG` skips NULL). Both are inflated; fixing them should improve over/under lines. |
+| **Proposed change** | A. Label only: train on NULL → 0. B. Label and feature: also rebuild `p_saves_r5` with the zeros. Rule: NULL → 0 only for keepers with ≥ 45 min whose opponent shots on target − goals conceded ≤ 1; other NULLs stay unknown. |
+| **Expected effect** | Lower Poisson deviance and log loss at the 3.5 line; mean predicted saves closer to actual. |
+| **Data cutoff** | EPL, SERIE_A, MLS, LA_LIGA keepers with features (9,687 rows; 8,971 with saves, 724 NULL relabelled 0). Time splits at 2025-08-01, 2026-03-01 and 2026-06-01, trained on earlier games, scored on later ones. `scripts/experiment_saves_null_as_zero.py`. |
+| **Evaluation method** | Same features and LightGBM Poisson params as `fit_player_saves_model`. Paired per-row deviance and log-loss differences against the production model on the same test rows, bootstrap 95% CIs. |
+| **Result (premise)** | **Confirmed.** Five live API calls: the one NULL keeper had opponent shots on goal equal to goals conceded (0 saves). Across stored rows, NULL-saves keepers have shots on target − conceded of ≈ 0 (LA_LIGA n=324, mean −0.01; MLS n=402, mean 0.13), while non-NULL keepers average 3.2 on that gap, equal to their mean saves. Mean saves in training: LA_LIGA 3.13 → 2.87, MLS 3.30 → 3.07 when NULLs count as 0. `p_saves_r5` averages 3.21 in production vs. 2.99 with zeros. |
+| **Result (model)** | **No detectable gain.** Split 2026-03-01 (n=1,286): log loss production 0.6639, A 0.6655, B 0.6654; B − production deviance −0.0023 [−0.0236, +0.0182], log loss +0.0015 [−0.0060, +0.0087]. Split 2025-08-01 (n=2,157): B − production deviance +0.0018 [−0.0142, +0.0176], log loss +0.0035 [−0.0023, +0.0093]. Split 2026-06-01 (n=647): +0.0059 [−0.0234, +0.0359], +0.0073 [−0.0036, +0.0183]. Calibration swings the other way: production over-predicts (mean saves 3.22–3.27 vs. actual 3.12; P(over 3.5) +2 points), A and B under-predict (≈3.00; −3 to −4 points). |
+| **Limitations** | The relabelling rule is inferred from shot counts, not from a second data source. 15 NULL rows stay unknown. Test rows are mostly MLS and La Liga (EPL/SERIE_A ≈ 75 each at the main split). Point estimates vary by about ±0.001 between reruns (LightGBM row order), well inside the intervals. Saves per game may have drifted upward (test mean 3.12 vs. 3.0 in training with zeros), which would favour the biased model. |
+| **Decision** | **Not promoted.** The data issue is real but fixing it does not measurably help, and it shifts the model from slightly high to slightly low. Revisit when EPL/SERIE_A have more keeper-games (the player-stats backfill adds ~1,900 Serie A and ~760 EPL matches), or if a direct calibration check at the 3.5 line shows a bias worth correcting. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
