@@ -7,7 +7,8 @@ as this project's other DB/network-gated ingestion functions.
 """
 import pytest
 
-from models.nfl_player_props import candidate_lines, prob_over
+from models.nfl_player_props import (candidate_lines, depth_roster_disagreement, prob_over,
+                                     reserved_players)
 
 
 def test_prob_over_is_higher_for_a_lower_line():
@@ -38,3 +39,34 @@ def test_candidate_lines_bracket_the_average():
     lines = candidate_lines(avg_yards=220.0, sigma=45.0)
     assert any(line < 220.0 for line in lines)
     assert any(line > 220.0 for line in lines)
+
+
+# --- roster-status gate (ADR-012 follow-up) --------------------------------
+
+
+def test_reserved_players_keeps_only_reserve_list_statuses():
+    roster = {
+        "00-ACHANE": ("RES", "R01"),
+        "00-PUP": ("RES", "R04"),
+        "00-ACTIVE": ("ACT", "A01"),
+        "00-PRACTSQ": ("DEV", "E01"),
+    }
+    assert reserved_players(roster) == {
+        "00-ACHANE": "on Reserve/Injured (IR)",
+        "00-PUP": "on Reserve/Physically Unable to Perform (PUP)",
+    }
+
+
+def test_reserved_players_empty_roster_is_empty():
+    assert reserved_players({}) == {}
+
+
+def test_disagreement_lists_depth_chart_players_on_reserve():
+    depth = {("MIA", "RB"): ["00-ACHANE", "00-OTHER"], ("BUF", "QB"): ["00-ALLEN"]}
+    reserved = {"00-ACHANE": "on Reserve/Injured (IR)"}
+    assert depth_roster_disagreement(depth, reserved) == [("MIA", "RB", "00-ACHANE")]
+
+
+def test_disagreement_is_empty_when_chart_and_roster_agree():
+    depth = {("BUF", "QB"): ["00-ALLEN"]}
+    assert depth_roster_disagreement(depth, {"00-ELSEWHERE": "on Reserve/Injured (IR)"}) == []

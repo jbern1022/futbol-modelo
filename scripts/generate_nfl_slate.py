@@ -43,7 +43,9 @@ import pandas as pd
 import psycopg2
 
 from models.nfl_player_props import candidate_lines as player_candidate_lines
-from models.nfl_player_props import current_depth_chart, prob_over as player_prob_over
+from models.nfl_player_props import (current_depth_chart, current_roster_status,
+                                     depth_roster_disagreement, reserved_players)
+from models.nfl_player_props import prob_over as player_prob_over
 from models.nfl_player_props import prob_anytime_td as player_prob_anytime_td
 from models.nfl_player_props import rolling_td_rate, rolling_yardage_stats
 from models.nfl_power_ratings import NFLPowerRatings
@@ -174,10 +176,14 @@ TD_ELIGIBLE_POSITIONS = ("QB", "RB", "WR", "TE")
 
 
 def build_player_candidates(cur, depth_chart: dict, team_abbr: str,
-                            kickoff: datetime) -> list[Inference]:
+                            kickoff: datetime,
+                            reserved: dict[str, str] | None = None) -> list[Inference]:
+    reserved = reserved or {}
     candidates = []
     for position, market_columns in STAT_COLUMN_BY_MARKET.items():
         for nfl_player_id in depth_chart.get((team_abbr, position), []):
+            if nfl_player_id in reserved:
+                continue  # on IR/PUP/NFI per the latest weekly roster, whatever the depth chart says
             cur.execute("SELECT player_id, full_name FROM futbol.players WHERE nfl_player_id = %s",
                        (nfl_player_id,))
             row = cur.fetchone()
@@ -266,6 +272,15 @@ def main() -> None:
 
             lines_by_game_id = _market_lines(args.season)
             depth_chart = current_depth_chart(args.season)
+            try:
+                reserved = reserved_players(current_roster_status(args.season))
+            except Exception as exc:  # fail open on the roster, but never silently
+                print(f"WARNING: roster-status gate unavailable ({exc!r}); "
+                     f"falling back to the depth chart alone")
+                reserved = {}
+            for team, position, gsis_id in depth_roster_disagreement(depth_chart, reserved):
+                print(f"  GATE {team} {position} {gsis_id}: depth chart lists a player "
+                     f"{reserved[gsis_id]}; skipped")
 
             for (match_id, external_ref, home, away, home_id, away_id,
                 home_abbr, away_abbr, kickoff) in fixtures:
@@ -282,8 +297,8 @@ def main() -> None:
                     candidates = (build_candidates(model, home, away, home_id, away_id,
                                                    spread_line, total_line)
                                  if has_market_line else [])
-                    candidates += build_player_candidates(cur, depth_chart, home_abbr, kickoff)
-                    candidates += build_player_candidates(cur, depth_chart, away_abbr, kickoff)
+                    candidates += build_player_candidates(cur, depth_chart, home_abbr, kickoff, reserved)
+                    candidates += build_player_candidates(cur, depth_chart, away_abbr, kickoff, reserved)
                     if not candidates:
                         print(f"  SKIP {home} vs {away}: no market line and no player "
                              f"prop candidates")

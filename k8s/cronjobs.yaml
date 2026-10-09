@@ -339,7 +339,11 @@ spec:
             command: ["/bin/sh", "-c"]
             args:
               - |
-                python scripts/check_pipeline_health.py
+                # check_pipeline_health exits non-zero when it alerts; the
+                # prune must still run, so the two are not chained with &&.
+                python scripts/check_pipeline_health.py; health=$?
+                python scripts/prune_live_winprob_runs.py --execute || exit 1
+                exit $health
             env:
             - name: PGBOUNCER_CANARY_PASSWORD
               valueFrom:
