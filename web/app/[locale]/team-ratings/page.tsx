@@ -40,6 +40,7 @@ const LEAGUE_LABELS: Record<string, string> = {
   EPL: "Premier League",
   SERIE_A: "Serie A",
   LA_LIGA: "La Liga",
+  BUNDESLIGA: "Bundesliga",
   MLS: "MLS",
 };
 

@@ -31,7 +31,7 @@ interface StandingsData {
 // draws worth a point, mixing group-stage and knockout results into one
 // table that doesn't correspond to anything that actually happened.
 // Real leagues only, where "standings" means what it normally means.
-const LEAGUES = ["EPL", "SERIE_A", "LA_LIGA", "MLS"];
+const LEAGUES = ["EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA", "MLS"];
 
 export default function StandingsPage() {
   const t = useTranslations("Standings");

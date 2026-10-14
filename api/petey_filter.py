@@ -51,7 +51,7 @@ ALLOWED_MARKET_VALUES = {
     "MONEYLINE", "SPREAD", "TOTAL_POINTS", "PLAYER_PASS_YARDS", "PLAYER_RUSH_YARDS",
     "PLAYER_POINTS",
 }
-ALLOWED_LEAGUE_VALUES = {"EPL", "LA_LIGA", "MLS", "NBA", "NFL", "SERIE_A", "WC"}
+ALLOWED_LEAGUE_VALUES = {"BUNDESLIGA", "EPL", "LA_LIGA", "MLS", "NBA", "NFL", "SERIE_A", "WC"}
 ALLOWED_SIDE_VALUES = {"over", "under", "home", "draw", "away", "yes", "no"}
 ALLOWED_OUTCOME_VALUES = {"hit", "miss"}  # v_graded_predictions already excludes 'void'
 

@@ -1450,7 +1450,7 @@ def get_player_stats(
 
 
 @app.get("/v1/standings", response_model=StandingsResponse)
-def get_standings(league: str = Query(..., description="EPL, SERIE_A, MLS, LA_LIGA, or WC"),
+def get_standings(league: str = Query(..., description="EPL, SERIE_A, MLS, LA_LIGA, BUNDESLIGA, or WC"),
                   season: Optional[str] = Query(None,
                       description="Defaults to the season with the most recent match")):
     """Classic points-table standings (3/1/0, tiebreak on goal
