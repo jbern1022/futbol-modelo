@@ -325,6 +325,19 @@ spec/backfill-list only).
 | **Limitations** | Same as the Bundesliga entry. The large gain over the league-average baseline likely reflects how unequal the league is (a few clubs far stronger than the rest), which makes the naive baseline weak; it should not be read as the model being better here than elsewhere. No Understat xG exists for this league, so the xG blend could only use API-Football xG, which my 2026-10-14 sample found reliable from 2023-24 and unusable in 2021-22 and mostly in 2022-23; whether a blend helps is untested. |
 | **Decision** | **Baseline viable; no production change.** The results-only model works for the Eredivisie. The xG question, props and red-card factors remain untested. |
 
+### 2026-10-14: Pre-registration, Bundesliga: fixed 50/50 goals + xG blend (committed before any Bundesliga xG is in the database)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | The fixed 50/50 goals + xG blend from ADR-016 beats goals-only Dixon-Coles on Bundesliga 1X2, measured by RPS. |
+| **Why this is an untouched test** | w = 0.5 was read off EPL and SERIE_A and confirmed on La Liga (ADR-016); no Bundesliga data was used to choose it. The only Bundesliga result seen so far is the goals-only baseline (entry above, commit c6c0954), which involves no xG. The Understat Bundesliga xG has been looked at only to count coverage (306 of 306 matches with both xG values in each of 2021-22 to 2025-26), not compared with outcomes. |
+| **Proposed change** | None to production. Only `scripts/experiment_xg_blend.py` changes: its `--league` choices accept `BUNDESLIGA`. |
+| **Test** | For each holdout season run `python scripts/experiment_xg_blend.py --league BUNDESLIGA --tune <previous season> --holdout <season> --fixed-w 0.5 --dump <file>.npy`, with holdouts 2022-23, 2023-24, 2024-25 and 2025-26 (weekly walk-forward; each fit uses only earlier seasons, so 2022-23 is trained on 2021-22 alone). Pool the per-match RPS differences (blend minus goals-only) across the four holdouts and take the bootstrap 95% CI, as for La Liga. |
+| **Success criterion (fixed now)** | The pooled RPS-difference CI lies entirely below 0. Anything else is a fail and is recorded as a fail; the Bundesliga then stays goals-only. Log loss and the per-season differences are reported but are not the decision rule. |
+| **Prerequisites** | Understat xG for 2021-22 to 2025-26 linked into `team_match_stats.xg` for the Bundesliga matches (backfill steps 2a and 2c). If any matches lack both xG values, the count is stated with the result and the test runs on the matches that have them. |
+| **What this does not decide** | The scale of API-Football xG for the live 2026-27 season (existing leagues rescale it by x1.108; a Bundesliga factor needs its own estimate from matches that have both sources), and the red-card, in-play and props validations, which each get their own entry. Ligue 1 would get its own pre-registration. |
+| **Decision if passed** | A follow-up ADR adds `BUNDESLIGA` to `XG_BLEND_LEAGUES`. Not done by this entry. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and

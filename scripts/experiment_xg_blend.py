@@ -97,7 +97,7 @@ def scores(preds: dict, season: pd.DataFrame, w: float) -> tuple[np.ndarray, np.
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA"])
+    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA"])
     ap.add_argument("--tune", required=True)
     ap.add_argument("--holdout", required=True)
     ap.add_argument("--fixed-w", type=float, choices=WEIGHTS, default=None,
