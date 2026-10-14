@@ -81,6 +81,10 @@
     "stated": "Declarado",
     "realized": "Realizado"
   },
+  "RecentlyGraded": {
+    "heading": "Calificadas recientemente",
+    "subtitle": "Las últimas predicciones calificadas, tanto aciertos como fallos."
+  },
   "MarketComparisonSection": {
     "homeWin": "Victoria local",
     "awayWin": "Victoria visitante",

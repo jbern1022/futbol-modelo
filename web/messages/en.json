@@ -81,6 +81,10 @@
     "stated": "Stated",
     "realized": "Realized"
   },
+  "RecentlyGraded": {
+    "heading": "Recently graded",
+    "subtitle": "The latest predictions to be graded, hits and misses alike."
+  },
   "MarketComparisonSection": {
     "homeWin": "Home win",
     "awayWin": "Away win",
