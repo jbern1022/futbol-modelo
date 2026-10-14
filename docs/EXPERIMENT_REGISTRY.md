@@ -273,6 +273,19 @@ spec/backfill-list only).
 | **Limitations** | One league and one holdout season; no check across seasons or leagues. The ridge penalty (1.0) and the 3-day and 14-day thresholds were not tuned. This tests rest and congestion together, not one feature group at a time as the ticket asked, and does not include travel distance, time zones or national-team minutes. No comparison with the dynamic-rating candidate. Postponed fixtures are excluded by the finished-status filter. Coefficients come from 757 matches, so they are noisy; the opposite sign on own rest is not evidence of a real effect. Run once (34 seconds); per-match scores were written only to a temporary file, not committed. |
 | **Decision** | **Not promoted.** Nothing beats the baseline on a held-out season, so the production rates are unchanged. Travel and time-zone features, the other three leagues (MLS is where the ticket expects the strongest effect) and a second EPL holdout season remain untested. Revisit with MLS before treating the idea as closed. |
 
+### 2026-10-14: Rest and fixture congestion adjustment to goal rates, MLS (follow-up to the EPL entry above)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Same as the EPL entry. The ticket expected the effect to be strongest in MLS. |
+| **Proposed change** | Identical adjustment and fit to the EPL entry (`short_rest_own`, `short_rest_opp`, `congestion_diff`, ridge penalty 1.0, baseline as offset). `scripts/experiment_rest_congestion.py --league MLS --train 2024 2025 --holdout 2026`. Baseline is goals-only Dixon-Coles at production settings, refit weekly (MLS is not in `XG_BLEND_LEAGUES`). |
+| **Expected effect** | Small, and larger than EPL if the ticket's expectation holds. |
+| **Data cutoff** | Coefficients fit on the 2024 and 2025 seasons (1,044 matches). Scored once on the 2026 season to date (420 matches; the season was still in progress). `team_fixtures` covers 29–30 MLS teams in every year 2021–2026. Run on `main` at `d892a70`. |
+| **Evaluation method** | Same as the EPL entry: paired per-match RPS and log loss against the unadjusted baseline, bootstrap 95% CI, diff is adjusted minus baseline (positive is worse). |
+| **Result** | Coefficients (log-rate): short_rest_own +0.088, short_rest_opp -0.017, congestion_diff -0.038. 15.4% of training team-matches were on short rest. Holdout RPS 0.2255 → 0.2254, diff -0.0001, 95% CI [-0.0019, +0.0016]. Log loss 1.0628 → 1.0619, diff -0.0008, 95% CI [-0.0062, +0.0045]. **No detectable change:** the point estimates are marginally better, and both intervals are centred on zero and about as wide as the EPL ones. As in EPL, the own-rest coefficient has the opposite sign to the hypothesis (+9.2% goals), which suggests it is noise or confounded rather than a tiredness effect. |
+| **Limitations** | All the EPL limitations apply: untuned ridge penalty and thresholds, rest and congestion tested together, no comparison with the dynamic-rating candidate, one holdout season. The 2026 holdout is a partial season. MLS has the effect the ticket was most interested in, travel distance and time zones, and this run does not test it. Fixture coverage is cup and league only; national-team call-ups are not in `team_fixtures`. |
+| **Decision** | **Not promoted.** Together with the EPL entry, two leagues now show no measurable gain from rest and congestion at these definitions. Production rates are unchanged. SERIE_A and LA_LIGA were not run. A travel and time-zone feature set is the remaining untested part of Todoist `6hf54j2hMP87xjR7`. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
