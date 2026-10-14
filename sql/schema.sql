@@ -561,11 +561,10 @@ ORDER BY league, season, market;
 
 -- UI half of the real bookmaker odds comparison -- backs
 -- /v1/odds-comparison and the Track Record page's market comparison
--- section. Not gated on grading (unlike v_calibration/v_season_scorecard):
--- match_odds is fetched for still-scheduled fixtures, so this is mostly
--- pre-game model estimate vs pre-game market estimate; rows survive
--- past kickoff untouched, so already-graded matches show up here too
--- once enough time passes. See sql/migrations/0011_market_comparison_view.sql.
+-- section. Scheduled fixtures only (migration 0043): pre-game model
+-- estimate vs pre-game market estimate, skipping void-graded predictions.
+-- Graded matches live in v_graded_predictions / v_closing_line_value.
+-- See sql/migrations/0011_market_comparison_view.sql and 0043.
 CREATE OR REPLACE VIEW v_market_comparison AS
 SELECT
     l.code            AS league,
@@ -585,7 +584,9 @@ FROM (
         ORDER BY p.prediction_id
     ) AS rn
     FROM predictions p
+    LEFT JOIN prediction_grades g ON g.prediction_id = p.prediction_id
     WHERE p.market = '1X2'
+      AND (g.outcome IS NULL OR g.outcome <> 'void')
 ) p
 JOIN matches m ON m.match_id = p.match_id
 JOIN teams th ON th.team_id = m.home_team_id
@@ -594,6 +595,7 @@ JOIN seasons s ON s.season_id = m.season_id
 JOIN leagues l ON l.league_id = s.league_id
 JOIN match_odds mo ON mo.match_id = m.match_id AND LOWER(mo.selection) = p.side
 WHERE p.rn = 1
+  AND m.status = 'scheduled'
 GROUP BY l.code, m.match_id, th.name, ta.name, m.kickoff_utc, m.status, p.side, p.probability;
 
 -- Petey v2 (docs/petey-spec.md, ADR-003): the one fixed, safe base query
