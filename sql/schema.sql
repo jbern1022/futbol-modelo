@@ -715,3 +715,22 @@ CREATE TABLE IF NOT EXISTS team_ratings (
     computed_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (league, team)
 );
+
+-- Every competitive fixture a tracked team played, in any competition
+-- (league, domestic cups, continental), for rest/congestion features.
+-- Separate from `matches` on purpose: cup and continental games must
+-- never enter training or grading. See sql/migrations/0042_team_fixtures.sql.
+CREATE TABLE IF NOT EXISTS team_fixtures (
+    team_id        INT NOT NULL REFERENCES teams(team_id),
+    api_fixture_id BIGINT NOT NULL,
+    kickoff_utc    TIMESTAMPTZ NOT NULL,
+    competition    TEXT NOT NULL,
+    api_league_id  INT NOT NULL,
+    is_home        BOOLEAN NOT NULL,
+    status_short   TEXT,
+    fetched_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (team_id, api_fixture_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_fixtures_team_kickoff
+    ON team_fixtures (team_id, kickoff_utc);
