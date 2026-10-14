@@ -34,6 +34,7 @@ LEAGUES = {
     "EPL":     {"soccerdata": "ENG-Premier League", "code": "EPL",     "name": "Premier League"},
     "SERIE_A": {"soccerdata": "ITA-Serie A",        "code": "SERIE_A", "name": "Serie A"},
     "LA_LIGA": {"soccerdata": "ESP-La Liga",        "code": "LA_LIGA", "name": "La Liga"},
+    "BUNDESLIGA": {"soccerdata": "GER-Bundesliga",  "code": "BUNDESLIGA", "name": "Bundesliga"},
     "WC":      {"soccerdata": "INT-World Cup",      "code": "WC",      "name": "World Cup",
                 "is_international": True},
 }

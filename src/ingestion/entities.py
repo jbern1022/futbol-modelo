@@ -107,6 +107,39 @@ TEAM_SEED: dict[str, dict[str, str]] = {
     "Venezia":            {"fbref": "Venezia", "understat": "Venezia"},
     "Frosinone":          {"fbref": "Frosinone", "understat": "Frosinone"},
 
+    # ---- Bundesliga (2026-10, phase 2 step 1) ----
+    # Canonical = the name API-Football's backfill creates (after NAME_ALIASES);
+    # understat = the name Understat uses 2021-25, checked one-to-one against
+    # API-Football's 28 clubs. No fbref names yet: FBref is not used for the
+    # Bundesliga, and its names must come from a live diff, not a guess.
+    # Fortuna Dusseldorf, SC Paderborn 07 and SV Elversberg (2026-27 only)
+    # have no Understat history and are created from API-Football directly.
+    "1. FC Heidenheim":        {"understat": "FC Heidenheim"},
+    "1. FC Köln":              {"understat": "FC Cologne"},
+    "1899 Hoffenheim":         {"understat": "Hoffenheim"},
+    "Arminia Bielefeld":       {"understat": "Arminia Bielefeld"},
+    "Bayer Leverkusen":        {"understat": "Bayer Leverkusen"},
+    "Bayern Munich":           {"understat": "Bayern Munich"},
+    "Borussia Dortmund":       {"understat": "Borussia Dortmund"},
+    "Borussia Monchengladbach":{"understat": "Borussia M.Gladbach"},
+    "Eintracht Frankfurt":     {"understat": "Eintracht Frankfurt"},
+    "FC Augsburg":             {"understat": "Augsburg"},
+    "FC Schalke 04":           {"understat": "Schalke 04"},
+    "FC St. Pauli":            {"understat": "St. Pauli"},
+    "FSV Mainz 05":            {"understat": "Mainz 05"},
+    "Hamburger SV":            {"understat": "Hamburger SV"},
+    "Hertha Berlin":           {"understat": "Hertha Berlin"},
+    "Holstein Kiel":           {"understat": "Holstein Kiel"},
+    "RB Leipzig":              {"understat": "RasenBallsport Leipzig"},
+    "SC Freiburg":             {"understat": "Freiburg"},
+    "SV Darmstadt 98":         {"understat": "Darmstadt"},
+    "SpVgg Greuther Furth":    {"understat": "Greuther Fuerth"},
+    "Union Berlin":            {"understat": "Union Berlin"},
+    "VfB Stuttgart":           {"understat": "VfB Stuttgart"},
+    "VfL Bochum":              {"understat": "Bochum"},
+    "VfL Wolfsburg":           {"understat": "Wolfsburg"},
+    "Werder Bremen":           {"understat": "Werder Bremen"},
+
     # ---- World Cup 2026: full 48-team field ----
     # Hosts
     "Canada":             {"fbref": "Canada"},

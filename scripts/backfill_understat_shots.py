@@ -53,7 +53,7 @@ WHERE l.code = %s AND th.name = %s AND ta.name = %s AND m.status = 'final'
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA"])
+    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA"])
     ap.add_argument("--seasons", nargs="+", required=True, help="soccerdata season codes, e.g. 2122")
     ap.add_argument("--dry-run", action="store_true",
                     help="schedule mapping only: no match-page fetches, no writes")

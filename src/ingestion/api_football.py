@@ -43,7 +43,29 @@ LEAGUE_SEARCH = {
     "SERIE_A": ("Serie A", "Italy"),
     "MLS": ("Major League Soccer", "USA"),
     "LA_LIGA": ("La Liga", "Spain"),
+    "BUNDESLIGA": ("Bundesliga", "Germany"),
 }
+
+# Explicit API-Football league ids. resolve_league_id() otherwise takes the
+# first hit of a name search, which for "Bundesliga" can be another German
+# competition. Leagues not listed here keep using the search.
+API_LEAGUE_IDS = {"BUNDESLIGA": 78}
+
+# Leagues whose API-Football fixture list also carries non-league rounds
+# (the Bundesliga feed includes the 1-2 relegation play-off matches per
+# season, rounds "Relegation Round" / "Final"). Only rounds starting with
+# the given prefix are kept. Leagues not listed are not filtered.
+REGULAR_SEASON_ROUND_PREFIX = {"BUNDESLIGA": "Regular Season"}
+
+
+def regular_season_only(league_code: str, fixtures: list) -> list:
+    prefix = REGULAR_SEASON_ROUND_PREFIX.get(league_code)
+    if prefix is None:
+        return fixtures
+    kept = [f for f in fixtures if (f["league"].get("round") or "").startswith(prefix)]
+    if len(kept) != len(fixtures):
+        log.info("%s: dropped %d non-regular-season fixtures", league_code, len(fixtures) - len(kept))
+    return kept
 
 NAME_ALIASES = {
     "AC Milan": "Milan",
@@ -62,6 +84,13 @@ NAME_ALIASES = {
     "Sheffield Utd": "Sheffield United",
     "Ipswich": "Ipswich Town",
     "Oviedo": "Real Oviedo",
+    # Bundesliga: API-Football spells these clubs two ways across seasons
+    # for the same id; the first spelling seen would otherwise become the
+    # teams.name (resolve_or_create_team_id).
+    "Bayern München": "Bayern Munich",
+    "Borussia Mönchengladbach": "Borussia Monchengladbach",
+    "Vfl Bochum": "VfL Bochum",
+    "FC Heidenheim": "1. FC Heidenheim",
 }
 
 # /tmp, not Path.home(): the container's home dir (/app, per the
@@ -205,7 +234,8 @@ def link_fixture_ids(league_code: str, season_start_year: int) -> int:
     league_id = resolve_league_id(session, league_code)
 
     conn = psycopg2.connect(DSN)
-    fixtures = _get(session, "fixtures", {"league": league_id, "season": season_start_year})
+    fixtures = regular_season_only(
+        league_code, _get(session, "fixtures", {"league": league_id, "season": season_start_year}))
     log.info("%d total fixtures (all statuses) from API-Football", len(fixtures))
 
     linked, already_linked, skipped_team, skipped_match = 0, 0, 0, 0
@@ -620,6 +650,8 @@ def _save_cache(cache: dict):
 
 
 def resolve_league_id(session: requests.Session, league_code: str) -> int:
+    if league_code in API_LEAGUE_IDS:
+        return API_LEAGUE_IDS[league_code]
     cache = _load_cache()
     if league_code in cache.get("league_ids", {}):
         return cache["league_ids"][league_code]
@@ -789,7 +821,7 @@ def load_fixture_players(session, cur, match_id: int, fixture_id: int,
 # year unconditionally, which created a real mismatch: a second,
 # duplicate season row the moment loader.py or a human ever looked up
 # "the current EPL season" by its established hyphenated format.
-CROSS_YEAR_LEAGUES = ("EPL", "SERIE_A", "LA_LIGA")
+CROSS_YEAR_LEAGUES = ("EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA")
 
 
 def season_label_for(league_code: str, season_start_year: int) -> str:
@@ -839,8 +871,8 @@ def backfill_primary(league_code: str, season_start_year: int):
     season_label = season_label_for(league_code, season_start_year)
 
     conn = psycopg2.connect(DSN)
-    fixtures = _get(session, "fixtures",
-                    {"league": league_id_api, "season": season_start_year})
+    fixtures = regular_season_only(league_code, _get(
+        session, "fixtures", {"league": league_id_api, "season": season_start_year}))
     log.info("%d total fixtures (all statuses) from API-Football", len(fixtures))
 
     created, updated_stats = 0, 0
@@ -964,8 +996,8 @@ def backfill(league_code: str, season_start_year: int):
     league_id = resolve_league_id(session, league_code)
 
     conn = psycopg2.connect(DSN)
-    fixtures = _get(session, "fixtures",
-                    {"league": league_id, "season": season_start_year, "status": "FT"})
+    fixtures = regular_season_only(league_code, _get(
+        session, "fixtures", {"league": league_id, "season": season_start_year, "status": "FT"}))
     log.info("%d completed fixtures from API-Football", len(fixtures))
 
     updated, skipped_team, skipped_match = 0, 0, 0
