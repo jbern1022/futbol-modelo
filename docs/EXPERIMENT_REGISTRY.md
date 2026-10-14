@@ -299,6 +299,32 @@ spec/backfill-list only).
 | **Limitations** | The comparison is against a weak baseline (league-average rates); the protocol also asks for Elo and market-implied probabilities, and historical Bundesliga odds are not available from API-Football (current season only). Scores only: no xG blend, no props, no red-card or in-play factors. The first holdout has only two seasons of history. One league, one method. The RPS values are not directly comparable with the EPL or MLS entries above, which use other settings and holdouts. |
 | **Decision** | **Baseline viable; no production change.** Dixon-Coles transfers to the Bundesliga. The xG blend, red-card factors and props each still need their own validated entry before the league goes live. Data found in the same spike: Understat has 306 of 306 matches with xG in every season 2021-25; API-Football xG is clean from 2023-24; the two sources use different club names. |
 
+### 2026-10-14: Production Dixon-Coles baseline on Ligue 1 (spike before adding a league)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Same as the Bundesliga entry above: the production Dixon-Coles setup beats a league-average baseline with no league-specific change. |
+| **Proposed change** | None to production. `scripts/experiment_new_league_baseline.py --league-id 61 --first-season 2021 --holdouts 2023 2024 2025`. |
+| **Expected effect** | RPS and log loss better than the naive baseline. |
+| **Data cutoff** | API-Football regular-season results, 2021-22 to 2025-26: 380 matches in each of 2021-22 and 2022-23 (20 teams), then 306 (18 teams) in 2023-24 and 2024-25, and 305 in 2025-26. The one match missing from 2025-26 was not investigated. Same walk-forward and evaluation method as the Bundesliga entry. |
+| **Evaluation method** | Same as the Bundesliga entry. |
+| **Result** | 2023-24 (305 scored): RPS 0.2331 → 0.2146, diff -0.0186 [-0.0303, -0.0061]; LL 1.0878 → 1.0383, diff -0.0495 [-0.0846, -0.0128]. 2024-25 (306): RPS 0.2363 → 0.2081, diff -0.0282 [-0.0429, -0.0134]; LL 1.0542 → 0.9756, diff -0.0786 [-0.1216, -0.0334]. 2025-26 (304): RPS 0.2294 → 0.2064, diff -0.0230 [-0.0372, -0.0091]; LL 1.0640 → 0.9961, diff -0.0679 [-0.1092, -0.0282]. Both metrics improve with the interval clear of zero in all three holdouts. The league's outcome rates move a lot between seasons (home win 39.2% in 2023-24, 46.7% in 2024-25; draws 20.3% in 2024-25), and the model lags: in 2024-25 it predicted home 42.1% against 46.7% realized, draw 25.2% against 20.3%. |
+| **Limitations** | Same as the Bundesliga entry: league-average baseline only, no Elo or market baseline, scores only (no xG, props, red-card or in-play factors), one method, and RPS not directly comparable with other leagues. The first holdout trains on 760 matches from two 20-team seasons, a different league shape from the 18-team seasons it is scored on. |
+| **Decision** | **Baseline viable; no production change.** Dixon-Coles transfers to Ligue 1. Understat coverage and club-name mapping for Ligue 1 were not checked in this entry. |
+
+### 2026-10-14: Production Dixon-Coles baseline on the Eredivisie (spike before adding a league)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Same as the Bundesliga entry. The Eredivisie has no Understat coverage, so only the results-only baseline is testable. |
+| **Proposed change** | None to production. `scripts/experiment_new_league_baseline.py --league-id 88 --first-season 2021 --holdouts 2023 2024 2025`. |
+| **Expected effect** | RPS and log loss better than the naive baseline. |
+| **Data cutoff** | API-Football regular-season results, 2021-22 to 2025-26: 306 matches and 18 teams in every season. Same walk-forward and evaluation method as the Bundesliga entry. |
+| **Evaluation method** | Same as the Bundesliga entry. |
+| **Result** | 2023-24 (305 scored): RPS 0.2314 → 0.1814, diff -0.0500 [-0.0665, -0.0339]; LL 1.0750 → 0.9232, diff -0.1519 [-0.2012, -0.1008]. 2024-25 (305): RPS 0.2286 → 0.1988, diff -0.0298 [-0.0475, -0.0112]; LL 1.0697 → 0.9833, diff -0.0864 [-0.1426, -0.0238]. 2025-26 (305): RPS 0.2277 → 0.1967, diff -0.0310 [-0.0475, -0.0150]; LL 1.0744 → 0.9871, diff -0.0873 [-0.1394, -0.0323]. Both metrics improve with the interval clear of zero in all three holdouts, with the largest gains of the three leagues tested the same day. Predicted and realized outcome rates track closely each season (for example 2024-25 predicted H/D/A 0.447/0.230/0.323 against 0.452/0.252/0.295 realized). |
+| **Limitations** | Same as the Bundesliga entry. The large gain over the league-average baseline likely reflects how unequal the league is (a few clubs far stronger than the rest), which makes the naive baseline weak; it should not be read as the model being better here than elsewhere. No Understat xG exists for this league, so the xG blend could only use API-Football xG, which my 2026-10-14 sample found reliable from 2023-24 and unusable in 2021-22 and mostly in 2022-23; whether a blend helps is untested. |
+| **Decision** | **Baseline viable; no production change.** The results-only model works for the Eredivisie. The xG question, props and red-card factors remain untested. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
