@@ -286,6 +286,19 @@ spec/backfill-list only).
 | **Limitations** | All the EPL limitations apply: untuned ridge penalty and thresholds, rest and congestion tested together, no comparison with the dynamic-rating candidate, one holdout season. The 2026 holdout is a partial season. MLS has the effect the ticket was most interested in, travel distance and time zones, and this run does not test it. Fixture coverage is cup and league only; national-team call-ups are not in `team_fixtures`. |
 | **Decision** | **Not promoted.** Together with the EPL entry, two leagues now show no measurable gain from rest and congestion at these definitions. Production rates are unchanged. SERIE_A and LA_LIGA were not run. A travel and time-zone feature set is the remaining untested part of Todoist `6hf54j2hMP87xjR7`. |
 
+### 2026-10-14: Production Dixon-Coles baseline on the Bundesliga (spike before adding a league)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | The production Dixon-Coles setup (`dc_fit_settings` xi and ridge, goals-only) beats a league-average baseline on the Bundesliga without any league-specific change, so adding the league is a data and wiring task, not a modelling one. |
+| **Proposed change** | None to production. `scripts/experiment_new_league_baseline.py` reads Bundesliga results from API-Football (league 78) and scores a weekly walk-forward fit offline. No database access; nothing written but a results cache. |
+| **Expected effect** | RPS and log loss better than the naive baseline. |
+| **Data cutoff** | 2021-22 to 2025-26 results, regular-season rounds only (306 matches and 18 teams per season; the API also lists the 1–2 relegation play-off matches in the league, which are excluded). Each holdout season is scored using only matches before each fit date, with seasons before it as history. |
+| **Evaluation method** | Paired per-match RPS and log loss against the league-average home/draw/away rates of the history, bootstrap 95% CI on the difference (negative is better for DC). Matches involving a team with no history are skipped, as in production. |
+| **Result** | 2023-24 (304 scored): RPS 0.2284 → 0.1965, diff -0.0320 [-0.0466, -0.0173]; LL 1.0786 → 0.9831, diff -0.0955 [-0.1393, -0.0485]. 2024-25 (301): RPS 0.2378 → 0.2157, diff -0.0222 [-0.0383, -0.0059]; LL 1.0983 → 1.0441, diff -0.0543 [-0.1087, +0.0015]. 2025-26 (305): RPS 0.2317 → 0.1957, diff -0.0360 [-0.0507, -0.0206]; LL 1.0696 → 0.9734, diff -0.0962 [-0.1440, -0.0455]. RPS improves with the interval clear of zero in all three holdouts; log loss in two of three. 2024-25 is the weak one: the home win rate fell to 38.5% while the model predicted 45.1% (realized home rate by season: 46.7, 47.4, 43.8, 38.6, 43.8%). |
+| **Limitations** | The comparison is against a weak baseline (league-average rates); the protocol also asks for Elo and market-implied probabilities, and historical Bundesliga odds are not available from API-Football (current season only). Scores only: no xG blend, no props, no red-card or in-play factors. The first holdout has only two seasons of history. One league, one method. The RPS values are not directly comparable with the EPL or MLS entries above, which use other settings and holdouts. |
+| **Decision** | **Baseline viable; no production change.** Dixon-Coles transfers to the Bundesliga. The xG blend, red-card factors and props each still need their own validated entry before the league goes live. Data found in the same spike: Understat has 306 of 306 matches with xG in every season 2021-25; API-Football xG is clean from 2023-24; the two sources use different club names. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
