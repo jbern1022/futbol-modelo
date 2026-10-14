@@ -338,6 +338,17 @@ spec/backfill-list only).
 | **What this does not decide** | The scale of API-Football xG for the live 2026-27 season (existing leagues rescale it by x1.108; a Bundesliga factor needs its own estimate from matches that have both sources), and the red-card, in-play and props validations, which each get their own entry. Ligue 1 would get its own pre-registration. |
 | **Decision if passed** | A follow-up ADR adds `BUNDESLIGA` to `XG_BLEND_LEAGUES`. Not done by this entry. |
 
+### 2026-10-14: Result, Bundesliga fixed 50/50 goals + xG blend (the pre-registered test above)
+
+| Field | Detail |
+|---|---|
+| **What was run** | Exactly the registered commands: `experiment_xg_blend.py --league BUNDESLIGA --tune <previous season> --holdout <season> --fixed-w 0.5 --dump ...` for 2022-23, 2023-24, 2024-25 and 2025-26, then the per-match RPS differences pooled and bootstrapped with the repo's `ci()` (2,000 resamples, seed 0). Run on the Bundesliga data loaded the same day: 1,530 matches with Understat team xG for all of them (steps 2a and 2c). |
+| **Per-season result (blend minus goals-only RPS; negative is better)** | 2022-23 (304 matches): 0.2106 → 0.2069, diff -0.0038 [-0.0069, -0.0007]. 2023-24 (304): 0.1965 → 0.1957, diff -0.0007 [-0.0032, +0.0018]. 2024-25 (304): 0.2105 → 0.2072, diff -0.0033 [-0.0057, -0.0009]. 2025-26 (305): 0.1969 → 0.1953, diff -0.0015 [-0.0035, +0.0004]. All four seasons improved; two of the four intervals exclude zero on their own. |
+| **Pooled result** | n = 1,217. RPS 0.2036 → 0.2013, diff **-0.0023, 95% CI [-0.0036, -0.0011]**. Log loss (secondary) 0.9994 → 0.9910, diff -0.0084, 95% CI [-0.0127, -0.0040]. |
+| **Verdict against the pre-registered rule** | **Passed.** The pooled RPS interval lies entirely below 0. |
+| **Limitations** | The 1,217 scored matches are 1,224 minus 7 whose teams had no earlier history (promoted clubs). The first holdout (2022-23) is fit on 2021-22 alone. The xG used is Understat's; the live 2026-27 season will use API-Football xG, whose rescale factor for this league has not been estimated. The reference-only weights in the script output (w = 0.75 and 1.0 score better still in three of the four seasons) were not used to change w = 0.5, which was fixed in advance. One match (Holstein Kiel v VfL Bochum, 2025-02-09) has team xG but no shot rows. |
+| **Decision** | The pre-registered follow-up applies: an ADR adds `BUNDESLIGA` to `XG_BLEND_LEAGUES`. **Not done by this entry.** `tests/test_bundesliga_wiring.py` still guards that the set excludes it, and the change should ship with the league's launch together with the API xG scale factor. Red-card factors, the in-play remaining-goal share and props each still need their own entry. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
