@@ -58,8 +58,9 @@ positive one.
   explicitly, currently **uncalibrated** (see `CLAIMS.md`) — there is
   not yet enough graded history to fit an isotonic calibrator the way
   soccer's props models do. The charter's success criteria
-  (`docs/RESEARCH_SUCCESS_CRITERIA.md`, still pending your sign-off)
-  are what will eventually say whether that gap closed, stayed open
+  (`docs/RESEARCH_SUCCESS_CRITERIA.md`; evidence framework accepted
+  2026-10-13, ADR-017; the falsification and completion questions are
+  still open) are what will eventually say whether that gap closed, stayed open
   for a defensible reason, or falsified the shared-platform thesis for
   a given sport.
 - Not a scope commitment to a fourth sport. See
@@ -78,7 +79,8 @@ positive one.
   negative results) gets logged against.
 - `docs/DATA_LICENSING.md` — data-source inventory and what each
   provider actually permits.
-- `docs/RESEARCH_SUCCESS_CRITERIA.md` — draft, **not yet accepted**;
-  needs your review before it governs anything.
+- `docs/RESEARCH_SUCCESS_CRITERIA.md` — evidence and success framework
+  accepted 2026-10-13 (ADR-017); the earlier draft is kept as history and
+  its falsification and completion proposals remain open.
 - `docs/DECISIONS.md` — ADR-008 (publication/correction rules) and
   ADR-009 (NBA retirement) were added alongside this charter.

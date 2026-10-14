@@ -684,3 +684,75 @@ expected goals and the blend moves expected goals only slightly, but
 they should be re-run against the blended rates once convenient.
 `compute_team_ratings` still shows goals-only ratings (its CIs come from
 bootstrapping the goals fit).
+
+---
+
+## ADR-017: success and evidence framework accepted (supersedes the ~100-prediction bar and the proposed success criteria)
+
+**Status:** Accepted (2026-10-13)
+
+**Context:** The framework was agreed on 2026-10-05 (Todoist
+`6h9M3Ghc9vFXpj6x`) and signed off by Joe on 2026-10-13 (Notion:
+"Accepted Success & Evidence Framework — Reconciliation Decision").
+Until now `docs/RESEARCH_PROTOCOL.md` gated calibration and sample-size
+claims at "~100+ graded predictions in the high-confidence band", and
+`docs/RESEARCH_SUCCESS_CRITERIA.md` was a PROPOSED first strawman.
+
+**Decision:**
+
+- *Evidence gates (live graded predictions only):* 350+ per confidence
+  band is the minimum for a calibration evaluation; 750+ in total for a
+  meaningful model/market evaluation; 1,250+ is the mature-evidence
+  threshold for strong performance claims.
+- *Success targets:* 80% raw accuracy per league, assessed only once
+  that league has 1,250 live graded predictions. 80% per individual
+  prop/market is the stretch target, also at 1,250 for that prop. Below
+  1,250 the status is Insufficient Evidence, not success or failure.
+  Aggregate accuracy stays visible but cannot hide an underperforming
+  league. Calibration, Brier/log loss, benchmark performance and sample
+  size remain mandatory context; 80% accuracy cannot mask a material
+  failure elsewhere.
+- *Historical testing:* walk-forward and out-of-sample results may
+  speed research decisions but never count toward the live evidence
+  gates and never replace the separately reported, immutable live track
+  record.
+- *Projected-failure rule:* from 350 live graded predictions, estimate
+  the probability of ultimately reaching 80% at 1,250. Below 5% is
+  labelled PROJECTED FAILURE and triggers a mandatory model review. It
+  is not a confirmed failure, not a reason to delete or overwrite
+  predictions, and is labelled separately from confirmed failure.
+  Catastrophic technical defects (leakage, impossible probabilities,
+  pipeline errors) may trigger intervention before 350. A model change
+  creates a new versioned track record; history is never rewritten.
+- *Status vocabulary:* Insufficient Evidence → On Track → At Risk →
+  Projected Failure → mature-evidence success/failure assessment at
+  1,250.
+- *Not yet operational:* the below-5% rule may not be run until the
+  probability estimator, its assumptions, handling of dependent
+  predictions and repeated monitoring, cohort and model/market version,
+  and reproducible inputs are documented and independently reviewed
+  (Todoist `6hm2JMm4XrQJpJcf`). This ADR does not select the statistical
+  method.
+
+**Supersedes:** (a) the ~100+ high-confidence-band bar as the gate for
+calibration claims, sample-size claims and model retirement decisions,
+which becomes the 350 / 750 / 1,250 gates above; (b) the proposed
+per-sport "validated instance" bar in `docs/RESEARCH_SUCCESS_CRITERIA.md`.
+Both are kept in those files as history. Earlier entries in
+`docs/EXPERIMENT_REGISTRY.md` that cite the ~100 bar stay as written; the
+registry is append-only.
+
+**Does not change:** the append-only ledger and immutability rules
+(ADR-002, ADR-005, ADR-008), retiring a model without deleting history,
+the baselines, time-ordered windows and leakage tests in the protocol,
+or the charter's open question of what would falsify the shared-platform
+thesis for a sport and when the project counts as complete. The
+accepted framework does not address those, so they remain open.
+
+**Consequences:** Every league, and every prop or market within it, has
+its own evidence clock. A newly added league starts at zero live graded
+predictions and needs 1,250 before its 80% target is assessed; backfills
+and backtests do not advance the clock. This ADR changes documents only.
+Whether `v_calibration`, the Track Record page or any job applies the 350
+gate or the status vocabulary has not been checked here and is separate
+implementation work.

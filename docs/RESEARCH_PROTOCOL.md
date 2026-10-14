@@ -5,6 +5,12 @@ Predefining these rules *before* looking at more results is the point;
 changing them after seeing how a model performs defeats the purpose
 (see "Protections against retrospective metric selection" below).
 
+**Amended 2026-10-13 (ADR-017):** the sample-size bar for decision
+gating is now 350 / 750 / 1,250 live graded predictions, replacing the
+"~100+" bar below. The original text is kept and marked
+"Superseded for decision gating" where it applies. Earlier experiment
+log entries that used the ~100 bar keep saying so.
+
 ## Hypotheses under test, per sport
 
 | Sport | Primary hypothesis | Current evidence |
@@ -69,6 +75,9 @@ count as validated:
   premature pass or fail — 1X2/TOTAL_GOALS sat at n=9–18 as of
   2026-09-21 and are explicitly not being treated as calibrated or
   miscalibrated on that sample.
+  **Superseded for decision gating (ADR-017, 2026-10-13):** the minimum
+  for a calibration evaluation is 350+ live graded predictions per
+  confidence band. The "not enough data yet" principle is unchanged.
 - NFL and NBA are **explicitly uncalibrated** until each has a full
   graded season (or close to it) to fit against — stated plainly in
   `CLAIMS.md` today and not to be quietly upgraded to "calibrated"
@@ -81,7 +90,10 @@ count as validated:
 ## Minimum sample sizes
 
 - Same ~100+ high-confidence-band graded predictions bar as
-  calibration, above.
+  calibration, above. **Superseded for decision gating (ADR-017):**
+  350+ live graded predictions per confidence band for calibration, 750+
+  in total for model/market evaluation, 1,250+ for strong performance
+  claims. Below 1,250 the status is Insufficient Evidence.
 - Below that bar, a result is reported as "insufficient data," never
   silently omitted or (worse) reported with a misleadingly precise
   percentage.
@@ -104,7 +116,9 @@ count as validated:
   baseline (above) on the current season's holdout, or a full
   recalibration shows the realized rate materially outside its stated
   confidence band at the ~100+ sample threshold, for two consecutive
-  evaluation windows.
+  evaluation windows. (The sample threshold in this rule is superseded
+  for decision gating by ADR-017's 350; the baseline test and the
+  two-window requirement are unchanged.)
 - Retirement does not mean deleting history. Consistent with ADR-002
   (append-only ledger) and ADR-005 (`model_versions` registry), a
   retired model's past predictions stay in the ledger exactly as
@@ -112,10 +126,10 @@ count as validated:
   already carries `trained_at`/`training_window`/`train_metrics` per
   version, so "which version was live when" is always answerable from
   the schema itself, not from memory.
-- See `docs/RESEARCH_SUCCESS_CRITERIA.md` (draft, pending your
-  sign-off) for the project-level version of this question — when a
-  *sport*, not just a model, should be considered to have failed the
-  shared-platform thesis.
+- See `docs/RESEARCH_SUCCESS_CRITERIA.md` for the project-level version
+  of this question. Its evidence and success framework was accepted on
+  2026-10-13 (ADR-017); what would falsify the shared-platform thesis
+  for a *sport*, rather than a model, is still an open draft there.
 
 ## Protections against retrospective metric selection
 

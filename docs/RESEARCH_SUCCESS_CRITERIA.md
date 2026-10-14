@@ -1,6 +1,77 @@
 # Futbol Modelo — Success Criteria and Stopping Rules
 
-**Status: PROPOSED — not accepted.** Unlike the other Research
+**Status: the evidence and success framework below was ACCEPTED on
+2026-10-13 (ADR-017, `docs/DECISIONS.md`).** The first strawman that
+used to be this document's whole content is kept further down as
+history. Where the two conflict, the accepted framework governs. What
+the accepted framework does not address stays open, and is listed at the
+end of the next section.
+
+## Accepted framework (2026-10-13, ADR-017)
+
+Agreed 2026-10-05 (Todoist `6h9M3Ghc9vFXpj6x`), signed off by Joe on
+2026-10-13. Live graded predictions only.
+
+**Evidence gates**
+
+| Live graded predictions | What it allows |
+|---|---|
+| 350+ per confidence band | Minimum for a calibration evaluation |
+| 750+ in total | Meaningful model/market evaluation |
+| 1,250+ | Mature-evidence threshold for strong performance claims |
+
+**Success targets**
+
+- 80% raw accuracy per league, assessed only once that league has 1,250
+  live graded predictions.
+- 80% raw accuracy per individual prop/market is the ideal/stretch
+  target, also requiring 1,250 for that prop.
+- Below 1,250 the status is Insufficient Evidence, not success or
+  failure.
+- Aggregate accuracy stays visible but cannot hide an underperforming
+  league. Calibration, Brier/log loss, benchmark performance and sample
+  size remain mandatory context; 80% accuracy cannot mask a material
+  failure elsewhere.
+- Historical walk-forward or out-of-sample testing may speed research
+  decisions but does not count toward the 1,250 live evidence gate and
+  never replaces the separately reported, immutable live track record.
+
+**Projected-failure rule**
+
+- From 350 live graded predictions, estimate the probability of
+  ultimately reaching 80% at 1,250, and track current accuracy, the
+  accuracy still required over the remaining predictions, and that
+  projected probability.
+- Below 5% at 350 or more: label PROJECTED FAILURE and trigger a
+  mandatory model review. This is not a confirmed failure, not a reason
+  to delete or overwrite predictions, and is always labelled separately.
+- Catastrophic technical or model defects (leakage, impossible
+  probabilities, pipeline errors) may trigger intervention before 350.
+- A model change creates a new versioned track record; history is never
+  rewritten.
+- **Not operational yet.** The probability estimator, its assumptions,
+  handling of dependent predictions and repeated monitoring, cohort and
+  model/market version, and reproducible inputs must be documented and
+  independently reviewed first (Todoist `6hm2JMm4XrQJpJcf`). The
+  statistical method is not selected.
+
+**Status vocabulary:** Insufficient Evidence → On Track → At Risk →
+Projected Failure → mature-evidence success/failure assessment at 1,250.
+
+**Supersedes** the ~100+ high-confidence-band bar as the gate for
+calibration claims and the proposed per-sport "validated instance" bar
+in the draft below.
+
+**Not addressed by the accepted framework, so still open:** what would
+falsify the shared-platform thesis for a sport, sport-level retirement,
+and what counts as project completion. The draft text below on those
+points is unchanged and remains a proposal, not a decision.
+
+---
+
+# Earlier proposed draft (history; conflicting parts superseded 2026-10-13)
+
+**Original status: PROPOSED — not accepted.** Unlike the other Research
 Foundation documents, this one is a product/direction decision wearing
 an engineering-ticket costume, not a documentation task with an
 obvious right answer to draft. This is a first strawman for you to
