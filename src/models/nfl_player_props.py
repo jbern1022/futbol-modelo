@@ -219,3 +219,65 @@ def depth_roster_disagreement(depth_chart: dict[tuple[str, str], list[str]],
     return [(team, position, gsis_id)
             for (team, position), ids in sorted(depth_chart.items())
             for gsis_id in ids if gsis_id in reserved]
+
+
+# --- Injury-report gate (Todoist 6hhrVmC7HwQGQvj7) -------------------------------------
+# The roster gate above catches players on a reserve list. The weekly injury
+# report adds the game-day designations: nflverse ``import_injuries`` rows carry
+# ``gsis_id``, ``team``, ``week``, ``report_status`` (Out / Doubtful / Questionable;
+# empty while only practice participation is known) and ``report_primary_injury``.
+# Rules, decided up front: only Out and Doubtful are excluded; Questionable stays in
+# (about half of Questionable players play, so dropping them would remove real
+# candidates and a lower-confidence flag is a separate change); a missing or
+# practice-only row excludes nobody; any failure to load the report falls back to
+# the roster gate alone with a visible warning (same fail-open rule as the roster
+# gate). Slates lock 3 days out, so a game's status is often not yet published when
+# it is slated; this gate therefore only helps where the report already says Out or
+# Doubtful, and a re-check in the props final pass (within 2h of kickoff) is the
+# follow-up that closes the gap.
+INJURY_EXCLUDED_STATUSES = frozenset({"out", "doubtful"})
+
+
+def week_from_game_id(game_id: str | None) -> int | None:
+    """Regular-season week from an nflverse game id such as ``2026_05_TB_CAR``."""
+    try:
+        return int(str(game_id).split("_")[1])
+    except (IndexError, ValueError):
+        return None
+
+
+def injury_exclusions(rows, week: int | None) -> dict[str, str]:
+    """gsis_id -> reason for every player the injury report lists as Out or
+    Doubtful for ``week``. ``rows`` is any iterable of mappings with the nflverse
+    column names; rows for other weeks, with no game status, or Questionable are
+    ignored. If a player has several rows for the week the most restrictive wins."""
+    if week is None:
+        return {}
+    out: dict[str, str] = {}
+    for r in rows:
+        gsis_id, status = r.get("gsis_id"), r.get("report_status")
+        if not gsis_id or not isinstance(status, str) or r.get("week") != week:
+            continue
+        if status.strip().lower() not in INJURY_EXCLUDED_STATUSES:
+            continue
+        injury = r.get("report_primary_injury")
+        label = status.strip().title() + (f" ({injury})" if isinstance(injury, str) and injury.strip() else "")
+        if status.strip().lower() == "out" or gsis_id not in out:
+            out[gsis_id] = f"listed {label} on the week {week} injury report"
+    return out
+
+
+def current_injury_report(season: int) -> list[dict]:
+    """The season's injury report as plain dict rows (nflverse import_injuries)."""
+    import nfl_data_py as nfl
+    df = nfl.import_injuries([season])
+    cols = [c for c in ("gsis_id", "week", "report_status", "report_primary_injury") if c in df.columns]
+    return df[cols].to_dict("records")
+
+
+def safe_injury_report(loader, season: int) -> tuple[list[dict] | None, str | None]:
+    """(rows, warning). Never raises: a failure returns (None, message)."""
+    try:
+        return list(loader(season)), None
+    except Exception as exc:  # noqa: BLE001 -- fail open, but never silently
+        return None, f"injury-report gate unavailable ({exc!r}); using the roster gate alone"
