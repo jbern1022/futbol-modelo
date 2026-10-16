@@ -70,7 +70,7 @@ def empirical_remaining_fn(train_goal_minutes: np.ndarray):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA", "MLS"])
+    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA", "MLS", "BUNDESLIGA"])
     ap.add_argument("--holdout", default="2025-26")
     ap.add_argument("--xi", type=float, default=0.0018)
     args = ap.parse_args()

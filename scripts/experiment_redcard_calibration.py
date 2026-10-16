@@ -105,11 +105,14 @@ def fetch_red_cards(session, fixture_id: int) -> list[tuple[int, int]]:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA"])
+    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA"])
     args = ap.parse_args()
 
     session = _session()
     conn = psycopg2.connect(DSN)
+    # Read-only: resolve_team_id can UPDATE teams.api_football_id on a name
+    # match; this experiment must never write to the live DB.
+    conn.set_session(readonly=True)
     cur = conn.cursor()
 
     cur.execute(CANDIDATES_SQL, (args.league,))

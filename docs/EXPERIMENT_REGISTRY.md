@@ -338,6 +338,42 @@ spec/backfill-list only).
 | **What this does not decide** | The scale of API-Football xG for the live 2026-27 season (existing leagues rescale it by x1.108; a Bundesliga factor needs its own estimate from matches that have both sources), and the red-card, in-play and props validations, which each get their own entry. Ligue 1 would get its own pre-registration. |
 | **Decision if passed** | A follow-up ADR adds `BUNDESLIGA` to `XG_BLEND_LEAGUES`. Not done by this entry. |
 
+### 2026-10-14: Result, Bundesliga fixed 50/50 goals + xG blend (the pre-registered test above)
+
+| Field | Detail |
+|---|---|
+| **What was run** | Exactly the registered commands: `experiment_xg_blend.py --league BUNDESLIGA --tune <previous season> --holdout <season> --fixed-w 0.5 --dump ...` for 2022-23, 2023-24, 2024-25 and 2025-26, then the per-match RPS differences pooled and bootstrapped with the repo's `ci()` (2,000 resamples, seed 0). Run on the Bundesliga data loaded the same day: 1,530 matches with Understat team xG for all of them (steps 2a and 2c). |
+| **Per-season result (blend minus goals-only RPS; negative is better)** | 2022-23 (304 matches): 0.2106 → 0.2069, diff -0.0038 [-0.0069, -0.0007]. 2023-24 (304): 0.1965 → 0.1957, diff -0.0007 [-0.0032, +0.0018]. 2024-25 (304): 0.2105 → 0.2072, diff -0.0033 [-0.0057, -0.0009]. 2025-26 (305): 0.1969 → 0.1953, diff -0.0015 [-0.0035, +0.0004]. All four seasons improved; two of the four intervals exclude zero on their own. |
+| **Pooled result** | n = 1,217. RPS 0.2036 → 0.2013, diff **-0.0023, 95% CI [-0.0036, -0.0011]**. Log loss (secondary) 0.9994 → 0.9910, diff -0.0084, 95% CI [-0.0127, -0.0040]. |
+| **Verdict against the pre-registered rule** | **Passed.** The pooled RPS interval lies entirely below 0. |
+| **Limitations** | The 1,217 scored matches are 1,224 minus 7 whose teams had no earlier history (promoted clubs). The first holdout (2022-23) is fit on 2021-22 alone. The xG used is Understat's; the live 2026-27 season will use API-Football xG, whose rescale factor for this league has not been estimated. The reference-only weights in the script output (w = 0.75 and 1.0 score better still in three of the four seasons) were not used to change w = 0.5, which was fixed in advance. One match (Holstein Kiel v VfL Bochum, 2025-02-09) has team xG but no shot rows. |
+| **Decision** | The pre-registered follow-up applies: an ADR adds `BUNDESLIGA` to `XG_BLEND_LEAGUES`. **Not done by this entry.** `tests/test_bundesliga_wiring.py` still guards that the set excludes it, and the change should ship with the league's launch together with the API xG scale factor. Red-card factors, the in-play remaining-goal share and props each still need their own entry. |
+
+### 2026-10-15: Bundesliga in-play remaining-goal share and red-card multiplier
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | (1) The empirical remaining-goal share (ADR-013, pooled from EPL and Serie A goals) transfers to the Bundesliga and beats the linear `(90 - minute) / 90` rule late in matches. (2) The Bundesliga shows the same 10-men effect as the other four leagues: down < 1 < up. |
+| **Proposed change** | Add `BUNDESLIGA` to `EMPIRICAL_REMAINING_LEAGUES` and `RED_CARD_FACTORS` in `src/predictions/live_winprob.py`, and to the `red_card_calibrated` list in `api/main.py`. |
+| **Expected effect** | Lower log loss at 85'+ than the linear rule (stoppage-time goals no longer ignored); down factor roughly 0.4-0.6, up factor roughly 1.4-1.8. |
+| **Data cutoff** | Bundesliga 2021-22 to 2025-26, 1,530 matches, Understat goal minutes (`futbol.shots`). The curve itself is unchanged (EPL + Serie A, seasons other than the holdout), so for the Bundesliga this is a pure out-of-league test. Red cards: API-Football `fixtures/events` (read-only, 211 candidate matches). |
+| **Evaluation method** | (1) `scripts/experiment_inplay_stoppage.py --league BUNDESLIGA` for holdouts 2025-26 and 2024-25 (271 matches each), linear vs empirical, RPS and log loss at 15' to 90'. (2) `scripts/experiment_redcard_calibration.py --league BUNDESLIGA`, single red between 10' and 80', actual vs expected remaining goals with the empirical curve; in-sample RPS check as for EPL, Serie A and La Liga. The calibration script was made read-only for this run. |
+| **Result** | (1) Empirical beats linear late in both holdouts. Log loss, linear to empirical: 2025-26 85' 0.6019 to 0.5170, 89' 0.6069 to 0.4129, 90' 0.4965 to 0.3563; 2024-25 85' 0.3475 to 0.3398, 89' 0.3852 to 0.2921, 90' 0.3547 to 0.2754. Before 75' the two are close: in 2025-26 the empirical curve is equal or better at every checkpoint; in 2024-25 it is slightly worse from 15' to 80' (RPS +0.0003 to +0.0022, largest at 75'; log loss +0.001 to +0.016) and better from 85'. (2) 127 usable single-red matches (211 candidates; 17 multi-red and 67 outside 10'-80' skipped): down 0.528 (50 actual vs 94.7 expected goals), up 1.631 (162 vs 99.3). RPS 0.1471 to 0.1136 (+22.8%). Calibrated against the linear rule instead, the factors were 0.594 and 1.821, which is the stoppage-goal absorption ADR-013 warned about, so the curve was enabled first. |
+| **Limitations** | The red-card factors are in-sample, like EPL, Serie A and La Liga. Two holdout seasons for the curve, one league. Mid-match checkpoints in 2024-25 are marginally worse with the empirical curve. Goal minutes come from Understat, as for the other leagues. |
+| **Decision** | **Shipped on this branch (not deployed).** `BUNDESLIGA` joins `EMPIRICAL_REMAINING_LEAGUES` and `RED_CARD_FACTORS` (0.528, 1.631). The live poller does not run for the Bundesliga until the wiring branch is merged and deployed. |
+
+### 2026-10-15: Bundesliga API-Football xG scale factor (Understat vs API-Football)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | API-Football `expected_goals` runs below Understat xG in the Bundesliga by about the same amount as in EPL, Serie A and La Liga (pooled ratio 1.108), so a single rescale factor can put live 2026-27 API xG on the Understat scale the blend was tested on. |
+| **Proposed change** | A Bundesliga-specific scale for `store_api_football_xg` (today one constant, `API_FOOTBALL_XG_SCALE = 1.108`). **Not changed by this entry.** |
+| **Data cutoff** | All 306 matches of each of 2023-24, 2024-25 and 2025-26 that have both sources (612 team-matches per season, 1,836 in total). API xG is clean from 2023-24, so earlier seasons are excluded. `scripts/experiment_api_football_xg.py --league BUNDESLIGA --season <s> --n 306`, read-only, about 920 API calls. |
+| **Evaluation method** | Same as the 2026-10-03 entry: correlation, mean bias, regression slope, and the ratio of summed Understat xG to summed API-Football xG. |
+| **Result** | Correlation 0.945, 0.938, 0.935. Ratio Understat / API-Football: 1.0876 (2023-24), 1.1145 (2024-25), 1.0846 (2025-26); **pooled 1.095** (3060.62 / 2794.59). Mean xG per team-match, Understat vs API: 1.668 vs 1.534, 1.630 vs 1.463, 1.702 vs 1.570. Regression API = 0.80-0.87 x Understat + 0.09-0.15. |
+| **Limitations** | A ratio of sums is a single multiplicative scale; the regression has a positive intercept, so API xG is relatively higher for low-xG teams and the ratio is not constant across the range. The three seasons differ by up to 0.03. Only the ratio, not the blend, was re-tested with the rescaled values. The 2026-27 season has no Understat xG to check against. |
+| **Decision** | **Proposed: 1.095 for the Bundesliga** (EPL, Serie A and La Liga keep 1.108). Not applied: it needs a per-league scale in `store_api_football_xg`, to ship with the blend ADR and the wiring branch. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and

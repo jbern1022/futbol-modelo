@@ -75,7 +75,8 @@ ORDER BY e.match_id, e.minute;
 """
 
 GOALS_SOURCE = {"EPL": GOALS_Q_SHOTS, "SERIE_A": GOALS_Q_SHOTS,
-                "LA_LIGA": GOALS_Q_SHOTS, "MLS": GOALS_Q_EVENTS}
+                "LA_LIGA": GOALS_Q_SHOTS, "BUNDESLIGA": GOALS_Q_SHOTS,
+                "MLS": GOALS_Q_EVENTS}
 
 
 def inplay_probs(lam: float, mu: float, rho: float, h_now: int, a_now: int,
