@@ -325,6 +325,30 @@ spec/backfill-list only).
 | **Limitations** | Same as the Bundesliga entry. The large gain over the league-average baseline likely reflects how unequal the league is (a few clubs far stronger than the rest), which makes the naive baseline weak; it should not be read as the model being better here than elsewhere. No Understat xG exists for this league, so the xG blend could only use API-Football xG, which my 2026-10-14 sample found reliable from 2023-24 and unusable in 2021-22 and mostly in 2022-23; whether a blend helps is untested. |
 | **Decision** | **Baseline viable; no production change.** The results-only model works for the Eredivisie. The xG question, props and red-card factors remain untested. |
 
+### 2026-10-15: Production Dixon-Coles baseline on the Brasileirao (spike before adding a league)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Same as the Bundesliga entry: the production Dixon-Coles setup (`dc_fit_settings` xi and ridge, goals-only) beats a league-average baseline with no league-specific change, so adding the league is a data and wiring task. |
+| **Proposed change** | None to production. `scripts/experiment_new_league_baseline.py --league-id 71 --first-season 2021 --holdouts 2023 2024 2025`. No database access. |
+| **Data cutoff** | API-Football regular-season results (`Regular Season` rounds, status FT), seasons 2021 to 2025: 380 matches in every season, 20 teams, calendar-year season. Home win rate by season 45.8%, 44.2%, 46.8%, 47.4%, 50.3%. |
+| **Evaluation method** | Weekly walk-forward fits from the production settings, scored per holdout season against the league-average outcome rates from earlier seasons; paired differences with bootstrap 95% intervals (same code and method as the Bundesliga, Ligue 1 and Eredivisie entries). |
+| **Result** | RPS diff (DC minus naive, negative is better): 2023 -0.0068 [-0.0166, +0.0033], 2024 -0.0075 [-0.0170, +0.0022], **2025 -0.0180 [-0.0274, -0.0088]**. Log loss diff: 2023 -0.0205 [-0.0513, +0.0123], 2024 -0.0221 [-0.0507, +0.0072], **2025 -0.0557 [-0.0846, -0.0282]**. Skipped for a team unseen in history: 2, 3 and 1 matches. Home advantage drifted up to 50.3% in 2025 (mean predicted home win 46.0% vs realized 50.1%). |
+| **Limitations** | The evidence is weaker than for the European leagues tested: the point estimates favour Dixon-Coles in all three holdouts but only 2025 has an interval clear of zero; 2023 and 2024 include zero on both RPS and log loss. League-average baseline only (no Elo, no market baseline, no historical odds). Scores only: no xG, props or red-card factors. The first holdout is fit on two seasons. Not directly comparable with other leagues' RPS. |
+| **Decision** | **Baseline viable, with weaker evidence; no production change.** Dixon-Coles transfers directionally and clearly in 2025. The three Brasileirao seasons 2023-2025 with API xG, injuries and a deep market remain the reasons to proceed; xG blend, props and red-card factors each still need their own validated entry. Todoist `6hm4gJg9xC2hq6r7`. |
+
+### 2026-10-15: Production Dixon-Coles baseline on Liga MX (spike before adding a league)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Same as the Bundesliga entry. Liga MX needs a round filter that keeps only the two regular-season tournaments, so the filter is part of what is tested. |
+| **Proposed change** | None to production. `scripts/experiment_new_league_baseline.py --league-id 262 --first-season 2021 --holdouts 2023 2024 2025 --round-regex "(Apertura|Clausura) - \d+"` (new `--round-regex` option). No database access. |
+| **Data cutoff** | API-Football (season = start year, containing the Apertura of that year and the Clausura of the next), status FT. **Correction to the 2026-10-14 plan:** regular-season rounds are named `Apertura - 1` to `Apertura - 17` and `Clausura - 1` to `Clausura - 17`, not bare `Apertura`/`Clausura`; knockouts are `Reclasificacion`/`Reclasificación`, `Play-offs`, `Play-In Semi-finals`/`Final`, `Quarter-finals`, `Semi-finals`, `Final`/`Finals` (read from the cached responses). The regex keeps exactly 306 matches (153 + 153, 18 teams) in each of 2021 to 2025. Home win rate by season 39.2%, 42.5%, 46.4%, 48.4%, 46.1%; draw rate fell from 30.1% to 25.2%. |
+| **Evaluation method** | Same as the Brasileirao entry. |
+| **Result** | RPS diff: **2023 -0.0174 [-0.0287, -0.0059], 2024 -0.0252 [-0.0372, -0.0126], 2025 -0.0224 [-0.0342, -0.0093]**. Log loss diff: **2023 -0.0528 [-0.0871, -0.0171], 2024 -0.0747 [-0.1102, -0.0377], 2025 -0.0643 [-0.0989, -0.0241]**. No team skipped. All six intervals exclude zero. Mean predicted vs realized home win: 2023 42.6% vs 46.4%, 2024 44.7% vs 48.4%, 2025 45.3% vs 46.1%; draws are over-predicted in 2023 and 2024 (27.9% vs 24.2%, 25.6% vs 23.2%). |
+| **Limitations** | League-average baseline only; scores only; the first holdout is fit on two seasons; Apertura and Clausura are pooled as one season, so a team's ratings carry across the mid-season boundary; play-offs are excluded and a standings page must not merge the two tournaments (still the owner's season-label decision, Todoist `6hm4gJjrm6vh36qf`). No usable xG before 2025 (goals-only). Home advantage and draw rate drifted over the period. |
+| **Decision** | **Baseline viable; no production change.** Dixon-Coles transfers to Liga MX with clear intervals in all three holdouts, so the open items are the season label, the liguilla scope and data wiring, not the model. |
+
 ### 2026-10-14: Pre-registration, Bundesliga: fixed 50/50 goals + xG blend (committed before any Bundesliga xG is in the database)
 
 | Field | Detail |

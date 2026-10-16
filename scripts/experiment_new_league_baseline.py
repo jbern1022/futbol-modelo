@@ -9,13 +9,15 @@ with bootstrap 95% CIs. Offline: no database access, nothing is written
 except the results cache. Scores only; no xG, no odds.
 
     python scripts/experiment_new_league_baseline.py --league-id 78 --first-season 2021 --holdouts 2023 2024 2025
-    (API-Football ids: Bundesliga 78, Ligue 1 61, Eredivisie 88)
+    (API-Football ids: Bundesliga 78, Ligue 1 61, Eredivisie 88, Brasileirao 71, Liga MX 262)
+    Liga MX: add --round-regex "(Apertura|Clausura) - \\d+"
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import timedelta
 
@@ -33,7 +35,13 @@ from models.dc_settings import dc_fit_settings
 from train_dixon_coles import rps
 
 
-def load_results(league_id: int, seasons: list[int], cache: str) -> pd.DataFrame:
+def load_results(league_id: int, seasons: list[int], cache: str,
+                 round_regex: str | None = None) -> pd.DataFrame:
+    """round_regex: full-match pattern for rounds that count as regular season. Liga MX
+    numbers its two tournaments 'Apertura - 1' ... 'Clausura - 17' and names the
+    knockouts 'Reclasificacion', 'Play-Offs', 'Play-In ...', 'Quarter-finals', 'Semi-finals',
+    'Final' (checked 2026-10-15), so use '(Apertura|Clausura) - \\d+'.
+    Default: any round starting with 'Regular Season'."""
     if os.path.exists(cache):
         raw = json.load(open(cache))
     else:
@@ -45,7 +53,8 @@ def load_results(league_id: int, seasons: list[int], cache: str) -> pd.DataFrame
                  home=f["teams"]["home"]["name"], away=f["teams"]["away"]["name"],
                  hg=f["goals"]["home"], ag=f["goals"]["away"])
             for y, fx in raw.items() for f in fx
-            if f["league"]["round"].startswith("Regular Season")]
+            if (re.fullmatch(round_regex, f["league"]["round"]) if round_regex
+                else f["league"]["round"].startswith("Regular Season"))]
     df = pd.DataFrame(rows).dropna().sort_values("date").reset_index(drop=True)
     df[["hg", "ag"]] = df[["hg", "ag"]].astype(int)
     return df
@@ -95,9 +104,12 @@ def main() -> None:
     ap.add_argument("--first-season", type=int, required=True, help="start year of the first season to load")
     ap.add_argument("--holdouts", nargs="+", type=int, required=True, help="start years to score")
     ap.add_argument("--cache", help="results cache path (default /tmp/league_<id>_results.json)")
+    ap.add_argument("--round-regex",
+                    help="full-match regex for regular-season rounds (default: starts with 'Regular Season')")
     args = ap.parse_args()
     seasons = list(range(args.first_season, max(args.holdouts) + 1))
-    df = load_results(args.league_id, seasons, args.cache or f"/tmp/league_{args.league_id}_results.json")
+    df = load_results(args.league_id, seasons, args.cache or f"/tmp/league_{args.league_id}_results.json",
+                      args.round_regex)
     print("matches per season:", df.groupby("season").size().to_dict())
     for y, g in df.groupby("season"):
         print(f"  {y}: goals/game {(g.hg + g.ag).mean():.2f}  home {np.mean(g.hg > g.ag):.3f}  "
