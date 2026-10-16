@@ -11,7 +11,7 @@ terms were checked on 2026-10-16 (gap 1a); the other gaps are unchanged.
 | Source | Used for | Access | Update frequency | Attribution required? | Redistribution/commercial-use notes |
 |---|---|---|---|---|---|
 | **Understat** | Soccer match results + shot-level xG/player stats (EPL/Serie A/La Liga history; Bundesliga 2021-22 to 2025-26 added 2026-10-14) | Scraped, no API key (`src/ingestion/loader.py`, `load_understat`). **`robots.txt` disallows all crawling** (checked 2026-10-16) | One-off historical backfill per league; the nightly refresh does not pull it, 2026-27 xG comes from API-Football | None stated on the site | **No terms or licence published; `robots.txt` is `Disallow: /`. Treat as unlicensed** — see gap 1a |
-| **FBref** | Soccer match/player stats, World Cup knockout data (`load_fbref`) | Scraped, no API key | Backfill + ongoing | Not confirmed — **gap, see below** | Not confirmed — **gap, see below** |
+| **FBref** | Soccer match/player stats, World Cup knockout data (`load_fbref`); EPL 2021-23 and 2025-26 player rows, World Cup 2026 matches | Scraped via `soccerdata`, no API key | Manual/historical loads; not called by the nightly CronJobs | Not stated on the terms page read | **Terms prohibit automated access without written permission** (checked 2026-10-16) — see gap 1b |
 | **API-Football** | Corners, cards, saves, shots-on-target, possession (soccer); live odds (`match_odds_history`) via `odds` mode | Paid API, key required (`src/ingestion/api_football.py`) | Ongoing (intraday odds, daily/nightly stats) | Per API-Football's own ToS — **not re-read for this register, see below** | Paid-tier commercial terms apply; ADR-004 already documents the operational risk of depending on this being the *primary* MLS data path with no free fallback |
 | **nflverse** (via `nfl_data_py`) | NFL schedule, scores, real closing market lines, player box scores | Free, no API key, no rate limit — stated directly in the ingestion header (`src/ingestion/nfl_data.py`) | Season backfill + weekly | **Yes — CC-BY, per the code's own header comment** | CC-BY permits reuse with attribution; this project should carry that attribution publicly (see "Open gaps") |
 | **nba_api** (wraps stats.nba.com) | NBA schedule, results, player box scores | Free, no API key (`src/ingestion/nba_data.py`) | Season backfill + ongoing | Not confirmed — **gap, see below**. `nba_api` is a third-party wrapper around an undocumented-for-third-party-use NBA.com endpoint, not an official NBA data product | Not confirmed — **gap, see below**; no official commercial-use grant is known to exist for this endpoint |
@@ -94,7 +94,36 @@ over:
    `docs/DATA_ALTERNATIVES_XG_2026-10.md` and ADR-018/ADR-019); or move to a
    licensed provider.
 
-   **1b. FBref — unchanged, still not checked.**
+   **1b. FBref (Sports Reference) — checked 2026-10-16: the terms prohibit
+   what the project does.** Source: `https://www.sports-reference.com/data_use.html`
+   (page footer "Site Last Updated: Wednesday, October 14", no year), read
+   through the fetch tool's summariser, so quotes are short fragments and the
+   full page should be re-read by a person before relying on them. Relevant
+   wording: the terms bar users from using "any automated means to access or
+   use the Site", including "scripts, bots, scrapers, data miners, or similar
+   software", "without our express written permission"; they ask "Please do not
+   attempt to aggressively spider data from our web sites"; they say "you should
+   not create websites or tools based on data you scrape from Sports Reference";
+   they bar copying data into any store that "competes with or constitutes a
+   material substitute"; and they bar using the data to train AI models without
+   permission. No numeric rate limit is stated on that page (it points to a
+   separate bot-traffic page, not read). The page says users "are free to reuse
+   facts found on this site in accordance with copyright laws" and states no
+   attribution requirement. The research agent could not load `fbref.com`
+   itself (403), so whether FBref still publishes xG / Opta stats is not
+   verified; only the Sports Reference terms were read.
+
+   What this means for the project: `src/ingestion/loader.py` scrapes FBref
+   through `soccerdata` (`load_fbref`, used for EPL/Serie A/La Liga history and
+   for the World Cup 2026 rows with `external_ref` `fbref-wc:`). The nightly
+   CronJobs in `k8s/cronjobs.yaml` do not call it (no `fbref` there); it is a
+   manual/historical load, and the EPL 2021-22, 2022-23 and 2025-26 player rows
+   and the World Cup matches came from it. As with Understat there is no
+   licence to scrape; here there is an explicit written prohibition. The
+   exposure is the data already loaded and any future FBref load. Legal
+   exposure unassessed; not legal advice. Owner decision needed (Todoist, same
+   family as gap 1a): stop FBref loads, ask Sports Reference for written
+   permission, or accept and record the risk.
 2. **nba_api / stats.nba.com terms** — same gap. `nba_api` is a
    well-known open-source wrapper, but the underlying endpoint has no
    published third-party data license; the project has not stated
