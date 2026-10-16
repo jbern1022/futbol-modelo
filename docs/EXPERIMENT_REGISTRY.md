@@ -362,6 +362,18 @@ spec/backfill-list only).
 | **Limitations** | The red-card factors are in-sample, like EPL, Serie A and La Liga. Two holdout seasons for the curve, one league. Mid-match checkpoints in 2024-25 are marginally worse with the empirical curve. Goal minutes come from Understat, as for the other leagues. |
 | **Decision** | **Shipped on this branch (not deployed).** `BUNDESLIGA` joins `EMPIRICAL_REMAINING_LEAGUES` and `RED_CARD_FACTORS` (0.528, 1.631). The live poller does not run for the Bundesliga until the wiring branch is merged and deployed. |
 
+### 2026-10-15: Bundesliga API-Football xG scale factor (Understat vs API-Football)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | API-Football `expected_goals` runs below Understat xG in the Bundesliga by about the same amount as in EPL, Serie A and La Liga (pooled ratio 1.108), so a single rescale factor can put live 2026-27 API xG on the Understat scale the blend was tested on. |
+| **Proposed change** | A Bundesliga-specific scale for `store_api_football_xg` (today one constant, `API_FOOTBALL_XG_SCALE = 1.108`). **Not changed by this entry.** |
+| **Data cutoff** | All 306 matches of each of 2023-24, 2024-25 and 2025-26 that have both sources (612 team-matches per season, 1,836 in total). API xG is clean from 2023-24, so earlier seasons are excluded. `scripts/experiment_api_football_xg.py --league BUNDESLIGA --season <s> --n 306`, read-only, about 920 API calls. |
+| **Evaluation method** | Same as the 2026-10-03 entry: correlation, mean bias, regression slope, and the ratio of summed Understat xG to summed API-Football xG. |
+| **Result** | Correlation 0.945, 0.938, 0.935. Ratio Understat / API-Football: 1.0876 (2023-24), 1.1145 (2024-25), 1.0846 (2025-26); **pooled 1.095** (3060.62 / 2794.59). Mean xG per team-match, Understat vs API: 1.668 vs 1.534, 1.630 vs 1.463, 1.702 vs 1.570. Regression API = 0.80-0.87 x Understat + 0.09-0.15. |
+| **Limitations** | A ratio of sums is a single multiplicative scale; the regression has a positive intercept, so API xG is relatively higher for low-xG teams and the ratio is not constant across the range. The three seasons differ by up to 0.03. Only the ratio, not the blend, was re-tested with the rescaled values. The 2026-27 season has no Understat xG to check against. |
+| **Decision** | **Proposed: 1.095 for the Bundesliga** (EPL, Serie A and La Liga keep 1.108). Not applied: it needs a per-league scale in `store_api_football_xg`, to ship with the blend ADR and the wiring branch. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
