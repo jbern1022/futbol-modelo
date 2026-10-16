@@ -51,6 +51,36 @@ WHERE l.code = %s AND th.name = %s AND ta.name = %s AND m.status = 'final'
 """
 
 
+def read_shots_tolerant(us, game_ids, chunk_size: int = 25):
+    """Shot events for the given Understat games without one bad page
+    aborting the lot.
+
+    soccerdata's read_shot_events() raises on a match page it can't parse
+    (Holstein Kiel v VfL Bochum, 2025-02-09, game 27930, has empty rosters
+    on Understat: AttributeError inside soccerdata) and that stops the
+    whole call, so nothing is loaded. Read in chunks, retry a failing chunk
+    game by game, and return (shots, skipped) where skipped lists every
+    game that still failed and why. The caller reports them; they get no
+    shot rows."""
+    import pandas as pd
+
+    ids = [int(g) for g in game_ids]
+    parts, skipped = [], []
+    for i in range(0, len(ids), chunk_size):
+        chunk = ids[i:i + chunk_size]
+        try:
+            parts.append(us.read_shot_events(match_id=chunk))
+        except Exception:
+            for gid in chunk:
+                try:
+                    parts.append(us.read_shot_events(match_id=gid))
+                except Exception as e:  # noqa: BLE001 -- anything soccerdata raises on one page
+                    skipped.append((gid, f"{type(e).__name__}: {e}"))
+                    log.warning("skipping Understat game %s: %s: %s", gid, type(e).__name__, e)
+    shots = pd.concat(parts) if parts else pd.DataFrame()
+    return shots, skipped
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA"])
@@ -121,8 +151,12 @@ def main() -> None:
     log.info("linked %d matches, team xG filled", len(links))
 
     # 3. shots (this is the slow part: one Understat page per match).
-    shots = us.read_shot_events().reset_index()
+    shots, skipped_games = read_shots_tolerant(us, sched.game_id.dropna().unique())
+    shots = shots.reset_index()
     log.info("Understat shots: %d rows", len(shots))
+    if skipped_games:
+        log.warning("%d Understat games skipped, no shot rows for them: %s", len(skipped_games),
+                    [g for g, _ in skipped_games])
     cur.execute("SELECT understat_game_id, match_id FROM futbol.matches WHERE understat_game_id = ANY(%s)",
                 ([str(g) for g in shots.game_id.dropna().unique()],))
     match_by_game = dict(cur.fetchall())
