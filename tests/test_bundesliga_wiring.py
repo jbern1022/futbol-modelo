@@ -6,7 +6,7 @@ Text-level checks only (no database, no cluster, no PyYAML): they pin that
 the pieces that must change together did, and that the pieces that need a
 validated result first have not been switched on by accident. Remove the
 "still off" test's entries one at a time as each validation passes
-(props, cards, then the live poller at launch), each with its registry entry.
+(SOT, cards, player props, then the live poller at launch), each with its registry entry.
 xG blend, API xG fill, in-play share and red-card factors are validated.
 """
 import os
@@ -94,13 +94,22 @@ def test_validated_switches_are_on_and_agree_with_each_other():
     assert down < 1 < up
 
 
+def test_corners_is_on_for_the_bundesliga_and_only_corners():
+    """CORNERS passed its pre-registered props test (2026-10-15); SOT did not."""
+    from generate_slate import PROPS_MARKETS
+    assert "BUNDESLIGA" in PROPS_MARKETS["CORNERS"]["leagues"]
+    assert "BUNDESLIGA" not in PROPS_MARKETS["SOT"]["leagues"]
+    assert PROPS_MARKETS["CORNERS"]["leagues"] >= PROPS_MARKETS["SOT"]["leagues"]
+
+
 def test_switches_that_need_a_validated_result_are_still_off():
     """Staged launch. Props and cards read xg_for_r5 and each needs its own
     registry entry; the live poller and the props final pass are not run for
     the Bundesliga until launch. Remove an entry here when its validation passes."""
-    from generate_slate import CARDS_LEAGUES, PLAYER_PROPS_LEAGUES, PROPS_LEAGUES
+    from generate_slate import CARDS_LEAGUES, PLAYER_PROPS_LEAGUES, PROPS_LEAGUES, PROPS_MARKETS
     for name, s in (("PROPS_LEAGUES", PROPS_LEAGUES), ("PLAYER_PROPS_LEAGUES", PLAYER_PROPS_LEAGUES),
-                    ("CARDS_LEAGUES", CARDS_LEAGUES)):
+                    ("CARDS_LEAGUES", CARDS_LEAGUES), ("SOT leagues", PROPS_MARKETS["SOT"]["leagues"]),
+                    ("CARDS leagues", PROPS_MARKETS["CARDS"]["leagues"])):
         assert "BUNDESLIGA" not in s, f"{name} was switched on before its validation"
     assert "--league BUNDESLIGA" not in _doc("futbol-props-final-pass")
     assert "--league BUNDESLIGA" not in _doc("futbol-live-winprob")

@@ -64,6 +64,13 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 
 PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS", "LA_LIGA"}
 
+# CORNERS also covers the Bundesliga (2026-10-15 registry entries "Pre-registration"
+# and "Result, Bundesliga CORNERS and SOT props": passed skill, calibration and
+# non-inferiority). SOT did not pass and stays on PROPS_LEAGUES; CARDS has its own set.
+# The league sets are the training pool as well as the eligibility list, so this
+# also adds Bundesliga rows to the pooled CORNERS model (test B: no harm, a small gain).
+CORNERS_LEAGUES = PROPS_LEAGUES | {"BUNDESLIGA"}
+
 # CARDS is EPL/SERIE_A only -- both the team-level yellows/fouls/reds
 # features and referee_avg_cards_r10 (see sql/features.sql) were only
 # validated for these two leagues (scripts/train_props.py's own
@@ -73,7 +80,7 @@ CARDS_LEAGUES = {"EPL", "SERIE_A"}
 
 PROPS_MARKETS: dict[str, dict[str, Any]] = {
     "CORNERS": {"target_col": "corners", "lines": [3.5, 4.5, 5.5, 6.5],
-                "leagues": PROPS_LEAGUES, "label": "Corners",
+                "leagues": CORNERS_LEAGUES, "label": "Corners",
                 "features": ["corners_for_r5", "corners_against_r5", "shots_for_r5",
                             "shots_against_r5", "xg_for_r5", "xg_against_r5",
                             "rest_days", "is_home"]},
@@ -703,7 +710,7 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     ]
 
     props_meta = {}
-    if league in PROPS_LEAGUES and lgb is not None:
+    if lgb is not None and any(league in spec["leagues"] for spec in PROPS_MARKETS.values()):
         home_form = current_form(cur, home_id, kickoff)
         away_form = current_form(cur, away_id, kickoff)
         if home_form and away_form:
