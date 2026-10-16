@@ -38,7 +38,7 @@ from generate_slate import fit_dixon_coles
 from ingestion.api_football import (
     _get, _session, resolve_league_id, resolve_team_id,
 )
-from predictions.live_winprob import inplay_win_probs, remaining_share
+from predictions.live_winprob import RED_CARD_FACTORS, inplay_win_probs, remaining_share
 from train_dixon_coles import rps
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
@@ -103,9 +103,61 @@ def fetch_red_cards(session, fixture_id: int) -> list[tuple[int, int]]:
     return out
 
 
+def _scored_rps(rec: dict, league: str, down_f: float, up_f: float) -> float:
+    """In-play 1X2 RPS at the red-card minute with these (down, up) factors."""
+    lam, mu = rec["lam"], rec["mu"]
+    if rec["down_is_home"]:
+        lam, mu = lam * down_f, mu * up_f
+    else:
+        lam, mu = lam * up_f, mu * down_f
+    p = inplay_win_probs(lam, mu, rec["h_now"], rec["a_now"], rec["minute"], league=league)
+    return rps(list(p), rec["outcome"])
+
+
+def _boot(diff: np.ndarray, n: int = 2000, seed: int = 0) -> tuple[float, float, float]:
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(diff), size=(n, len(diff)))
+    means = diff[idx].mean(axis=1)
+    lo, hi = np.percentile(means, [2.5, 97.5])
+    return float(diff.mean()), float(lo), float(hi)
+
+
+def loso_report(league: str, recs: list[dict]) -> None:
+    """Leave-one-season-out: factors estimated on the other seasons score the held-out
+    season; compared with no factors and with the shipped factors."""
+    shipped = RED_CARD_FACTORS.get(league, (1.0, 1.0))
+    seasons = sorted({r["season"] for r in recs})
+    r_none, r_ship, r_new = [], [], []
+    print(f"\n--- Leave-one-season-out ({league}), {len(recs)} matches, shipped factors "
+          f"down {shipped[0]:.3f} up {shipped[1]:.3f} ---")
+    for s in seasons:
+        train = [r for r in recs if r["season"] != s]
+        test = [r for r in recs if r["season"] == s]
+        if not train or not test or sum(r["ed"] for r in train) < 1e-6 or sum(r["eu"] for r in train) < 1e-6:
+            continue
+        down_f = sum(r["ad"] for r in train) / sum(r["ed"] for r in train)
+        up_f = sum(r["au"] for r in train) / sum(r["eu"] for r in train)
+        print(f"  {s}: n={len(test):3d}  factors from the other seasons: down {down_f:.3f}  up {up_f:.3f}")
+        for r in test:
+            r_none.append(_scored_rps(r, league, 1.0, 1.0))
+            r_ship.append(_scored_rps(r, league, *shipped))
+            r_new.append(_scored_rps(r, league, down_f, up_f))
+    r_none, r_ship, r_new = map(np.array, (r_none, r_ship, r_new))
+    print(f"  mean RPS: none {r_none.mean():.4f}  shipped {r_ship.mean():.4f}  re-estimated {r_new.mean():.4f}")
+    for label, d in (("re-estimated minus shipped", r_new - r_ship), ("re-estimated minus none", r_new - r_none),
+                     ("shipped minus none", r_ship - r_none)):
+        m, lo, hi = _boot(d)
+        print(f"  {label:28s} {m:+.4f}  95% [{lo:+.4f}, {hi:+.4f}]   (negative = first is better)")
+    m, lo, hi = _boot(r_new - r_ship)
+    print(f"  RULE: replace shipped factors only if the interval of (re-estimated minus shipped) is entirely "
+          f"below 0 -> {'REPLACE' if hi < 0 else 'KEEP SHIPPED'}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA"])
+    ap.add_argument("--loso", action="store_true",
+                    help="also run the leave-one-season-out comparison of shipped vs re-estimated factors")
     args = ap.parse_args()
 
     session = _session()
@@ -131,6 +183,7 @@ def main():
     sum_actual_down = sum_expected_down = 0.0
     sum_actual_up = sum_expected_up = 0.0
     backtest_rows = []
+    recs = []
 
     for i, (match_id, date, home_id, away_id, home, away, hg, ag, _label) in enumerate(candidates, start=1):
         fx = fixture_lookup.get((home_id, away_id, date))
@@ -184,6 +237,8 @@ def main():
         sum_actual_up += actual_up
         sum_expected_up += expected_up
         usable += 1
+        recs.append({"season": _label, "ed": expected_down, "eu": expected_up,
+                     "ad": actual_down, "au": actual_up})
 
         cur.execute(
             """SELECT COUNT(*) FILTER (WHERE team_id = %s),
@@ -195,6 +250,8 @@ def main():
         p_no_adj = inplay_win_probs(lam, mu, h_now, a_now, minute, league=args.league)
         backtest_rows.append((p_no_adj, down_is_home, h_now, a_now, minute,
                               lam, mu, actual_outcome))
+        recs[-1].update(down_is_home=down_is_home, h_now=h_now, a_now=a_now, minute=minute,
+                        lam=lam, mu=mu, outcome=actual_outcome)
 
         if i % 50 == 0:
             print(f"  ...{i}/{len(candidates)} checked")
@@ -238,6 +295,9 @@ def main():
           "a real out-of-sample check needs a train/test split across more "
           "red-card matches than one league currently has. Treat this as a "
           "sanity check, not proof the factor generalizes.")
+
+    if args.loso:
+        loso_report(args.league, recs)
 
     conn.close()
 

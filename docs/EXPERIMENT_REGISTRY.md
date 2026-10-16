@@ -547,6 +547,19 @@ spec/backfill-list only).
 | **What this does not decide** | Whether to change any live factor, the in-play curve, or MLS. Red-card handling for second reds and added time is out of scope (as in the original calibration). |
 | **Limitations (known before running)** | 100 to 250 usable red-card matches per league; the RPS differences between factor sets are expected to be small relative to their sampling error. Rates are fit on all matches including the scored ones (as in the original calibration). |
 
+### 2026-10-15: Pre-registration, an xG-free props model for MLS (CORNERS and SOT) (committed before the run)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | The live props models mispredict MLS because MLS fixtures are scored with `xg_for_r5` and `xg_against_r5` missing, a case the model never saw in training (the live query ends in `dropna()`, MLS has no xG, so no MLS row is in the training set). A model trained without the two xG features, using MLS rows, fixes the level error and the calibration for MLS without touching any league that has xG. |
+| **What has already been seen (disclosure)** | From the investigation of Todoist `6hm4XP38mV4gGQ57` and the new ticket `6hmV8gr2VhFrWGh7`: the live model's mean prediction on MLS team-matches of 2025-2026 is 3.982 vs 4.757 actual for SOT (-16.3%) and 4.793 vs 4.910 for CORNERS (-2.4%) with xG missing; and the graded live ledger shows SOT overs realized 64.5% vs stated 54.1% and unders 47.4% vs 67.0%, CORNERS unders 59.8% vs 68.0%. So that model A is biased on MLS is **already known**; what is new is whether B or C fix it and calibrate. |
+| **Proposed change** | None to production by this entry. Candidate B: one pooled model (the same LightGBM Poisson settings) trained without the two xG features on every league in the market's league set plus MLS, used for MLS only; every other league keeps the live model. Candidate C: an MLS-only model without the xG features. |
+| **Data cutoff** | `n_prior >= 5` rows, as live. MLS holdouts are the calendar-year seasons 2026 (primary) and 2025; each model is trained on rows with kickoff before the holdout season's first MLS kickoff. A = the live configuration (the market's league set without MLS, all features, MLS scored with xG missing). Markets CORNERS and SOT. |
+| **Evaluation method** | `scripts/experiment_props_mls_no_xg.py`, read-only. Poisson log loss per team-match; paired differences bootstrapped over matches (both team rows resampled together, 2,000 resamples, seed 0, 95% percentile intervals); live-style 5-fold out-of-fold isotonic calibrators per line; the sampling-error criterion R2' of `scripts/calibration_check.py`. |
+| **Decision rule (fixed now, per market, candidate B is the primary)** | **R1 skill:** on MLS 2026, log loss of B is below A with the 95% interval of (A minus B) entirely above 0; the 2025 holdout has the same sign. **R2' calibration:** B passes the criterion on all four lines on 2026. **R4 bias:** B's mean prediction is within 3% of the mean actual on 2026. B is recommended for MLS only if R1, R2' and R4 all hold. Reported, not gating: C against B, A's R2' result. No non-inferiority test is needed because no league with xG changes. |
+| **What this does not decide** | Whether to change production (it needs a decision, a live implementation that picks the model by league, an ADR and a model-version bump); the Bundesliga or the other xG leagues; CARDS and player props. |
+| **Limitations (known before running)** | One league, two holdout seasons. B pools European leagues with MLS without a league term (the offset findings for SOT suggest league levels differ by a few percent), so a league-level bias may remain; C avoids that at the cost of data. R2' has modest per-line power. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
