@@ -5,8 +5,9 @@ deploy script, ratings list and the deliberately NOT-yet-enabled switches.
 Text-level checks only (no database, no cluster, no PyYAML): they pin that
 the pieces that must change together did, and that the pieces that need a
 validated result first have not been switched on by accident. Remove the
-"not yet enabled" test's entries one at a time as each validation passes
-(xG blend, red-card factors, in-play, props), each with its registry entry.
+"still off" test's entries one at a time as each validation passes
+(props, cards, then the live poller at launch), each with its registry entry.
+xG blend, API xG fill, in-play share and red-card factors are validated.
 """
 import os
 import re
@@ -77,18 +78,29 @@ def test_petey_allows_the_league():
     assert "BUNDESLIGA" in ALLOWED_LEAGUE_VALUES
 
 
-def test_switches_that_need_a_validated_result_are_still_off():
-    """Staged launch: goals-based markets only. Each of these changes what
-    existing leagues see or needs its own validation first."""
+def test_validated_switches_are_on_and_agree_with_each_other():
+    """Switched on once each had its registry entry: xG blend (ADR-018),
+    API xG fill with its own scale (ADR-018), empirical remaining-goal share
+    and red-card factors (2026-10-15 entry)."""
     from models.xg_blend import XG_BLEND_LEAGUES
-    from ingestion.api_football import XG_FILL_LEAGUES
+    from ingestion.api_football import API_FOOTBALL_XG_SCALES, XG_FILL_LEAGUES
     from predictions.live_winprob import EMPIRICAL_REMAINING_LEAGUES, RED_CARD_FACTORS
-    from generate_slate import CARDS_LEAGUES, PLAYER_PROPS_LEAGUES, PROPS_LEAGUES
-    for name, s in (("PROPS_LEAGUES", PROPS_LEAGUES), ("PLAYER_PROPS_LEAGUES", PLAYER_PROPS_LEAGUES),
-                    ("CARDS_LEAGUES", CARDS_LEAGUES), ("XG_BLEND_LEAGUES", XG_BLEND_LEAGUES),
-                    ("XG_FILL_LEAGUES", XG_FILL_LEAGUES),
+    for name, s in (("XG_BLEND_LEAGUES", XG_BLEND_LEAGUES), ("XG_FILL_LEAGUES", XG_FILL_LEAGUES),
                     ("EMPIRICAL_REMAINING_LEAGUES", EMPIRICAL_REMAINING_LEAGUES),
                     ("RED_CARD_FACTORS", RED_CARD_FACTORS)):
+        assert "BUNDESLIGA" in s, f"{name} lost its validated Bundesliga entry"
+    assert "BUNDESLIGA" in API_FOOTBALL_XG_SCALES
+    down, up = RED_CARD_FACTORS["BUNDESLIGA"]
+    assert down < 1 < up
+
+
+def test_switches_that_need_a_validated_result_are_still_off():
+    """Staged launch. Props and cards read xg_for_r5 and each needs its own
+    registry entry; the live poller and the props final pass are not run for
+    the Bundesliga until launch. Remove an entry here when its validation passes."""
+    from generate_slate import CARDS_LEAGUES, PLAYER_PROPS_LEAGUES, PROPS_LEAGUES
+    for name, s in (("PROPS_LEAGUES", PROPS_LEAGUES), ("PLAYER_PROPS_LEAGUES", PLAYER_PROPS_LEAGUES),
+                    ("CARDS_LEAGUES", CARDS_LEAGUES)):
         assert "BUNDESLIGA" not in s, f"{name} was switched on before its validation"
     assert "--league BUNDESLIGA" not in _doc("futbol-props-final-pass")
     assert "--league BUNDESLIGA" not in _doc("futbol-live-winprob")
