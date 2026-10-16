@@ -95,7 +95,7 @@ def _seed(cur):
 
 def test_narrow_window_catches_recent_drift_diluted_by_wider_window(conn):
     cur = conn.cursor()
-    league_id = _seed(cur)
+    _seed(cur)
 
     # Window covering only the 10 most recent (all misses): full drift visible.
     cur.execute(DRIFT_SQL, (10, 5))

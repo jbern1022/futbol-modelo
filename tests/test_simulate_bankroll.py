@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import psycopg2
 import pytest
