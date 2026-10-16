@@ -575,6 +575,20 @@ spec/backfill-list only).
 | **Limitations** | One league, two holdouts. B pools European leagues with MLS without a league term. R2' has modest per-line power. Corners A for 2025 is better calibrated than for 2026, and the two seasons give opposite answers for B, so the corners result is unstable. |
 | **Decision** | **Neither candidate is adopted; no live change.** The production defect is real and documented (Todoist `6hmV8gr2VhFrWGh7`): MLS is scored by a model that never trained on MLS. The decision is the owner's: (a) pause MLS SOT (and optionally CORNERS) publication until fixed; (b) accept a documented xG-free model for MLS (C or B) knowing it still runs 3% to 8% low in 2026 and would need an ADR and a model-version bump; (c) pre-register a trailing-offset variant for MLS. |
 
+### 2026-10-15: Result, red-card factors re-estimated against the blended rates (the pre-registered test above)
+
+| Field | Detail |
+|---|---|
+| **What was run** | `scripts/experiment_redcard_calibration.py --league <L> --loso` for EPL, SERIE_A, LA_LIGA and BUNDESLIGA, exactly as registered: single-red matches with the red between minute 10 and 80, expected goals from `fit_dixon_coles` (blended for all four leagues) and `remaining_share`, red-card minutes from API-Football `fixtures/events` (read-only; the script now also opens a read-only connection), goal minutes from `futbol.shots`. Leave-one-season-out RPS at the red-card minute; paired bootstrap 2,000 resamples, seed 0. |
+| **Re-estimated vs shipped factors (down, up)** | EPL (148 matches): 0.394, 1.309 vs 0.419, 1.370. SERIE_A (151): 0.483, 1.555 vs 0.513, 1.629. LA_LIGA (206): 0.463, 1.325 vs 0.488, 1.395. BUNDESLIGA (127): 0.521, 1.601 vs 0.528, 1.631. Every re-estimated factor is 1% to 6% closer to 1 than the shipped one, in the same direction (down below 1, up above 1). |
+| **Leave-one-season-out mean RPS (none / shipped / re-estimated)** | EPL 0.1439 / 0.1214 / 0.1232. SERIE_A 0.1559 / 0.1091 / 0.1106. LA_LIGA 0.1404 / 0.1134 / 0.1142. BUNDESLIGA 0.1481 / 0.1153 / 0.1159. |
+| **Re-estimated minus shipped (negative = re-estimated better)** | EPL **+0.0018 [+0.0002, +0.0033]**; SERIE_A **+0.0014 [+0.0004, +0.0025]**; LA_LIGA +0.0007 [-0.0001, +0.0016]; BUNDESLIGA +0.0006 [-0.0003, +0.0014]. Against no factors, both variants are far better in every league (re-estimated minus none: EPL -0.0208 [-0.0403, -0.0004], SERIE_A -0.0453 [-0.0618, -0.0293], LA_LIGA -0.0263 [-0.0390, -0.0136], BUNDESLIGA -0.0322 [-0.0509, -0.0117]). |
+| **Verdict per the registered rule** | **KEEP SHIPPED in all four leagues.** No interval of (re-estimated minus shipped) lies entirely below 0; for EPL and SERIE_A it lies entirely above 0 (shipped better). |
+| **Reading with the stated bias** | The shipped factors are fit on all seasons including the one being scored, so the comparison favours them, as registered. The honest summary is that blending moved the estimates by a few percent and nothing here shows a gain from changing them; the gain from having red-card factors at all is large and is not in doubt. |
+| **Consequence for ADR-018** | Caveat (b) of ADR-018 and ADR-016 ("red-card factors were calibrated against goals-only rates and should be re-run against the blended rates") is answered: re-run, no change. This includes the Bundesliga, whose factors (0.528, 1.631) were calibrated before the Bundesliga entered the blend set. The in-play remaining-goal curve was not re-checked against blended rates. |
+| **Limitations** | 127 to 206 usable matches per league; rates are fit on all matches including the scored ones; second reds and added time are out of scope (as in the original calibration); EPL includes 8 and Serie A 2 matches from 2026-27. |
+| **Decision** | **No change to any league's red-card factors.** Todoist `6hhr7Cq8Mj98cRpf` answered. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and

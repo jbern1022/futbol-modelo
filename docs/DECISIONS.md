@@ -804,6 +804,12 @@ its own registry entry. (d) Understat scraping terms for a fifth league
 (`DATA_LICENSING` open gap 1) remain unconfirmed; this ADR does not
 decide them.
 
+**Addendum (2026-10-15):** caveat (b) is resolved. The red-card factors of
+EPL, SERIE_A, LA_LIGA and the Bundesliga were re-estimated against the blended
+rates and compared leave-one-season-out with the shipped factors; the shipped
+factors were kept in all four leagues (registry, "Result, red-card factors
+re-estimated against the blended rates").
+
 ---
 
 ## ADR-019: no new Understat leagues; new leagues take xG from API-Football (2023-24 on) and run goals-only before
