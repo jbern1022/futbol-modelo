@@ -77,8 +77,13 @@ PROPS_MARKETS: dict[str, dict[str, Any]] = {
                 "features": ["corners_for_r5", "corners_against_r5", "shots_for_r5",
                             "shots_against_r5", "xg_for_r5", "xg_against_r5",
                             "rest_days", "is_home"]},
+    # MLS is paused for SOT (Todoist 6hmV8gr2VhFrWGh7, registry 2026-10-15 "Result, an xG-free
+    # props model for MLS"): the pooled model never trains on MLS (no xG, so the dropna() in
+    # fit_props_model removes every MLS row) yet scored MLS with xG missing, under-predicting
+    # MLS shots on target by 11% to 16% with calibration off by 12 to 15 points. MLS was
+    # never in the training set, so removing it here changes no other league's model.
     "SOT": {"target_col": "shots_on_target", "lines": [2.5, 3.5, 4.5, 5.5],
-            "leagues": PROPS_LEAGUES, "label": "Shots on Target",
+            "leagues": PROPS_LEAGUES - {"MLS"}, "label": "Shots on Target",
             "features": ["sot_for_r5", "sot_against_r5", "shots_for_r5",
                         "shots_against_r5", "xg_for_r5", "xg_against_r5",
                         "rest_days", "is_home"]},
