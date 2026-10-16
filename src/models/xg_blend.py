@@ -25,7 +25,7 @@ from scipy.optimize import minimize
 from dixon_coles import DixonColes
 
 XG_BLEND_WEIGHT = 0.5
-XG_BLEND_LEAGUES = frozenset({"EPL", "SERIE_A", "LA_LIGA"})
+XG_BLEND_LEAGUES = frozenset({"EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA"})
 
 
 class XgRatings:

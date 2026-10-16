@@ -840,8 +840,19 @@ def season_label_for(league_code: str, season_start_year: int) -> str:
 # Filled only where xg is NULL (never overwrites Understat), and only for
 # leagues whose training rows carry Understat xG -- MLS never had xG, so
 # giving it some now would be its own distribution shift.
+#
+# Per-league scale (ADR-018): the Bundesliga's own measurement over every
+# match of 2023-24 to 2025-26 (1,836 team-matches, corr 0.935-0.945) is
+# 1.095, from the 2026-10-15 registry entry. API_FOOTBALL_XG_SCALE stays
+# the 1.108 default for the three leagues it was measured on.
 API_FOOTBALL_XG_SCALE = 1.108
-XG_FILL_LEAGUES = frozenset({"EPL", "SERIE_A", "LA_LIGA"})
+API_FOOTBALL_XG_SCALES = {
+    "EPL": API_FOOTBALL_XG_SCALE,
+    "SERIE_A": API_FOOTBALL_XG_SCALE,
+    "LA_LIGA": API_FOOTBALL_XG_SCALE,
+    "BUNDESLIGA": 1.095,
+}
+XG_FILL_LEAGUES = frozenset(API_FOOTBALL_XG_SCALES)
 
 
 def store_api_football_xg(cur, league_code: str, match_id: int, team_id: int, raw) -> None:
@@ -854,7 +865,7 @@ def store_api_football_xg(cur, league_code: str, match_id: int, team_id: int, ra
     cur.execute(
         """UPDATE futbol.team_match_stats SET xg = %s
            WHERE match_id = %s AND team_id = %s AND xg IS NULL""",
-        (round(raw * API_FOOTBALL_XG_SCALE, 3), match_id, team_id))
+        (round(raw * API_FOOTBALL_XG_SCALES[league_code], 3), match_id, team_id))
 
 
 def backfill_primary(league_code: str, season_start_year: int):
