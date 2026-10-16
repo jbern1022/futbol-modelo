@@ -5,7 +5,7 @@ The live-DB idempotency test (test_ingestion_idempotency.py) is opt-in only
 because it makes real external network calls. These tests run offline and fast,
 covering the cache-path and DB-path independently.
 """
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 

@@ -16,8 +16,6 @@ so persist_slate() runs unmodified and unaware, and the fixture's
 rollback() at teardown is the only thing that actually ends the
 transaction.
 """
-import datetime
-import math
 import os
 
 import psycopg2

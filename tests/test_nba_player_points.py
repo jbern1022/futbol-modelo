@@ -4,7 +4,6 @@ prob_over() and candidate_lines(). rolling_points_stats() needs a real
 DB cursor and is exercised indirectly via generate_nba_slate.py, same
 pattern as this project's other DB-gated ingestion functions.
 """
-import pytest
 
 from models.nba_player_points import candidate_lines, prob_over
 

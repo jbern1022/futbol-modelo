@@ -5,7 +5,6 @@ real DB cursor and current_depth_chart() needs a real nfl_data_py call;
 both are exercised indirectly via generate_nfl_slate.py, same pattern
 as this project's other DB/network-gated ingestion functions.
 """
-import pytest
 
 from models.nfl_player_props import (candidate_lines, depth_roster_disagreement, prob_over,
                                      reserved_players)

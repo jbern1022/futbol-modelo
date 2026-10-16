@@ -67,7 +67,8 @@ def test_update_is_rejected(conn):
     cur = conn.cursor()
     match_id, kickoff = _future_fixture(cur)
     model_version_id = _any_model_version(cur)
-    prediction_id = _insert_test_prediction(cur, match_id, model_version_id, datetime.datetime.now(datetime.timezone.utc))
+    prediction_id = _insert_test_prediction(
+        cur, match_id, model_version_id, datetime.datetime.now(datetime.timezone.utc))
 
     cur.execute("SAVEPOINT before_update")
     with pytest.raises(psycopg2.errors.RaiseException, match="predictions are immutable"):
@@ -81,7 +82,8 @@ def test_delete_is_rejected(conn):
     cur = conn.cursor()
     match_id, kickoff = _future_fixture(cur)
     model_version_id = _any_model_version(cur)
-    prediction_id = _insert_test_prediction(cur, match_id, model_version_id, datetime.datetime.now(datetime.timezone.utc))
+    prediction_id = _insert_test_prediction(
+        cur, match_id, model_version_id, datetime.datetime.now(datetime.timezone.utc))
 
     cur.execute("SAVEPOINT before_delete")
     with pytest.raises(psycopg2.errors.RaiseException, match="predictions are immutable"):
