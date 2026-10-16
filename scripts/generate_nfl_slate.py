@@ -43,8 +43,10 @@ import pandas as pd
 import psycopg2
 
 from models.nfl_player_props import candidate_lines as player_candidate_lines
-from models.nfl_player_props import (current_depth_chart, current_roster_status,
-                                     depth_roster_disagreement, reserved_players)
+from models.nfl_player_props import (current_depth_chart, current_injury_report,
+                                     current_roster_status, depth_roster_disagreement,
+                                     injury_exclusions, reserved_players, safe_injury_report,
+                                     week_from_game_id)
 from models.nfl_player_props import prob_over as player_prob_over
 from models.nfl_player_props import prob_anytime_td as player_prob_anytime_td
 from models.nfl_player_props import rolling_td_rate, rolling_yardage_stats
@@ -281,6 +283,10 @@ def main() -> None:
             for team, position, gsis_id in depth_roster_disagreement(depth_chart, reserved):
                 print(f"  GATE {team} {position} {gsis_id}: depth chart lists a player "
                      f"{reserved[gsis_id]}; skipped")
+            # Load the season's injury report once; per-game filtering happens below.
+            injury_report, injury_warning = safe_injury_report(current_injury_report, args.season)
+            if injury_warning:
+                print(f"WARNING: {injury_warning}")
 
             for (match_id, external_ref, home, away, home_id, away_id,
                 home_abbr, away_abbr, kickoff) in fixtures:
@@ -288,6 +294,14 @@ def main() -> None:
                     print(f"  SKIP {home} vs {away}: no external_ref")
                     continue
                 game_id = external_ref.split(":", 1)[1]
+                # Roster gate (reserve lists) plus this game's injury-report exclusions
+                # (Out / Doubtful for the game's week). Per game: a player Out in week 5
+                # may be back in week 6. Fails open to the roster gate with a warning.
+                injured = (injury_exclusions(injury_report, week_from_game_id(game_id))
+                           if injury_report else {})
+                game_reserved = {**injured, **reserved}
+                for team, position, gsis_id in depth_roster_disagreement(depth_chart, injured):
+                    print(f"  GATE {team} {position} {gsis_id}: {injured[gsis_id]}; skipped")
                 lines = lines_by_game_id.get(game_id, {})
                 spread_line, total_line = lines.get("spread_line"), lines.get("total_line")
                 has_market_line = not ((spread_line is None or pd.isna(spread_line)) and
@@ -297,8 +311,8 @@ def main() -> None:
                     candidates = (build_candidates(model, home, away, home_id, away_id,
                                                    spread_line, total_line)
                                  if has_market_line else [])
-                    candidates += build_player_candidates(cur, depth_chart, home_abbr, kickoff, reserved)
-                    candidates += build_player_candidates(cur, depth_chart, away_abbr, kickoff, reserved)
+                    candidates += build_player_candidates(cur, depth_chart, home_abbr, kickoff, game_reserved)
+                    candidates += build_player_candidates(cur, depth_chart, away_abbr, kickoff, game_reserved)
                     if not candidates:
                         print(f"  SKIP {home} vs {away}: no market line and no player "
                              f"prop candidates")
