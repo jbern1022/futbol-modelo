@@ -63,6 +63,8 @@ EXPECTED_JOBS = [
     "auto_grade",
     "simulate_bankroll",
     "odds:MLS", "odds:EPL", "odds:SERIE_A", "odds:LA_LIGA",
+    # Bundesliga (phase 2): its own refresh CronJob, tail of the slate and odds chains.
+    "nightly_refresh:BUNDESLIGA", "auto_slate:BUNDESLIGA", "odds:BUNDESLIGA",
 ]
 
 LAST_SUCCESS_SQL = """
@@ -72,7 +74,7 @@ WHERE job_name = ANY(%s) AND status = 'success'
 GROUP BY job_name
 """
 
-SLATED_LEAGUES = ("NFL", "EPL", "SERIE_A", "LA_LIGA", "MLS")
+SLATED_LEAGUES = ("NFL", "EPL", "SERIE_A", "LA_LIGA", "MLS", "BUNDESLIGA")
 
 MISSING_SLATE_SQL = f"""
 SELECT m.match_id, l.code, th.name || ' vs ' || ta.name, m.kickoff_utc

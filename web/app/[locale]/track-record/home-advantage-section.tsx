@@ -14,6 +14,7 @@ const LEAGUE_COLORS: Record<string, string> = {
   EPL: "#8b5cf6",
   SERIE_A: "#3b82f6",
   LA_LIGA: "#ef4444",
+  BUNDESLIGA: "#84cc16",
   MLS: "#10b981",
   WC: "#f59e0b",
 };

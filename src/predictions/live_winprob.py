@@ -45,7 +45,7 @@ REMAINING_GOAL_SHARE = (
     0.1685, 0.1577, 0.1463, 0.1349, 0.1252, 0.1148, 0.1040, 0.0934, 0.0828, 0.0723,  # 80-89
     0.0618,  # 90 (all of stoppage time)
 )
-EMPIRICAL_REMAINING_LEAGUES = frozenset({"EPL", "SERIE_A", "LA_LIGA", "MLS"})
+EMPIRICAL_REMAINING_LEAGUES = frozenset({"EPL", "SERIE_A", "LA_LIGA", "MLS", "BUNDESLIGA"})
 
 
 def remaining_share(minute: int, league: str | None = None) -> float:
@@ -89,6 +89,11 @@ RED_CARD_FACTORS = {
     # backfilled (ADR-015). 204 single-red matches 2021-26, in-sample like
     # EPL/SERIE_A: RPS 0.1398 -> 0.1120 (+19.9%).
     "LA_LIGA": (0.488, 1.395),
+    # BUNDESLIGA (2026-10-15): 127 single-red matches 2021-26, calibrated
+    # against the empirical remaining_share() (not the linear rule, which
+    # gave 0.594/1.821 by absorbing stoppage goals). In-sample like
+    # EPL/SERIE_A/LA_LIGA: RPS 0.1471 -> 0.1136 (+22.8%).
+    "BUNDESLIGA": (0.528, 1.631),
 }
 
 

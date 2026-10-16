@@ -50,16 +50,17 @@ LIMIT %s
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA"])
+    ap.add_argument("--league", required=True, choices=["EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA"])
     ap.add_argument("--season", default="2025-26")
     ap.add_argument("--n", type=int, default=100)
     args = ap.parse_args()
 
     conn = psycopg2.connect(DSN)
+    conn.set_session(readonly=True)  # resolve_team_id can UPDATE teams; this script writes nothing
     cur = conn.cursor()
     session = _session()
     lookup = build_fixture_lookup(cur, session, args.league, [args.season])
-    conn.rollback()  # resolve_team_id may have touched team rows; this script writes nothing
+    conn.rollback()
     cur.execute(SAMPLE_SQL, (args.league, args.season, args.n))
     sample = cur.fetchall()
     conn.close()
@@ -83,6 +84,8 @@ def main() -> None:
     print(f"   corr {np.corrcoef(us_a, af_a)[0, 1]:.3f}   mean Understat {us_a.mean():.3f}   "
           f"mean API-Football {af_a.mean():.3f}   mean abs diff {np.abs(us_a - af_a).mean():.3f}")
     print(f"   API-Football ~= {slope:.3f} * Understat + {intercept:+.3f}")
+    print(f"   sum Understat {us_a.sum():.3f}   sum API-Football {af_a.sum():.3f}   "
+          f"ratio Understat/API-Football {us_a.sum() / af_a.sum():.4f}")
 
 
 if __name__ == "__main__":

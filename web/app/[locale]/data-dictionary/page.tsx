@@ -18,7 +18,7 @@ const TABLES: Table[] = [
     name: "leagues",
     description: "One row per competition. sport distinguishes soccer from the live NFL/NBA vertical slices.",
     columns: [
-      { name: "code", type: "text", note: "'EPL', 'SERIE_A', 'MLS', 'LA_LIGA', 'WC', 'NFL', 'NBA'" },
+      { name: "code", type: "text", note: "'EPL', 'SERIE_A', 'MLS', 'LA_LIGA', 'BUNDESLIGA', 'WC', 'NFL', 'NBA'" },
       { name: "is_international", type: "boolean", note: "true only for World Cup" },
       { name: "sport", type: "text", note: "'soccer' | 'basketball' | 'football' — all three are live" },
     ],
@@ -27,7 +27,7 @@ const TABLES: Table[] = [
     name: "seasons",
     description: "Per-league season. Label format is NOT uniform across leagues — a real bug (fixed) once made these disagree between ingestion paths for the same real season.",
     columns: [
-      { name: "label", type: "text", note: "Hyphenated 'YYYY-YY' for cross-year leagues (EPL, SERIE_A, LA_LIGA — e.g. '2026-27'); bare 'YYYY' for single-calendar-year competitions (MLS, WC — e.g. '2026'). Both ingestion paths (loader.py, api_football.py) must agree on this per league or a season silently duplicates." },
+      { name: "label", type: "text", note: "Hyphenated 'YYYY-YY' for cross-year leagues (EPL, SERIE_A, LA_LIGA, BUNDESLIGA — e.g. '2026-27'); bare 'YYYY' for single-calendar-year competitions (MLS, WC — e.g. '2026'). Both ingestion paths (loader.py, api_football.py) must agree on this per league or a season silently duplicates." },
     ],
   },
   {

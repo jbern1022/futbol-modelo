@@ -18,7 +18,7 @@ def test_curve_covers_every_elapsed_minute_and_never_increases():
 
 
 def test_stoppage_time_keeps_real_goal_expectation_in_every_live_league():
-    for league in ("EPL", "SERIE_A", "LA_LIGA", "MLS"):
+    for league in ("EPL", "SERIE_A", "LA_LIGA", "MLS", "BUNDESLIGA"):
         assert remaining_share(90, league) == pytest.approx(0.0618)
         assert remaining_share(90, league) > 5 * remaining_share(90, None)
 
@@ -42,7 +42,7 @@ def test_level_score_in_stoppage_is_no_longer_a_near_certain_draw():
 
 def test_every_live_league_has_a_red_card_factor_in_the_right_direction():
     from predictions.live_winprob import RED_CARD_FACTORS, apply_red_card
-    for league in ("EPL", "SERIE_A", "MLS", "LA_LIGA"):
+    for league in ("EPL", "SERIE_A", "MLS", "LA_LIGA", "BUNDESLIGA"):
         down, up = RED_CARD_FACTORS[league]
         assert down < 1 < up
         assert apply_red_card(1.5, 1.2, league, home_is_down=True) == pytest.approx((1.5 * down, 1.2 * up))

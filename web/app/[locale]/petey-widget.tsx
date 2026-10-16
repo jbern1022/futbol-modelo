@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 
-const LEAGUES = ["MLS", "EPL", "SERIE_A", "LA_LIGA", "WC"];
+const LEAGUES = ["MLS", "EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA", "WC"];
 const MARKET_VALUES = ["1X2", "BTTS", "TOTAL_GOALS", "CORNERS", "SOT", "PLAYER_GOALS", "PLAYER_SAVES"] as const;
 const TEAM_STAT_VALUES = ["corners", "shots_on_target", "shots", "fouls", "yellows"] as const;
 

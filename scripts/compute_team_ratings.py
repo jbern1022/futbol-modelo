@@ -38,7 +38,7 @@ DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
 # Same set fit_dixon_coles() would use live for these leagues -- team
 # ratings for a league with too little data to fit reliably aren't
 # worth computing CIs for either.
-LEAGUES = ("MLS", "EPL", "SERIE_A", "LA_LIGA")
+LEAGUES = ("MLS", "EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA")
 
 
 def matches_for_league(cur, league: str) -> pd.DataFrame:

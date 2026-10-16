@@ -756,3 +756,97 @@ and backtests do not advance the clock. This ADR changes documents only.
 Whether `v_calibration`, the Track Record page or any job applies the 350
 gate or the status vocabulary has not been checked here and is separate
 implementation work.
+
+---
+
+## ADR-018: the Bundesliga joins the goals + xG blend; API-Football xG gets a per-league scale
+
+**Status:** Accepted (2026-10-15), shipped on branch, not deployed
+
+**Context:** ADR-016 promoted a fixed 50/50 goals + xG blend for EPL,
+SERIE_A and LA_LIGA. The Bundesliga's version of that test was
+pre-registered on 2026-10-14 (commit 5ea7bdd) before any Bundesliga xG
+was in the database, and passed (registry, "Result, Bundesliga fixed
+50/50 goals + xG blend"): pooled over 1,217 matches RPS 0.2036 → 0.2013,
+diff −0.0023, 95% CI [−0.0036, −0.0011], all four holdout seasons
+improving, log loss also better. That entry left the promotion itself to
+an ADR, and left the live-season xG scale open, because the existing
+×1.108 was measured on other leagues. The 2026-10-15 registry entry
+measured it for the Bundesliga: every match of 2023-24 to 2025-26 (1,836
+team-matches, correlation 0.935-0.945), Understat / API-Football = 1.095
+pooled (1.088, 1.115, 1.085 by season).
+
+**Decision:** (1) `BUNDESLIGA` joins `XG_BLEND_LEAGUES`
+(`src/models/xg_blend.py`) with the same fixed w = 0.5 and production xi
+and ridge, so `fit_dixon_coles` returns a `BlendedDixonColes` for it.
+(2) `API_FOOTBALL_XG_SCALE` becomes a per-league table,
+`API_FOOTBALL_XG_SCALES` in `src/ingestion/api_football.py`: 1.108 for
+EPL, SERIE_A and LA_LIGA (unchanged), 1.095 for BUNDESLIGA.
+`XG_FILL_LEAGUES` is derived from the table, so a league cannot be
+filled without a measured scale. Fill rules are unchanged: only where
+`xg` is NULL, never over Understat. (3) No slate model-version bump: no
+Bundesliga prediction exists yet, so nothing already published changes.
+
+**Consequences:** Bundesliga 1X2, totals, BTTS and in-play use blended
+rates from its first prediction. Open caveats, same family as ADR-016's:
+(a) 2026-27 Bundesliga xG is API-Football rescaled, not Understat, which
+the blend was tested on; the ratio is a single multiplicative scale
+while the regression has a positive intercept (API xG is relatively
+higher for low-xG teams) and the seasons differ by up to 0.03. The
+prospective test on 2026-27 (the EPL/SERIE_A one is scheduled for
+Dec 1) should be run for the Bundesliga too. (b) The Bundesliga red-card
+factors (0.528, 1.631) were calibrated against goals-only expected
+rates, as ADR-016 noted for the others, and the in-play remaining-goal
+share is the EPL/Serie A curve; neither was re-run against blended
+rates. (c) The blend does not turn on props: CORNERS, SOT and CARDS use
+`xg_for_r5` and stay off for the Bundesliga until validated, each with
+its own registry entry. (d) Understat scraping terms for a fifth league
+(`DATA_LICENSING` open gap 1) remain unconfirmed; this ADR does not
+decide them.
+
+**Addendum (2026-10-15):** caveat (b) is resolved. The red-card factors of
+EPL, SERIE_A, LA_LIGA and the Bundesliga were re-estimated against the blended
+rates and compared leave-one-season-out with the shipped factors; the shipped
+factors were kept in all four leagues (registry, "Result, red-card factors
+re-estimated against the blended rates").
+
+---
+
+## ADR-019: no new Understat leagues; new leagues take xG from API-Football (2023-24 on) and run goals-only before
+
+**Status:** Accepted (2026-10-15), documents only; no code changed
+
+**Context:** Understat publishes no terms and its `robots.txt` is
+`User-agent: *` / `Disallow: /` (checked 2026-10-16, `docs/DATA_LICENSING.md`
+gap 1a). The project already scrapes it for EPL, Serie A, La Liga and, since
+2026-10-14, the Bundesliga. A search for free alternatives
+(`docs/DATA_ALTERNATIVES_XG_2026-10.md`) found no source that covers the
+priority leagues for 2021-22 to 2025-26 with shot-level data or team xG under
+terms that clearly allow a public prediction site: StatsBomb open data has only
+Bundesliga 2023/24 and Ligue 1 2021/22 to 2022/23 among them (licence text
+unread), the Wyscout events set is one old season, and the sites that show xG
+restrict automated access. API-Football `expected_goals` is reliable from
+2023-24 in the leagues sampled so far (owner's earlier checks, not re-verified
+in the research pass because its docs and terms return 403).
+
+**Decision:** (1) No new league is added on the Understat route. (2) New
+leagues use route B (`docs/ADDING_A_LEAGUE.md`): API-Football only. Their xG
+comes from API-Football for 2023-24 onwards; 2021-22 and 2022-23 are
+modelled goals-only. (3) xG blending for a new league is tested only as a
+pre-registered registry experiment on the API-xG seasons, as for the
+Eredivisie. (4) Red-card and in-play factors use goal minutes from
+API-Football events. (5) A paid provider is considered only if 2021-23 xG for
+a priority league is shown to be needed. (6) A StatsBomb validation set
+(Bundesliga 2023/24, Ligue 1 2021/22-2022/23) is optional and only after a
+human reads its licence.
+
+**Consequences:** Ligue 1 moves from route A to route B and loses two seasons
+of xG (its goals-only baseline already passes in all three holdouts). A new
+league's API xG has no Understat reference to rescale against, so there is no
+league-specific scale factor like ADR-018's 1.095; it is either used unscaled
+or the blend stays off for that league until a scale is argued for. **Not
+decided here, still open for the owner:** whether to keep relying on the
+Understat data already loaded for the four leagues (the same robots.txt and
+no-terms situation applies), and whether API-Football's terms permit
+publishing derived predictions (`docs/DATA_LICENSING.md`, gap 4; the terms
+page could not be read by automated tools).

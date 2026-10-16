@@ -72,3 +72,4 @@ def test_missing_value_is_a_no_op(cur):
     match_id, team_id, _ = _row(cur, has_xg=False)
     store_api_football_xg(cur, "EPL", match_id, team_id, None)
     assert _xg(cur, match_id, team_id) is None
+
