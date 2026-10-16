@@ -89,8 +89,10 @@ over:
    keep relying on the Understat data already loaded for the four
    leagues. Options on the table: ask `support@understat.com` for
    permission; accept the risk knowingly and record it here; replace the
-   history with a freely licensed source if one exists (research in
-   progress, see Todoist); or move to a licensed provider.
+   history with a freely licensed source if one exists (researched
+   2026-10-15: none found for 2021-23 xG in the priority leagues, see
+   `docs/DATA_ALTERNATIVES_XG_2026-10.md` and ADR-018/ADR-019); or move to a
+   licensed provider.
 
    **1b. FBref — unchanged, still not checked.**
 2. **nba_api / stats.nba.com terms** — same gap. `nba_api` is a
@@ -111,6 +113,10 @@ register says where it doesn't yet have an answer rather than filling
 the cell with a guess.
 
 ## Related documents
+
+- `docs/DATA_ALTERNATIVES_XG_2026-10.md` — free alternatives to Understat
+  for shot-level data and xG: what exists, under what terms, and what is
+  not verified.
 
 - `docs/RESEARCH_CHARTER.md`, `docs/RESEARCH_PROTOCOL.md` — this
   register is what those documents' data-availability claims rest on.

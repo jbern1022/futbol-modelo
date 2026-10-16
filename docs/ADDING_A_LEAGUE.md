@@ -38,6 +38,8 @@ Tests to copy: `tests/test_bundesliga_config.py`.
 
 ## 2. History backfill (writes to the production database)
 
+**Route A is closed to new leagues (ADR-019): do not add a league on the Understat route.** Use route B.
+
 Route A (Understat league): API-Football's primary backfill creates clubs,
 matches, team stats and player rows; Understat shots and xG are linked onto
 those matches afterwards (ADR-015). Route B (no Understat): the same API
