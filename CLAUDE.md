@@ -35,6 +35,16 @@ short digest you use for the image tag (e.g. `abc1234`); the script also
 tags `:latest`. Rollouts use `kubectl set image` + `kubectl rollout
 status` for Deployments and `kubectl patch cronjob` for CronJobs.
 
+**Which machine does what (verified 2026-10-27):** `docker-host` has docker but
+NO `kubectl`, so `deploy.sh` run there builds and pushes the image and then stops
+at its first `kubectl` line. The k3s control-plane has `kubectl` (use
+`export KUBECONFIG=~/.kube/config`; the default k3s kubeconfig is root-only) but
+no docker and no repo checkout. Until `deploy.sh` is split (Todoist
+`6hrFHQFwfr7HQrg7`), finish a deploy by copying the manifest over and running the
+`kubectl apply` / `kubectl patch` steps on the control-plane. Do not apply the
+whole `k8s/cronjobs.yaml` before the Bundesliga launch: apply only the object you
+changed.
+
 **One-time setup** (already done once per cluster — only needed again if
 the secret is deleted):
 ```bash
