@@ -706,6 +706,20 @@ def _normalize_referee(raw: str | None) -> str | None:
     return name or None
 
 
+def set_referee(cur, match_id: int, raw_referee: str | None) -> bool:
+    """Record the fixture's referee when the payload has one. Applies to
+    scheduled fixtures too: API-Football assigns the referee a day or two
+    before kickoff and can change it, so the latest non-empty value wins.
+    Returns True if a referee was present in the payload."""
+    referee = _normalize_referee(raw_referee)
+    if not referee:
+        return False
+    cur.execute(
+        "UPDATE futbol.matches SET referee = %s WHERE match_id = %s AND referee IS DISTINCT FROM %s",
+        (referee, match_id, referee))
+    return True
+
+
 def find_match_id(cur, home_team_id: int, away_team_id: int, date: str,
                   league_code: str | None = None) -> int | None:
     """+/-1 day tolerance: sources occasionally disagree on which
@@ -946,6 +960,9 @@ def backfill_primary(league_code: str, season_start_year: int):
                     (season_id, home_id, away_id, kickoff, hg, ag, status, ext_ref, fixture_id))
                 match_id = cur.fetchone()[0]
             created += 1
+            # backfill() wrote the referee but this path never did, so the
+            # nightly --primary runs stopped capturing it (no 2026-10 referees).
+            set_referee(cur, match_id, fx["fixture"].get("referee"))
 
             if status == "final":
                 for tid, is_home in ((home_id, True), (away_id, False)):
