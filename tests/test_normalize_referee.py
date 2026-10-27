@@ -34,3 +34,34 @@ def test_empty_string_returns_none():
 
 def test_whitespace_only_returns_none():
     assert _normalize_referee("   ") is None
+
+
+class _Cur:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params):
+        self.calls.append(params)
+
+
+def test_set_referee_writes_normalized_name():
+    from ingestion.api_football import set_referee
+    cur = _Cur()
+    assert set_referee(cur, 7, "Fabio Maresca, Italy") is True
+    assert cur.calls == [("Fabio Maresca", 7, "Fabio Maresca")]
+
+
+def test_set_referee_skips_empty_payload():
+    from ingestion.api_football import set_referee
+    cur = _Cur()
+    assert set_referee(cur, 7, None) is False
+    assert set_referee(cur, 7, "") is False
+    assert cur.calls == []
+
+
+def test_backfill_primary_calls_set_referee():
+    # the regression: backfill_primary wrote no referee at all, so the nightly
+    # --primary jobs silently stopped capturing it
+    import inspect
+    from ingestion.api_football import backfill_primary
+    assert "set_referee(" in inspect.getsource(backfill_primary)
