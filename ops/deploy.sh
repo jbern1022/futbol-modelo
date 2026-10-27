@@ -90,6 +90,18 @@ patch_cronjob() {
     local container="$2"
     local image="$3"
 
+    # A CronJob in this list that is not on the cluster yet (e.g. a league whose
+    # launch is still pending) is skipped; any other kubectl failure aborts.
+    local out
+    if ! out=$(kubectl get cronjob "${cronjob}" 2>&1); then
+        if grep -q "NotFound" <<<"$out"; then
+            echo "==> Skipping CronJob ${cronjob}: not found on the cluster"
+            return 0
+        fi
+        echo "$out" >&2
+        return 1
+    fi
+
     echo "==> Patching CronJob ${cronjob} ..."
     kubectl patch cronjob "${cronjob}" \
         -p "{\"spec\":{\"jobTemplate\":{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"${container}\",\"image\":\"${image}\"}]}}}}}}"
