@@ -70,16 +70,24 @@ spec:
             command: ["/bin/sh", "-c"]
             args:
               - |
-                python -m ingestion.api_football backfill --league MLS --season 2026 &&
-                python -m ingestion.api_football backfill --league EPL --season 2026 --primary &&
-                python -m ingestion.api_football backfill --league SERIE_A --season 2026 --primary &&
-                python -m ingestion.api_football backfill --league LA_LIGA --season 2026 --primary &&
-                python -m ingestion.nfl_data backfill --season 2026 &&
-                python -m ingestion.nfl_data backfill-players --season 2026 &&
-                python -m ingestion.nba_data backfill --season 2026-27 &&
-                python -m ingestion.nba_data backfill-players --season 2026-27 --days-back 3 &&
-                python scripts/rebuild_features.py &&
-                python scripts/compute_team_ratings.py
+                # Every step runs even if an earlier one failed, so one league's
+                # bad API day can't stop rebuild_features and compute_team_ratings
+                # for the rest. Each module records its own pipeline_runs row
+                # (nightly_refresh:<LEAGUE>, rebuild_features, ...); the exit code
+                # is non-zero if any step failed, so the Job still shows as failed.
+                failed=0
+                step() { "$@" || { echo "STEP FAILED ($?): $*" >&2; failed=1; }; }
+                step python -m ingestion.api_football backfill --league MLS --season 2026
+                step python -m ingestion.api_football backfill --league EPL --season 2026 --primary
+                step python -m ingestion.api_football backfill --league SERIE_A --season 2026 --primary
+                step python -m ingestion.api_football backfill --league LA_LIGA --season 2026 --primary
+                step python -m ingestion.nfl_data backfill --season 2026
+                step python -m ingestion.nfl_data backfill-players --season 2026
+                step python -m ingestion.nba_data backfill --season 2026-27
+                step python -m ingestion.nba_data backfill-players --season 2026-27 --days-back 3
+                step python scripts/rebuild_features.py
+                step python scripts/compute_team_ratings.py
+                exit $failed
             # pgBouncer rollout, final CronJob (2026-09-22). Not manually
             # triggered -- most upstream job in the chain, and a manual
             # run would burn a real API-Football quota cycle for no
