@@ -286,6 +286,19 @@ spec/backfill-list only).
 | **Limitations** | All the EPL limitations apply: untuned ridge penalty and thresholds, rest and congestion tested together, no comparison with the dynamic-rating candidate, one holdout season. The 2026 holdout is a partial season. MLS has the effect the ticket was most interested in, travel distance and time zones, and this run does not test it. Fixture coverage is cup and league only; national-team call-ups are not in `team_fixtures`. |
 | **Decision** | **Not promoted.** Together with the EPL entry, two leagues now show no measurable gain from rest and congestion at these definitions. Production rates are unchanged. SERIE_A and LA_LIGA were not run. A travel and time-zone feature set is the remaining untested part of Todoist `6hf54j2hMP87xjR7`. |
 
+### 2026-10-27: Rest and fixture congestion adjustment to goal rates, SERIE_A and LA_LIGA (follow-up to the EPL and MLS entries above)
+
+| Field | Detail |
+|---|---|
+| **Hypothesis** | Same as the EPL entry. |
+| **Proposed change** | Identical to the EPL entry: same features, thresholds, ridge penalty (1.0) and offset fit. `scripts/experiment_rest_congestion.py --league <L> --train 2023-24 2024-25 --holdout 2025-26 --dump <file>`. Nothing was tuned between leagues. |
+| **Expected effect** | Small, as in the EPL entry. |
+| **Data cutoff** | Coefficients fit on 2023-24 and 2024-25 (757 matches SERIE_A, 758 LA_LIGA). Scored once on the 2025-26 holdout (379 matches each). Baseline is production settings, refit weekly walk-forward, using only data before each match. Run on `main` at `e1c0ffb`. EPL was re-run in the same session to produce per-match scores for pooling; it reproduced the registered result (RPS diff +0.0007, log loss diff +0.0035). |
+| **Evaluation method** | Same as the EPL entry. The pooled row concatenates the per-match paired scores of EPL, SERIE_A and LA_LIGA (1,137 holdout matches) and bootstraps the paired difference (5,000 resamples, seed 0). |
+| **Result** | **SERIE_A:** coefficients short_rest_own -0.029, short_rest_opp -0.004, congestion_diff +0.017; 7.7% of training team-matches on short rest. RPS 0.2011 → 0.2016, diff +0.0005, 95% CI [-0.0002, +0.0012]. Log loss 0.9928 → 0.9941, diff +0.0012, 95% CI [-0.0009, +0.0034]. **LA_LIGA:** coefficients short_rest_own -0.042, short_rest_opp -0.040, congestion_diff +0.032; 13.1% on short rest. RPS 0.1999 → 0.2001, diff +0.0002, 95% CI [-0.0012, +0.0016]. Log loss 0.9782 → 0.9791, diff +0.0009, 95% CI [-0.0032, +0.0052]. **Pooled EPL + SERIE_A + LA_LIGA:** RPS 0.2029 → 0.2033, diff +0.0005, 95% CI [-0.0005, +0.0014]; log loss 0.9985 → 1.0004, diff +0.0019, 95% CI [-0.0009, +0.0047]. **No improvement in either league or pooled.** Every point estimate is slightly worse than the baseline and every interval includes zero. The coefficient signs are not stable across leagues (own-rest is positive in EPL and MLS, negative in SERIE_A and LA_LIGA), which is what noise around zero looks like. |
+| **Limitations** | The EPL limitations apply. In addition, SERIE_A has only 7.7% short-rest team-matches in training (about 116 team-matches), so its coefficients are especially noisy. One holdout season per league. The pooled interval is narrower but cannot rule out a small effect of either sign. Rest and congestion are still tested together rather than one group at a time. Travel distance, time zones and national-team minutes remain untested. |
+| **Decision** | **Not promoted.** Four leagues (EPL, MLS, SERIE_A, LA_LIGA) now show no measurable gain from rest and congestion at these definitions, so production rates are unchanged. Todoist `6hf54j2hMP87xjR7` stays open: the travel and time-zone feature group (MLS first) and one-group-at-a-time testing are what remain. |
+
 ### 2026-10-14: Production Dixon-Coles baseline on the Bundesliga (spike before adding a league)
 
 | Field | Detail |
