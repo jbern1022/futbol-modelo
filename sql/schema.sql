@@ -90,6 +90,8 @@ CREATE TABLE matches (
     pens_away       INT,
     external_ref    TEXT,                          -- source event id
     referee         TEXT,                          -- normalized name, see 0033
+    api_football_fixture_id BIGINT,                -- per-provider ids, see 0041
+    understat_game_id       TEXT,
     UNIQUE (season_id, home_team_id, away_team_id, kickoff_utc)
 );
 CREATE INDEX idx_matches_kickoff ON matches (kickoff_utc);
@@ -101,6 +103,27 @@ CREATE INDEX idx_matches_kickoff ON matches (kickoff_utc);
 -- fixtures, 139 predictions that could never be graded).
 CREATE UNIQUE INDEX idx_matches_external_ref ON matches (external_ref) WHERE external_ref IS NOT NULL;
 CREATE INDEX idx_matches_status  ON matches (status);
+
+-- Per-provider match ids (migration 0041): external_ref holds ONE source's id, these hold each
+-- provider's. A trigger keeps them filled whenever a writer sets external_ref.
+CREATE UNIQUE INDEX matches_api_football_fixture_id
+    ON matches (api_football_fixture_id) WHERE api_football_fixture_id IS NOT NULL;
+CREATE UNIQUE INDEX matches_understat_game_id
+    ON matches (understat_game_id) WHERE understat_game_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION sync_provider_ids() RETURNS trigger AS $$
+BEGIN
+    IF NEW.external_ref ~ '^api-football:\d+$' AND NEW.api_football_fixture_id IS NULL THEN
+        NEW.api_football_fixture_id := substring(NEW.external_ref FROM '^api-football:(\d+)$')::bigint;
+    ELSIF NEW.external_ref ~ '^understat:.+' AND NEW.understat_game_id IS NULL THEN
+        NEW.understat_game_id := substring(NEW.external_ref FROM '^understat:(.+)$');
+    END IF;
+    RETURN NEW;
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_sync_provider_ids
+    BEFORE INSERT OR UPDATE OF external_ref ON matches
+    FOR EACH ROW EXECUTE FUNCTION sync_provider_ids();
 
 CREATE TABLE team_match_stats (
     match_id        INT NOT NULL REFERENCES matches(match_id),
@@ -293,6 +316,10 @@ CREATE TABLE IF NOT EXISTS match_odds_history (
 CREATE INDEX IF NOT EXISTS idx_match_odds_history_match
     ON match_odds_history(match_id, bookmaker_id, market, selection, fetched_at);
 
+-- Player-prop odds lookups (migration 0029).
+CREATE INDEX IF NOT EXISTS idx_match_odds_player ON match_odds(player_id) WHERE player_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_match_odds_history_player ON match_odds_history(player_id) WHERE player_id IS NOT NULL;
+
 CREATE OR REPLACE VIEW v_odds_movement AS
 SELECT
     o.match_id, o.bookmaker_id, o.bookmaker_name, o.market, o.selection,
@@ -468,7 +495,10 @@ CREATE TABLE prediction_grades (
     outcome         TEXT NOT NULL CHECK (outcome IN ('hit','miss','void')),
     actual_value    NUMERIC(8,3),                  -- observed stat (e.g. 7 corners)
     graded_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    grader_version  TEXT NOT NULL
+    grader_version  TEXT NOT NULL,
+    void_reason     TEXT,                          -- migration 0045; only for outcome = 'void'
+    CONSTRAINT prediction_grades_void_reason_only_when_void
+        CHECK (void_reason IS NULL OR outcome = 'void')
 );
 
 -- Append-only, same discipline as predictions above. The PRIMARY KEY
@@ -512,6 +542,47 @@ END $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_prediction_snapshots_no_update
     BEFORE UPDATE OR DELETE ON prediction_snapshots
     FOR EACH ROW EXECUTE FUNCTION forbid_snapshot_mutation();
+
+-- Per-source team stats (migrations 0025, 0040): one row per source so FBref vs API-Football can be
+-- reconciled; team_match_stats holds the chosen value.
+CREATE TABLE IF NOT EXISTS team_match_stats_by_source (
+    match_id        INT NOT NULL REFERENCES matches(match_id),
+    team_id         INT NOT NULL REFERENCES teams(team_id),
+    source          TEXT NOT NULL,
+    corners         INT,
+    shots           INT,
+    shots_on_target INT,
+    fouls           INT,
+    yellows         INT,
+    reds            INT,
+    saves           INT,
+    recorded_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    xg              NUMERIC(6,3),
+    PRIMARY KEY (match_id, team_id, source)
+);
+
+-- Fitted home-advantage gamma per league and season (migration 0024).
+CREATE TABLE IF NOT EXISTS home_advantage_history (
+    league      TEXT NOT NULL,
+    season      TEXT NOT NULL,
+    gamma       DOUBLE PRECISION NOT NULL,
+    n_matches   INT NOT NULL,
+    fitted_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (league, season)
+);
+
+-- Full history of model_versions rows as they were overwritten (migration 0027).
+CREATE TABLE IF NOT EXISTS model_versions_history (
+    history_id      BIGSERIAL PRIMARY KEY,
+    model_name      TEXT NOT NULL,
+    version_tag     TEXT NOT NULL,
+    training_window TEXT,
+    params          JSONB,
+    train_metrics   JSONB,
+    trained_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_model_versions_history_name_time
+    ON model_versions_history (model_name, trained_at DESC);
 
 -- ---------- Season report views ----------
 
@@ -763,3 +834,35 @@ CREATE TABLE IF NOT EXISTS team_fixtures (
 
 CREATE INDEX IF NOT EXISTS idx_team_fixtures_team_kickoff
     ON team_fixtures (team_id, kickoff_utc);
+
+-- Closing-line value on 1X2 (migration 0026): our probability vs the average closing market probability.
+CREATE OR REPLACE VIEW v_closing_line_value AS
+SELECT p.prediction_id,
+       p.match_id,
+       p.statement,
+       p.side,
+       p.probability AS our_probability,
+       avg(m.closing_probability) AS avg_closing_market_probability,
+       (p.probability - avg(m.closing_probability)) AS edge_vs_closing,
+       g.outcome,
+       g.actual_value
+FROM predictions p
+JOIN prediction_grades g ON g.prediction_id = p.prediction_id
+JOIN v_odds_movement m ON m.match_id = p.match_id AND m.market = p.market AND lower(m.selection) = p.side
+WHERE p.market = '1X2'
+GROUP BY p.prediction_id, p.match_id, p.statement, p.side, p.probability, g.outcome, g.actual_value;
+
+-- FBref vs API-Football corners / shots on target, per team-match (migrations 0025, 0040).
+CREATE OR REPLACE VIEW v_source_reconciliation AS
+SELECT fb.match_id,
+       fb.team_id,
+       fb.corners AS corners_fbref,
+       af.corners AS corners_api_football,
+       (fb.corners - af.corners) AS corners_diff,
+       fb.shots_on_target AS sot_fbref,
+       af.shots_on_target AS sot_api_football,
+       (fb.shots_on_target - af.shots_on_target) AS sot_diff
+FROM team_match_stats_by_source fb
+JOIN team_match_stats_by_source af
+  ON af.match_id = fb.match_id AND af.team_id = fb.team_id AND af.source = 'api_football'
+WHERE fb.source = 'fbref' AND fb.corners IS NOT NULL AND af.corners IS NOT NULL;
