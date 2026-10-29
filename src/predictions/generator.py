@@ -36,6 +36,7 @@ class Inference:
     subject_player_id: int | None = None
     base_rate: float | None = None      # historical frequency of this claim
     context: dict | None = None         # form inputs the model saw ("why" panel)
+    snapshot: dict | None = None        # point-in-time provenance (predictions.snapshot); not stored in predictions
 
     @property
     def edge(self) -> float:
