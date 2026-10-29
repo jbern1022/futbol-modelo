@@ -46,12 +46,16 @@ LEAGUE_SEARCH = {
     "BUNDESLIGA": ("Bundesliga", "Germany"),
     "LIGUE_1": ("Ligue 1", "France"),
     "EREDIVISIE": ("Eredivisie", "Netherlands"),
+    # Brazil's league is also called "Serie A": the explicit id in API_LEAGUE_IDS is what keeps the
+    # name search from ever being used for it.
+    "BRASILEIRAO": ("Serie A", "Brazil"),
+    "LIGA_MX": ("Liga MX", "Mexico"),
 }
 
 # Explicit API-Football league ids. resolve_league_id() otherwise takes the
 # first hit of a name search, which for "Bundesliga" can be another German
 # competition. Leagues not listed here keep using the search.
-API_LEAGUE_IDS = {"BUNDESLIGA": 78, "LIGUE_1": 61, "EREDIVISIE": 88}
+API_LEAGUE_IDS = {"BUNDESLIGA": 78, "LIGUE_1": 61, "EREDIVISIE": 88, "BRASILEIRAO": 71, "LIGA_MX": 262}
 
 # Leagues whose API-Football fixture list also carries non-league rounds
 # (the Bundesliga feed includes the 1-2 relegation play-off matches per
@@ -63,11 +67,31 @@ REGULAR_SEASON_ROUND_PREFIX = {"BUNDESLIGA": "Regular Season", "LIGUE_1": "Regul
                                "EREDIVISIE": "Regular Season"}
 
 
+# Liga MX (checked 2026-10-29): one API season holds two tournaments, and the Liguilla rounds are named
+# "Apertura - Quarter-finals" etc., so a prefix cannot tell a regular round from a play-off. Only numbered
+# "Apertura - N" / "Clausura - N" rounds are kept (owner decision 2026-10-25: regular season first,
+# Liguilla deferred).
+REGULAR_SEASON_ROUND_PATTERN = {"LIGA_MX": re.compile(r"^(Apertura|Clausura) - \d+$")}
+_LIGA_MX_TOURNAMENT = re.compile(r"^(Apertura|Clausura) - ")
+
+
+def liga_mx_tournament(round_name: str | None) -> str | None:
+    """'Apertura' or 'Clausura' for a Liga MX round string, else None. The key for the separate
+    standings partitions of the same API season."""
+    m = _LIGA_MX_TOURNAMENT.match(round_name or "")
+    return m.group(1) if m else None
+
+
 def regular_season_only(league_code: str, fixtures: list) -> list:
+    pattern = REGULAR_SEASON_ROUND_PATTERN.get(league_code)
     prefix = REGULAR_SEASON_ROUND_PREFIX.get(league_code)
-    if prefix is None:
+    if pattern is None and prefix is None:
         return fixtures
-    kept = [f for f in fixtures if (f["league"].get("round") or "").startswith(prefix)]
+    if pattern is not None:
+        kept = [f for f in fixtures if pattern.match(f["league"].get("round") or "")]
+    else:
+        assert prefix is not None  # the early return above guarantees one of the two is set
+        kept = [f for f in fixtures if (f["league"].get("round") or "").startswith(prefix)]
     if len(kept) != len(fixtures):
         log.info("%s: dropped %d non-regular-season fixtures", league_code, len(fixtures) - len(kept))
     return kept
@@ -840,7 +864,7 @@ def load_fixture_players(session, cur, match_id: int, fixture_id: int,
 # year unconditionally, which created a real mismatch: a second,
 # duplicate season row the moment loader.py or a human ever looked up
 # "the current EPL season" by its established hyphenated format.
-CROSS_YEAR_LEAGUES = ("EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA", "LIGUE_1", "EREDIVISIE")
+CROSS_YEAR_LEAGUES = ("EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA", "LIGUE_1", "EREDIVISIE", "LIGA_MX")
 
 
 def season_label_for(league_code: str, season_start_year: int) -> str:
