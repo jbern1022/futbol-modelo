@@ -135,6 +135,11 @@ export default async function PredictionPage({
               <span className="text-right text-sm text-black dark:text-zinc-50">{p.void_reason}</span>
             </div>
           )}
+          {p.market === "CARDS" && (
+            <p className="mt-4 border-t border-zinc-100 pt-4 text-xs text-zinc-500 dark:border-zinc-800">
+              {t("cardsRefereeNote")}
+            </p>
+          )}
           {whyPanel(p.context)}
         </div>
 

@@ -148,6 +148,7 @@
     "voided": "Voided",
     "voidedSection": "Voided predictions ({count})",
     "voidedSectionNote": "Kept public, never deleted. Each one says why it was voided.",
+    "cardsRefereeNote": "Card predictions use the league-average referee. A match's referee is rarely assigned when these predictions are made, about three days before kickoff, so the specific referee's tendencies are not part of the model.",
     "liveWinProbTitle": "In-play win probability",
     "liveWinProbNote": "Recomputed about once a minute from the live score. Separate from the locked pre-match predictions above, and never graded.",
     "liveWinProbSummary": "At {minute}' ({score}): home {home}, draw {draw}, away {away}.",
@@ -170,7 +171,8 @@
     "lockedAt": "Locked at",
     "gradedAt": "Graded at",
     "model": "Model",
-    "predictionId": "Prediction ID"
+    "predictionId": "Prediction ID",
+    "cardsRefereeNote": "Card predictions use the league-average referee. A match's referee is rarely assigned when these predictions are made, about three days before kickoff, so the specific referee's tendencies are not part of the model."
   },
   "MissesPage": {
     "trackRecord": "Track Record",

@@ -617,6 +617,19 @@ spec/backfill-list only).
 | **Limitations** | 127 to 206 usable matches per league; rates are fit on all matches including the scored ones; second reds and added time are out of scope (as in the original calibration); EPL includes 8 and Serie A 2 matches from 2026-27. |
 | **Decision** | **No change to any league's red-card factors.** Todoist `6hhr7Cq8Mj98cRpf` answered. |
 
+### 2026-10-29: Decision record, Bundesliga shots on target stays off (Todoist `6hmV7JPR2PMPHcG7`)
+
+| Field | Detail |
+|---|---|
+| **Status** | Decision record. No experiment was run and nothing in the live pipeline changes. It records what the owner decided on 2026-10-26 and drafts the conditions for any later reconsideration, which are marked below as a proposal for the owner to confirm. |
+| **Owner resolution (2026-10-26, as recorded on the ticket)** | Bundesliga shots on target stays disabled. The failed thresholds are recorded. Thresholds are not relaxed after seeing results and no SOT model is promoted. |
+| **State of the code** | `PROPS_MARKETS["SOT"]["leagues"]` is `PROPS_LEAGUES` minus MLS, which excludes the Bundesliga. CORNERS includes it (entry "2026-10-15 Result, Bundesliga CORNERS and SOT props"). |
+| **Failed thresholds, by variant (from the 2026-10-15 entries above; limits as registered: R3 non-inferiority upper bound <= +0.001, R4 bias within 3%)** | **No offset (M1):** bias -5.3% (2025-26) and -0.7% (2024-25), so R4 fails in 2025-26; R3 upper bound +0.00132. **Fixed league mean (M2):** bias -0.1% and +4.7%, so R4 fails in 2024-25; R3 upper bound +0.00751 with EPL significantly worse. **Trailing league mean (M3):** bias -3.0% and +5.6%; R2' calibration fails on 2025-26 (Over 3.5 slope 1.505); R3 upper bound +0.00341. All three beat the Bundesliga's own mean on skill (R1) and are indistinguishable from each other. |
+| **Why live evidence cannot simply accumulate** | A market that is off writes no predictions, so it earns no graded predictions toward the 350 / 750 / 1,250 gates (ADR-017, ADR-020). Leaving SOT off therefore also means it cannot become eligible on its own. The Bundesliga's own SOT level moves about 5% between seasons (team-match means 4.62, 4.67, 4.84, 4.59, 4.77 for 2021-22 to 2025-26), about the size of the 3% bias limit. |
+| **Proposed conditions for any future reconsideration (drafted 2026-10-29; NOT yet confirmed by the owner)** | (1) A new pre-registration committed before any result is looked at. (2) The R3 and R4 limits are fixed once, in that pre-registration, and applied to every variant together; no limit is chosen to rescue one variant. (3) The test uses data not used in the 2026-10-15 SOT experiments (for example Bundesliga 2026-27 matches). (4) Preferred route for live evidence once it exists: a SOT challenger run as an unpublished shadow under ADR-021, so graded predictions can accumulate toward 1,250 without publishing a market that has not passed. That route is not yet available: shadow storage and routing are not implemented (ADR-021, open items). (5) An independent review of the result before any enablement, using the package in `docs/REVIEW_PACKAGE.md`. (6) No change of thresholds after seeing results. |
+| **What this does not decide** | Whether to pursue SOT for the Bundesliga at all, or when. The conditions above are a draft of how a reconsideration would have to be done, not a plan to do one. |
+| **Decision** | **Bundesliga SOT stays off. No live change.** Todoist `6hmV7JPR2PMPHcG7` can close once the owner has read the proposed conditions; amend them here by a new dated entry, not by editing this one. |
+
 ## Related documents
 
 - `docs/RESEARCH_PROTOCOL.md` — baselines, sample-size bar, and
