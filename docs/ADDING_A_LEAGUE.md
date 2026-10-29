@@ -88,7 +88,9 @@ goals), which the baseline validates.
 - Append the league at the **end** of the slate (after the NFL slate) and odds
   chains, so its failure cannot block the others.
 - `ops/deploy.sh`: add a `patch_cronjob` line for every new CronJob (stale-`:latest` trap).
-- `scripts/check_pipeline_health.py`: `EXPECTED_JOBS` and `SLATED_LEAGUES`.
+- `scripts/check_pipeline_health.py`: `EXPECTED_JOBS`, `SLATED_LEAGUES`, and `GATED_LEAGUES`
+  (a gated league's jobs are only expected once its matches are in the DB, so the health
+  check can merge before the CronJobs launch without a false alert).
 - `scripts/compute_team_ratings.py`: `LEAGUES` (adds about two minutes to a 7-minute job).
 - `api/petey_filter.py` `ALLOWED_LEAGUE_VALUES`; `api/main.py` standings description.
 - Web: `fixture-list.tsx`, `lib/prediction-display.tsx` (badge colours), `standings/page.tsx`,

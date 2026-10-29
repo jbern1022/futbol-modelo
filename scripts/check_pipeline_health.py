@@ -67,6 +67,28 @@ EXPECTED_JOBS = [
     "nightly_refresh:BUNDESLIGA", "auto_slate:BUNDESLIGA", "odds:BUNDESLIGA",
 ]
 
+# Leagues whose jobs are only expected once the league has matches in the DB
+# (recent or upcoming). Lets a new league's health checks be wired before its
+# CronJobs launch without paging; once its 2026-27 matches are loaded, its jobs
+# are expected like any other. Established leagues stay unconditional.
+GATED_LEAGUES = ("BUNDESLIGA",)
+
+ACTIVE_LEAGUES_SQL = """
+SELECT DISTINCT l.code
+FROM futbol.matches m
+JOIN futbol.seasons s ON s.season_id = m.season_id
+JOIN futbol.leagues l ON l.league_id = s.league_id
+WHERE l.code = ANY(%s)
+  AND m.kickoff_utc >= now() - interval '60 days'
+"""
+
+
+def jobs_to_expect(jobs: list[str], active_leagues: set[str]) -> list[str]:
+    """Drop jobs of gated leagues that have no recent/upcoming matches yet."""
+    inactive = {f":{lg}" for lg in GATED_LEAGUES if lg not in active_leagues}
+    return [j for j in jobs if not any(j.endswith(suffix) for suffix in inactive)]
+
+
 LAST_SUCCESS_SQL = """
 SELECT job_name, MAX(finished_at) AS last_success_at
 FROM futbol.pipeline_runs
@@ -151,7 +173,9 @@ def main() -> None:
     conn = psycopg2.connect(DSN)
     try:
         with conn.cursor() as cur:
-            cur.execute(LAST_SUCCESS_SQL, (EXPECTED_JOBS,))
+            cur.execute(ACTIVE_LEAGUES_SQL, (list(GATED_LEAGUES),))
+            expected_jobs = jobs_to_expect(EXPECTED_JOBS, {row[0] for row in cur.fetchall()})
+            cur.execute(LAST_SUCCESS_SQL, (expected_jobs,))
             last_success = dict(cur.fetchall())
             problems = slate_problems(cur)
     finally:
@@ -162,9 +186,9 @@ def main() -> None:
     stale = []
 
     log.info("checking expected jobs", extra={
-        "n_expected_jobs": len(EXPECTED_JOBS), "stale_after_hours": args.stale_after_hours,
+        "n_expected_jobs": len(expected_jobs), "stale_after_hours": args.stale_after_hours,
     })
-    for job_name in EXPECTED_JOBS:
+    for job_name in expected_jobs:
         last = last_success.get(job_name)
         if last is None:
             log.warning("job stale: never succeeded", extra={"job_name": job_name})
