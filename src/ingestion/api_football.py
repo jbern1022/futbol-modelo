@@ -44,18 +44,23 @@ LEAGUE_SEARCH = {
     "MLS": ("Major League Soccer", "USA"),
     "LA_LIGA": ("La Liga", "Spain"),
     "BUNDESLIGA": ("Bundesliga", "Germany"),
+    "LIGUE_1": ("Ligue 1", "France"),
+    "EREDIVISIE": ("Eredivisie", "Netherlands"),
 }
 
 # Explicit API-Football league ids. resolve_league_id() otherwise takes the
 # first hit of a name search, which for "Bundesliga" can be another German
 # competition. Leagues not listed here keep using the search.
-API_LEAGUE_IDS = {"BUNDESLIGA": 78}
+API_LEAGUE_IDS = {"BUNDESLIGA": 78, "LIGUE_1": 61, "EREDIVISIE": 88}
 
 # Leagues whose API-Football fixture list also carries non-league rounds
 # (the Bundesliga feed includes the 1-2 relegation play-off matches per
 # season, rounds "Relegation Round" / "Final"). Only rounds starting with
 # the given prefix are kept. Leagues not listed are not filtered.
-REGULAR_SEASON_ROUND_PREFIX = {"BUNDESLIGA": "Regular Season"}
+# Ligue 1 and the Eredivisie (checked 2026-10-29) list their play-off matches in the
+# league feed too: 'Final' and, for the Eredivisie, 'Semi-finals'.
+REGULAR_SEASON_ROUND_PREFIX = {"BUNDESLIGA": "Regular Season", "LIGUE_1": "Regular Season",
+                               "EREDIVISIE": "Regular Season"}
 
 
 def regular_season_only(league_code: str, fixtures: list) -> list:
@@ -835,7 +840,7 @@ def load_fixture_players(session, cur, match_id: int, fixture_id: int,
 # year unconditionally, which created a real mismatch: a second,
 # duplicate season row the moment loader.py or a human ever looked up
 # "the current EPL season" by its established hyphenated format.
-CROSS_YEAR_LEAGUES = ("EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA")
+CROSS_YEAR_LEAGUES = ("EPL", "SERIE_A", "LA_LIGA", "BUNDESLIGA", "LIGUE_1", "EREDIVISIE")
 
 
 def season_label_for(league_code: str, season_start_year: int) -> str:
