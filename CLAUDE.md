@@ -22,11 +22,16 @@ the Mac has the full toolchain.
 ## Real deploy workflow (frontend, API, or CronJob image)
 
 ```bash
-# On docker-host, in the repo (ops/deploy.sh handles build + push + rollout):
+# Easiest, on the Mac (docker + kubectl + the repo; needs `docker login gitea.josephbernal.com`
+# once). Builds linux/amd64 itself, pushes, then rolls out:
 git pull
 ./ops/deploy.sh futbol-web    <sha>   # Next.js frontend
 ./ops/deploy.sh futbol-api    <sha>   # FastAPI backend
-./ops/deploy.sh futbol-modelo <sha>   # all three CronJobs
+./ops/deploy.sh futbol-modelo <sha>   # every CronJob
+
+# Split across machines: an optional third argument picks the half.
+./ops/deploy.sh futbol-api <sha> build     # docker-host: build + push only
+./ops/deploy.sh futbol-api <sha> rollout   # anywhere kubectl works: roll out a pushed image
 ```
 
 Images are pushed to the Gitea registry (`gitea.josephbernal.com/joe/`)
@@ -35,15 +40,17 @@ short digest you use for the image tag (e.g. `abc1234`); the script also
 tags `:latest`. Rollouts use `kubectl set image` + `kubectl rollout
 status` for Deployments and `kubectl patch cronjob` for CronJobs.
 
-**Which machine does what (verified 2026-10-27):** `docker-host` has docker but
-NO `kubectl`, so `deploy.sh` run there builds and pushes the image and then stops
-at its first `kubectl` line. The k3s control-plane has `kubectl` (use
-`export KUBECONFIG=~/.kube/config`; the default k3s kubeconfig is root-only) but
-no docker and no repo checkout. Until `deploy.sh` is split (Todoist
-`6hrFHQFwfr7HQrg7`), finish a deploy by copying the manifest over and running the
-`kubectl apply` / `kubectl patch` steps on the control-plane. Do not apply the
-whole `k8s/cronjobs.yaml` before the Bundesliga launch: apply only the object you
-changed.
+**Which machine does what (verified 2026-10-27, updated 2026-10-29):** `docker-host`
+has docker but NO `kubectl`; the k3s control-plane has `kubectl` (use
+`export KUBECONFIG=~/.kube/config`; the default k3s kubeconfig is root-only) but no
+docker and no repo checkout. The Mac has both docker and `kubectl` (its default
+context reaches the cluster), so it can run the whole script with the default mode,
+after a one-time `docker login gitea.josephbernal.com`. `deploy.sh` run with no mode
+on docker-host builds and pushes, then stops at its first `kubectl` line: use
+`build` there and `rollout` elsewhere (Todoist `6hrFHQFwfr7HQrg7`). `rollout` does not
+check that the tag exists in the registry: push first. Roll out `futbol-modelo`
+(CronJobs) before `futbol-api`, then `futbol-web`, and apply any migration BEFORE the
+image that needs it.
 
 **One-time setup** (already done once per cluster — only needed again if
 the secret is deleted):
