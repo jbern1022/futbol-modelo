@@ -689,7 +689,9 @@ bootstrapping the goals fit).
 
 ## ADR-017: success and evidence framework accepted (supersedes the ~100-prediction bar and the proposed success criteria)
 
-**Status:** Accepted (2026-10-13)
+**Status:** Accepted (2026-10-13). *Partly superseded by ADR-020 (2026-10-25): the
+raw 80% accuracy success targets became a calibration goal. The evidence gates
+below are unchanged.*
 
 **Context:** The framework was agreed on 2026-10-05 (Todoist
 `6h9M3Ghc9vFXpj6x`) and signed off by Joe on 2026-10-13 (Notion:
@@ -850,3 +852,65 @@ Understat data already loaded for the four leagues (the same robots.txt and
 no-terms situation applies), and whether API-Football's terms permit
 publishing derived predictions (`docs/DATA_LICENSING.md`, gap 4; the terms
 page could not be read by automated tools).
+
+---
+
+## ADR-020: the 80% goal is calibration, not raw accuracy; tolerance +/-5 points, +/-3 once each band has 1,250
+
+**Status:** Accepted by the owner 2026-10-25 (Todoist `6hm4XP5938G4FXF7`,
+batch 2 #31); recorded here 2026-10-29. Applies **prospectively**.
+
+**Context:** ADR-017 set "80% raw accuracy per league / per market" as the
+success target, assessed at 1,250 live graded predictions. Raw hit rate
+depends on how confident the model chooses to be: a calibrated model that
+states 60% and hits 60% is correct, and one that only emits 85% predictions
+can reach 80% accuracy while still being miscalibrated. The project's claim
+is calibration (stated confidence matches realized frequency), so the target
+should measure that.
+
+**Decision:**
+
+- *The 80% goal is a calibration goal.* Within a confidence band, the
+  realized hit rate should match the stated probability. It is not a
+  universal raw-accuracy target. This supersedes the "80% raw accuracy"
+  success targets of ADR-017 (league and prop/market), prospectively.
+- *Tolerance.* Initial tolerance is +/-5 percentage points between a band's
+  realized rate and its average stated probability. The final, mandatory
+  tolerance is +/-3 points, and applies **only when every evaluated
+  confidence band in the cohort has at least 1,250 live graded predictions.**
+  A cohort is one league + market (+ model version).
+- *Gates unchanged.* 350+ per confidence band is still the minimum to
+  evaluate that band; 750+ in total is still the minimum for a meaningful
+  cohort evaluation; below the gates the status is Insufficient Evidence.
+- *Report uncertainty.* Every evaluation reports the sample count and a
+  confidence interval per band. 1,250 alone does not guarantee enough
+  statistical precision (at n = 1,250 and p = 0.65 the 95% interval
+  half-width is about 2.6 points, close to the +/-3 tolerance), so a band
+  also reports whether its interval half-width fits inside the tolerance.
+- *Aggregate cannot hide a band.* A cohort passes only if every evaluated
+  band is within tolerance. Brier/log loss, benchmark performance and sample
+  size stay mandatory context.
+- *History is preserved.* ADR-017 and the documents it changed stay as
+  written; they are marked "superseded by ADR-020" where they state the raw
+  80% target. No prediction, grade or earlier registry entry is rewritten.
+  A model change still starts a new versioned track record.
+
+**Implementation:** `src/evaluation/evidence.py` (pure functions, tests in
+`tests/test_evidence_gates.py`) computes bands, gates, tolerance regime,
+Wilson intervals and the precision flag, using the same deciles as the
+`v_calibration` view. It is not yet wired into the Track Record page, a job
+or the database views; that is separate work and, for the page, a deploy.
+
+**Still open (not decided here):** the projected-failure estimator
+(`6hm2JMm4XrQJpJcf`) was written against "probability of reaching 80% raw
+accuracy at 1,250" and must be restated against this calibration goal before
+it is specified; it remains non-operational. The On Track / At Risk labels
+have no operational definition yet. Whether the Track Record page should show
+the gate status is a product decision.
+
+**Consequences:** Cohorts are judged band by band. On the ledger of
+2026-10-29 only MLS CORNERS (1,334 graded) and MLS SOT (1,184) pass the
+750 total gate and have bands with 350+; both are in the interim regime. All
+other league/market cohorts are Insufficient Evidence. Cohorts here pool
+model versions, so this is a status snapshot, not an evaluation of any one
+version.

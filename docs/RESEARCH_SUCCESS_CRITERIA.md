@@ -7,6 +7,14 @@ history. Where the two conflict, the accepted framework governs. What
 the accepted framework does not address stays open, and is listed at the
 end of the next section.
 
+> **Amended prospectively by ADR-020 (accepted 2026-10-25, recorded
+> 2026-10-29):** the "80% raw accuracy" success targets below are
+> superseded. The 80% goal is a *calibration* goal: realized hit rate within
+> +/-5 points of stated probability per confidence band, tightening to the
+> mandatory +/-3 only when every evaluated band has 1,250+ live graded
+> predictions. The 350 / 750 / 1,250 evidence gates are unchanged. The text
+> below is kept as written for history.
+
 ## Accepted framework (2026-10-13, ADR-017)
 
 Agreed 2026-10-05 (Todoist `6h9M3Ghc9vFXpj6x`), signed off by Joe on
