@@ -962,10 +962,17 @@ and no replacement should happen on a hunch or on a backtest.
 `tests/test_model_governance.py`. They are pure functions with no database
 access and are not called by any job yet.
 
+*Storage (also 2026-10-29, migration 0046):* an append-only
+`model_governance_events` log per league + market, with `v_cohort_state` and
+`v_cohort_shadows` views and `src/evaluation/governance_store.py`. The database
+itself refuses an incomplete promotion (named approver, rollback version,
+head-to-head evidence, at least 1,250 graded predictions) and a promotion after
+a failure unless a root cause was approved after that failure; events cannot be
+updated or deleted. 14 tests against a throwaway Postgres. Nothing reads it yet.
+
 **Not implemented (the ticket stays open):**
-1. Storage: an append-only table for champion assignments and
-   promotion/relegation/approval events (a numbered migration, applied with
-   `scripts/migrate.py`, plus `sql/schema.sql`), referencing `model_versions`.
+1. ~~Storage~~ done as migration 0046 (not yet applied to production; apply with
+   `scripts/migrate.py`). It is inert until step 2 reads it.
 2. Routing in the slate jobs: serve the champion, run shadows to a separate
    record that the public views exclude, and suspend a cohort with no reliable
    approved champion. This changes production and needs a deploy.
