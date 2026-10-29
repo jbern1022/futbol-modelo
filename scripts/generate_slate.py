@@ -41,6 +41,7 @@ from ops.pipeline_run import record_model_version_history
 from predictions.slate_window import SLATE_WINDOW_DAYS, has_live_slate
 from predictions.generator import (Inference, build_slate, log_degenerate_candidates,
                                    persist_slate, TARGET_BAND)
+from predictions.snapshot import build_snapshot, record_snapshots
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ except ImportError:
     lgb = None
 
 DSN = os.environ.get("FUTBOL_DSN", "host=futbol-db dbname=futbol user=futbol")
+_PROPS_SNAPSHOT_TAG = "props-v1"  # bump with fit_props_model / feature changes
 
 PROPS_LEAGUES = {"EPL", "SERIE_A", "MLS", "LA_LIGA"}
 
@@ -167,7 +169,7 @@ def fit_dixon_coles(cur, league: str) -> tuple[DixonColes, dict]:
     return dc, meta
 
 
-def current_form(cur, team_id: int, kickoff: datetime) -> dict:
+def current_form(cur, team_id: int, kickoff: datetime, meta_out: dict | None = None) -> dict:
     kickoff_aware = kickoff if kickoff.tzinfo else kickoff.replace(tzinfo=timezone.utc)
     cur.execute(
         """SELECT tms.corners, tms.shots, tms.shots_on_target, tms.xg,
@@ -196,6 +198,8 @@ def current_form(cur, team_id: int, kickoff: datetime) -> dict:
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
     last_kickoff = df["kickoff"].max()
     rest_days = (pd.to_datetime(kickoff) - pd.to_datetime(last_kickoff)).days
+    if meta_out is not None:  # freshness of the inputs, for the point-in-time snapshot
+        meta_out.update(inputs_through=last_kickoff, n_games=len(rows), window_days=90)
     return {
         "corners_for_r5": df["corners"].mean(), "corners_against_r5": df["corners_c"].mean(),
         "shots_for_r5": df["shots"].mean(), "shots_against_r5": df["shots_c"].mean(),
@@ -716,9 +720,14 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
 
     props_meta = {}
     if lgb is not None and any(league in spec["leagues"] for spec in PROPS_MARKETS.values()):
-        home_form = current_form(cur, home_id, kickoff)
-        away_form = current_form(cur, away_id, kickoff)
+        home_meta: dict = {}
+        away_meta: dict = {}
+        home_form = current_form(cur, home_id, kickoff, meta_out=home_meta)
+        away_form = current_form(cur, away_id, kickoff, meta_out=away_meta)
         if home_form and away_form:
+            cur.execute("SELECT referee FROM futbol.matches WHERE match_id = %s", (match_id,))
+            row = cur.fetchone()
+            referee = row[0] if row else None
             for market, spec in PROPS_MARKETS.items():
                 if league not in spec["leagues"]:
                     continue
@@ -735,8 +744,18 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
                     away_market_form = {**away_form, "referee_avg_cards_r10": meta["referee_fallback"]}
                 else:
                     home_market_form, away_market_form = home_form, away_form
-                candidates += build_props_inferences(model, home_market_form, True, home_id, market, home, calibrators)
-                candidates += build_props_inferences(model, away_market_form, False, away_id, market, away, calibrators)
+                for form, meta_f, is_home, tid, tname in (
+                        (home_market_form, home_meta, True, home_id, home),
+                        (away_market_form, away_meta, False, away_id, away)):
+                    infs = build_props_inferences(model, form, is_home, tid, market, tname, calibrators)
+                    snap = build_snapshot(
+                        market=market, features=form, feature_cols=spec["features"], is_home=is_home,
+                        cutoff=now, kickoff=kickoff_aware, form_meta=meta_f, model_tag=_PROPS_SNAPSHOT_TAG,
+                        referee=referee,
+                        referee_used="league_average_fallback" if market == "CARDS" else None)
+                    for inf in infs:
+                        inf.snapshot = snap
+                    candidates += infs
 
         if league in PLAYER_PROPS_LEAGUES:
             try:
@@ -780,10 +799,18 @@ def generate_for_fixture(conn, cur, league: str, home: str, away: str,
     record_model_version_history(cur, _mv_name, _mv_tag, _mv_window, _mv_params, _mv_metrics)
 
     n = persist_slate(conn, match_id, mvid, slate)
+    # Provenance, not the ledger: a failure here must never lose or block the slate itself.
+    try:
+        n_snap = record_snapshots(conn, match_id, mvid, slate)
+    except Exception:
+        conn.rollback()
+        n_snap = 0
+        log.error("prediction snapshots NOT recorded", extra={"match_id": match_id}, exc_info=True)
     if verbose:
         log.info("slate written", extra={
             "league": league, "home": home, "away": away,
             "n_predictions": n, "match_id": match_id, "model_version_id": mvid,
+            "n_snapshots": n_snap,
         })
     return n
 

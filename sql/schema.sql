@@ -484,6 +484,35 @@ CREATE TRIGGER trg_prediction_grades_no_update
     BEFORE UPDATE OR DELETE ON prediction_grades
     FOR EACH ROW EXECUTE FUNCTION forbid_grade_mutation();
 
+-- Point-in-time snapshots of each prediction's inputs. See sql/migrations/0044_prediction_snapshots.sql.
+CREATE TABLE IF NOT EXISTS prediction_snapshots (
+    prediction_id    BIGINT PRIMARY KEY REFERENCES predictions(prediction_id),
+    schema_version   INT NOT NULL,
+    cutoff_at        TIMESTAMPTZ NOT NULL,
+    kickoff_at       TIMESTAMPTZ NOT NULL,
+    inputs_through   TIMESTAMPTZ,
+    n_games          INT,
+    window_days      INT,
+    model_tag        TEXT NOT NULL,
+    feature_values   JSONB NOT NULL,
+    missing_features TEXT[] NOT NULL DEFAULT '{}',
+    referee_known    BOOLEAN,
+    referee_name     TEXT,
+    referee_used     TEXT,
+    recorded_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (cutoff_at < kickoff_at),
+    CHECK (inputs_through IS NULL OR inputs_through <= cutoff_at)
+);
+
+CREATE OR REPLACE FUNCTION forbid_snapshot_mutation() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'prediction_snapshots are immutable (ledger integrity)';
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_prediction_snapshots_no_update
+    BEFORE UPDATE OR DELETE ON prediction_snapshots
+    FOR EACH ROW EXECUTE FUNCTION forbid_snapshot_mutation();
+
 -- ---------- Season report views ----------
 
 -- Dedupes by natural key (earliest prediction_id per match/market/side/
