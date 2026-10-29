@@ -3,9 +3,17 @@
 #
 # Usage (run on docker-host or any machine with docker + kubectl access):
 #
-#   ./ops/deploy.sh futbol-api <SHA>
-#   ./ops/deploy.sh futbol-web <SHA>
-#   ./ops/deploy.sh futbol-modelo <SHA>    # updates all three CronJobs
+#   ./ops/deploy.sh futbol-api <SHA> [MODE]
+#   ./ops/deploy.sh futbol-web <SHA> [MODE]
+#   ./ops/deploy.sh futbol-modelo <SHA> [MODE]    # updates every CronJob
+#
+# MODE (optional, default "all"):
+#   all      build + push, then roll out. Needs docker AND kubectl on this machine
+#            (the Mac has both; docker-host has no kubectl, the control-plane no docker).
+#   build    build + push only (docker; run on docker-host).
+#   rollout  roll out an image that is already pushed (kubectl only; run on the
+#            control-plane or anywhere kubectl reaches the cluster). Does not check
+#            that the tag exists in the registry: push it first.
 #
 # <SHA> is the short image digest you want to deploy (e.g. e9ad60d).
 # The script builds the image, tags it :<SHA>, pushes to the Gitea
@@ -41,12 +49,17 @@
 set -euo pipefail
 
 REGISTRY="gitea.josephbernal.com/joe"
-USAGE="Usage: $0 <futbol-api|futbol-web|futbol-modelo> <sha>"
+USAGE="Usage: $0 <futbol-api|futbol-web|futbol-modelo> <sha> [all|build|rollout]"
 
 TARGET="${1:-}"
 SHA="${2:-}"
+MODE="${3:-all}"
 
 [[ -z "$TARGET" || -z "$SHA" ]] && { echo "$USAGE"; exit 1; }
+case "$MODE" in
+    all|build|rollout) ;;
+    *) echo "Unknown mode: $MODE"; echo "$USAGE"; exit 1 ;;
+esac
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -55,6 +68,10 @@ build_and_push() {
     local dockerfile="$2"
     local context="$3"
 
+    if [[ "$MODE" == "rollout" ]]; then
+        echo "==> Skipping build of $name (mode: rollout)"
+        return 0
+    fi
     echo "==> Building $name ..."
     # --platform linux/amd64 is required, not cosmetic: every real
     # workload (futbol-api, futbol-web, all 3 CronJobs) is nodeSelector-
@@ -80,6 +97,10 @@ rollout_deployment() {
     local container="$2"
     local image="$3"
 
+    if [[ "$MODE" == "build" ]]; then
+        echo "==> Skipping rollout of ${deployment} (mode: build)"
+        return 0
+    fi
     echo "==> Rolling out ${deployment} ..."
     kubectl set image "deployment/${deployment}" "${container}=${image}"
     kubectl rollout status "deployment/${deployment}" --timeout=120s
@@ -89,6 +110,10 @@ patch_cronjob() {
     local cronjob="$1"
     local container="$2"
     local image="$3"
+
+    if [[ "$MODE" == "build" ]]; then
+        return 0
+    fi
 
     # A CronJob in this list that is not on the cluster yet (e.g. a league whose
     # launch is still pending) is skipped; any other kubectl failure aborts.
@@ -155,4 +180,4 @@ case "$TARGET" in
 esac
 
 echo ""
-echo "Deploy complete: ${TARGET} -> ${REGISTRY}/${TARGET}:${SHA}"
+echo "Deploy complete (${MODE}): ${TARGET} -> ${REGISTRY}/${TARGET}:${SHA}"
