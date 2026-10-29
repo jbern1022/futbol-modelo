@@ -148,6 +148,7 @@
     "voided": "Anulada",
     "voidedSection": "Predicciones anuladas ({count})",
     "voidedSectionNote": "Siguen siendo públicas y nunca se borran. Cada una indica por qué se anuló.",
+    "cardsRefereeNote": "Las predicciones de tarjetas usan el árbitro promedio de la liga. El árbitro de un partido casi nunca está asignado cuando se hacen estas predicciones, unos tres días antes del partido, así que las tendencias del árbitro concreto no forman parte del modelo.",
     "liveWinProbTitle": "Probabilidad de victoria en vivo",
     "liveWinProbNote": "Se recalcula aproximadamente cada minuto con el marcador en vivo. Es independiente de las predicciones fijadas antes del partido y nunca se califica.",
     "liveWinProbSummary": "Al minuto {minute} ({score}): local {home}, empate {draw}, visitante {away}.",
@@ -170,7 +171,8 @@
     "lockedAt": "Fijada a las",
     "gradedAt": "Calificada a las",
     "model": "Modelo",
-    "predictionId": "ID de predicción"
+    "predictionId": "ID de predicción",
+    "cardsRefereeNote": "Las predicciones de tarjetas usan el árbitro promedio de la liga. El árbitro de un partido casi nunca está asignado cuando se hacen estas predicciones, unos tres días antes del partido, así que las tendencias del árbitro concreto no forman parte del modelo."
   },
   "MissesPage": {
     "trackRecord": "Historial",

@@ -225,6 +225,9 @@ export default async function FixturePage({
               <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
                 {marketLabel(market)}
               </h2>
+              {market === "CARDS" && (
+                <p className="mb-2 text-xs text-zinc-500">{t("cardsRefereeNote")}</p>
+              )}
               <div className="space-y-2">
                 {grouped[market]
                   .slice()
