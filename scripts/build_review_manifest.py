@@ -35,12 +35,14 @@ KNOWN_LIMITATIONS = [
     "Ledger cohorts pool model versions; they describe status, not any single version.",
     "Predictions made before the point-in-time snapshot table (migration 0044, 2026-10-29) have no snapshot: "
     "their feature values are only in predictions.context, without cutoff provenance. Nothing is back-filled.",
-    "2026-27 xG for EPL, SERIE_A, LA_LIGA is API-Football rescaled (x1.108), BUNDESLIGA x1.095; history is Understat.",
+    "2026-27 xG for EPL, SERIE_A, LA_LIGA is API-Football rescaled (x1.108), BUNDESLIGA x1.095; "
+    "history is Understat.",
     "Understat historical use rights are unresolved (DATA_LICENSING.md; Todoist 6hmV7JJxQpG2Wqhf); "
     "FBref-sourced rows (original World Cup rows) have unresolved terms (6hmVCJQVqgwHfP67).",
     "CARDS uses a league-average referee fallback: the real referee is rarely known at the 3-day slate lock.",
     "MLS props scored a model that never trained on MLS (no xG); MLS SOT is paused, MLS CORNERS is under review.",
-    "The projected-failure rule is not operational; no estimator is selected (docs/PROJECTED_FAILURE_ESTIMATOR_OPTIONS.md).",
+    "The projected-failure rule is not operational; no estimator is selected "
+    "(docs/PROJECTED_FAILURE_ESTIMATOR_OPTIONS.md).",
     "The 350 / 750 / 1,250 gates are applied here descriptively; the Track Record page does not show them yet.",
 ]
 
@@ -89,13 +91,18 @@ def build_manifest(conn) -> dict:
     cur = conn.cursor()
     cur.execute("SET search_path TO futbol")
 
-    cur.execute("SELECT max(version), count(*) FROM schema_migrations")
-    latest, n_mig = cur.fetchone()
+    cur.execute("SELECT to_regclass('futbol.schema_migrations')")
+    if cur.fetchone()[0] is None:  # a database built straight from schema.sql has not run migrate.py
+        latest, n_mig = None, 0
+    else:
+        cur.execute("SELECT max(version), count(*) FROM schema_migrations")
+        latest, n_mig = cur.fetchone()
 
     cur.execute("""SELECT model_version_id, model_name, version_tag, trained_at, training_window, params, train_metrics
                    FROM model_versions ORDER BY model_version_id""")
     model_versions = [{"model_version_id": i, "model_name": n, "version_tag": t, "trained_at": at,
-                       "training_window": w, "params_sha256": canonical_hash(p), "train_metrics_sha256": canonical_hash(m)}
+                       "training_window": w, "params_sha256": canonical_hash(p),
+                       "train_metrics_sha256": canonical_hash(m)}
                       for i, n, t, at, w, p, m in cur.fetchall()]
 
     cur.execute("SELECT league, market, probability, (outcome = 'hit')::int FROM v_graded_predictions "
