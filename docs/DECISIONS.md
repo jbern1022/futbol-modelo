@@ -914,3 +914,67 @@ the gate status is a product decision.
 other league/market cohorts are Insufficient Evidence. Cohorts here pool
 model versions, so this is a status snapshot, not an evaluation of any one
 version.
+
+---
+
+## ADR-021: model governance: one champion per cohort, isolated shadow challengers, no automatic promotion
+
+**Status:** Owner-approved 2026-10-25 (Todoist `6hqqP99w59C6F7vf`, batch 2 #34
+and the fast-track reconciliation F10-F14); decision logic implemented
+2026-10-29; **routing, storage and the public table are not implemented.**
+
+**Context:** Models fail (ADR-017's projected failure, confirmed failure,
+catastrophic defects) and new ones are proposed. The ledger is append-only
+(ADR-002, ADR-005, ADR-008), so replacing a model must never rewrite history,
+and no replacement should happen on a hunch or on a backtest.
+
+**Decision:**
+
+- *Cohort.* One approved **champion** per league + market. Any number of
+  **shadow challengers** run beside it in isolation: they are scored, never
+  published, and never influence what production serves. Selective promotion
+  and relegation apply per cohort; a relegated model has no cooldown.
+- *Challenger requirements.* At least 1,250 graded live predictions in the
+  cohort, independent validation, and an explicit approval by the owner. After
+  a champion failure, the root cause and the corrective evidence must be
+  approved before any replacement is considered.
+- *Head-to-head.* When several challengers qualify and beat the champion, they
+  are compared on the same fixtures, markets, lines, sides and as-of cutoff
+  using Brier score, log loss, reliability bins and a fixture-clustered paired
+  bootstrap. The comparison does **not** choose a winner, does **not** reset
+  evidence, and does **not** require another 1,250 predictions. If the evidence
+  is inconclusive, the reliable approved champion stays and more evidence is
+  collected.
+- *No automatic promotion.* The code returns evidence and blockers; a human
+  promotes. `auto_promote` is always False.
+- *No reliable approved champion* (none approved, or flagged unreliable):
+  primary predictions for that cohort are **suspended**. A shadow never stands
+  in.
+- *Records.* Every promotion, relegation, approval and root cause is an
+  immutable versioned record with an audit trail and a named rollback version.
+  Root-cause categories, a resource budget for concurrent challengers, and a
+  public league table that separates the verified champion from experimental
+  challengers (with promotion/relegation history and matched as-of comparisons)
+  are part of the approved design.
+
+**Implemented (2026-10-29):** `src/evaluation/promotion.py`:
+`head_to_head`, `promotion_blockers` and `route_cohort`, with 21 tests in
+`tests/test_model_governance.py`. They are pure functions with no database
+access and are not called by any job yet.
+
+**Not implemented (the ticket stays open):**
+1. Storage: an append-only table for champion assignments and
+   promotion/relegation/approval events (a numbered migration, applied with
+   `scripts/migrate.py`, plus `sql/schema.sql`), referencing `model_versions`.
+2. Routing in the slate jobs: serve the champion, run shadows to a separate
+   record that the public views exclude, and suspend a cohort with no reliable
+   approved champion. This changes production and needs a deploy.
+3. The shadow-versus-ledger separation for `v_graded_predictions` and the
+   calibration views.
+4. The public table and the root-cause taxonomy.
+5. Independent validation of the head-to-head method (the bootstrap here is a
+   standard paired cluster bootstrap, not yet externally reviewed).
+
+**Consequences:** Today there is exactly one model per cohort, so behaviour is
+unchanged. The functions are the contract for later work; nothing here can
+promote a model by accident.
