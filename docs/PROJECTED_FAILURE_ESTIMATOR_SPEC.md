@@ -69,10 +69,9 @@ Reported afterwards, not a gate and not a reason to redefine V2: among V2 series
   labelled unstable more often, and this is untested beyond the single configuration.
 - It is slow to catch a deteriorating band (median first warning near n = 1,000) and misses 12% of the
   V2 series that really fail. It is a late-warning tool, not an early one.
-- **Recovery is handled badly.** The estimate is cumulative, so a band that was bad early keeps a heavy
-  penalty even after it recovers: 20% of V3 series that end up passing were warned at some checkpoint,
-  and 14.7% are still warned at the last one. This is the repeated-warning behaviour the owner asked to
-  test; it needs a decision (persistence rule, recency weighting, or accept as review-trigger noise).
+- **Recovery: see the follow-up below.** The first reading here (recovery is handled badly) was
+  too strong: it came from V3, whose criterion also counted series that really fail at N. Corrected
+  in the follow-up.
 - "Below 5%" is not a literal probability under repeated monitoring (see option 5 in
   `PROJECTED_FAILURE_ESTIMATOR_OPTIONS.md`); it remains a review trigger.
 
@@ -81,15 +80,68 @@ Reported afterwards, not a gate and not a reason to redefine V2: among V2 series
 - Simulation only; one stated-probability band shape, one tolerance, one N. No real ledger data used.
 - The world is stationary except through the `recent` variant. Real drift, season boundaries (MLS 2025
   vs 2026) and model-version changes are not modelled; cohorts must still be split by version.
-- Dependence across matchweeks is not modelled; only within-match. The task asks for this to be tested.
+- Dependence across matchweeks: tested in the follow-up (V5); resampling by matchweek made things worse, not better.
 - Future fixture counts and probabilities are resampled from the past, not from the actual schedule.
 - Negative within-match dependence (1X2, CARDS) is not simulated.
 - Not reviewed by anyone. No reviewer has been engaged.
 
+## Follow-up, 2026-11-02 (criteria written into the script before these were run)
+
+Same seed and settings as above; V1-V4 reproduce exactly (300 series, 800 simulations).
+
+**V3b, recovery, the question V3 meant to ask.** Among recovering series that *pass* at N, 0.4% are
+warned at the last checkpoint: **meets** (<= 5%). Among those that fail at N, 59.7% are warned, as they
+should be. What remains is transient early warnings: 20.2% of recovering series that end up passing
+were warned at some earlier checkpoint (median first warning at n = 400), which is the model correctly
+reporting a band that was 6 points off for 400 predictions. Whether that is an acceptable review
+trigger or noise is a judgement, not a defect the numbers settle. V3 as first written stays in the
+table as failing, because that was the criterion.
+
+**Persistence rule (warn only after k consecutive would_warn checkpoints), n = 1,200.**
+
+| Scenario | k | any series | among passing at N | among failing at N |
+|---|---|---|---|---|
+| V1 well-calibrated | 1 | 6.7% | 0.8% | 52.9% |
+| V1 | 2 | 4.0% | 0.0% | 35.3% |
+| V1 | 3 | 3.0% | 0.0% | 26.5% |
+| V2 deteriorating | 1 | 77.7% | 2.7% | 88.2% |
+| V2 | 2 | 68.0% | 0.0% | 77.6% |
+| V2 | 3 | 59.3% | 0.0% | 67.7% |
+| V3 recovering | 1 | 35.3% | 20.2% | 83.3% |
+| V3 | 2 | 25.7% | 13.2% | 65.3% |
+| V3 | 3 | 19.0% | 8.3% | 52.8% |
+
+Criterion: k acceptable only if V1 false alarms among passing series <= 5% **and** at least 80% of V2
+series that really fail still reach a persistent warning by n = 1,200. **k = 2 fails (77.6%) and k = 3
+fails (67.7%)**; k = 1 meets the power bar (88.2%). Persistence does cut transient warnings in the
+recovering case (20.2% to 13.2% to 8.3%) but costs more detection than it is worth at this checkpoint
+spacing. Note that V1 has no false alarms among passing series at any k, so the false-alarm bar was
+never the constraint.
+
+**V5, matchweek dependence** (calibrated on average; each block of 10 matches shares a shift of
+sd 4 points):
+
+| Resampling unit | Passing at N | Ever would_warn | Ever warned, given pass | Ever unstable |
+|---|---|---|---|---|
+| matchweek (`unit_ids`) | 90.3% | 10.7% | **6.3%** | 20.3% |
+| match | 90.3% | 7.0% | 1.5% | 14.0% |
+
+Criterion: false alarms among passing series <= 5% when resampling by matchweek: **fails** (6.3%).
+Resampling by match, not gated, gave 1.5%. Resampling whole matchweeks leaves only 7 to 8 units at
+n = 350 to 400, and a Bayesian bootstrap over so few clusters is anti-conservative: its first warnings
+arrive at n = 400, far earlier than the match-level estimator's. With a 4-point shift averaging over
+about 25 matchweeks, match-level resampling already stayed inside the line, so this test does not show
+a case where matchweek dependence breaks the match-level estimator. It also does not show that it
+cannot. `unit_ids` stays available in the code but is not recommended.
+
+**Net.** Eight criteria were written in advance; three meet (V1, V3b, V4) and five fail (V2, V3 as first
+written, V5, P2, P3). The headline concern is late detection of a deteriorating band (88.2% power among
+truly failing series, median first warning near n = 1,000), and neither persistence nor matchweek
+resampling improved it.
+
 ## Decisions this leaves to the owner
 
-1. Accept, revise or replace the method given V2 and V3 (for example persistence across checkpoints, or
-   recency weighting for recovery).
+1. Accept, revise or replace the method given V2 (late detection). Persistence did not help.
 2. Whether the V2 criterion should be judged among series that truly fail (88.2%) or all deteriorating
    series (77.7%); it was set on all series, so it is recorded as failing.
 3. When to hand the package to independent statistical review (`REVIEW_PACKAGE.md`).
