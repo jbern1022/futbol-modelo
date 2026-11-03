@@ -11,14 +11,14 @@ steps:
     when:
       event: [push, pull_request]
 
-  # Image build is unchanged and still main-only. It pushes to gitea.lab, which is NOT the
-  # registry ops/deploy.sh uses (gitea.josephbernal.com/joe); reconciling that is a separate
-  # decision (Todoist 6hmVGQpwgMhF26qf).
+  # Main-only image build, pushed to the same registry ops/deploy.sh uses. CI does NOT deploy:
+  # the cluster only changes when ops/deploy.sh is run (see CLAUDE.md). Needs the Woodpecker
+  # secrets registry_user / registry_pass (Gitea token with package write).
   build:
     image: woodpeckerci/plugin-docker-buildx
     settings:
-      repo: gitea.lab/bernal-labs/futbol-modelo
-      registry: gitea.lab
+      repo: gitea.josephbernal.com/joe/futbol-modelo
+      registry: gitea.josephbernal.com
       tags: [latest, "${CI_COMMIT_SHA:0:8}"]
       username: { from_secret: registry_user }
       password: { from_secret: registry_pass }
