@@ -1,4 +1,19 @@
 steps:
+  # Runs on every push and pull request, on every branch. No database or secrets needed:
+  # tests that need Postgres skip themselves when FUTBOL_DSN is unset.
+  test:
+    image: python:3.12-slim
+    commands:
+      - apt-get update -qq && apt-get install -y -qq --no-install-recommends libgomp1
+      - pip install -q -r requirements.txt -r requirements-api.txt -r requirements-dev.txt
+      - ruff check src scripts api
+      - PYTHONPATH=src pytest -q
+    when:
+      event: [push, pull_request]
+
+  # Image build is unchanged and still main-only. It pushes to gitea.lab, which is NOT the
+  # registry ops/deploy.sh uses (gitea.josephbernal.com/joe); reconciling that is a separate
+  # decision (Todoist 6hmVGQpwgMhF26qf).
   build:
     image: woodpeckerci/plugin-docker-buildx
     settings:
@@ -8,3 +23,4 @@ steps:
       username: { from_secret: registry_user }
       password: { from_secret: registry_pass }
     when: { branch: main, event: push }
+    depends_on: [test]
