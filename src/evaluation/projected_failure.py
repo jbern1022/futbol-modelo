@@ -250,7 +250,7 @@ def formal_status(probs, hits, match_ids, *, unit_ids=None, **kw) -> Projection:
 class SequenceResult:
     checkpoints: list[int]
     statuses: list[str]
-    p_success: list[float]
+    p_success: list[float | None]
     first_warn_n: int | None  # first checkpoint with status would_warn
     first_unstable_n: int | None
     ever_warned: bool
