@@ -112,3 +112,47 @@ def test_band_rule_matches_evidence_module():
     probs = np.array([0.0, 0.0999, 0.1, 0.6, 0.65, 0.7, 0.999, 1.0])
     assert (pf.band_ids(probs) == _band(probs)).all()
     assert pf.band_ids(probs)[-1] == 10
+
+
+def test_unit_ids_default_equals_match_ids():
+    p, y, mid = _band_data(80, seed=9)
+    a = pf.project(p, y, mid, sims=300, seed=1)
+    b = pf.project(p, y, mid, unit_ids=mid, sims=300, seed=1)
+    assert a.p_by_variant == b.p_by_variant
+
+
+def test_week_units_widen_uncertainty_when_weeks_share_an_effect():
+    # 10 matches (50 predictions) per week share one additive shift; resampling whole weeks must
+    # report a larger clustered SE than resampling matches.
+    rng = np.random.default_rng(21)
+    weeks, per = 12, 10
+    k = weeks * per
+    p = np.repeat(rng.uniform(0.6, 0.7, k), 5)
+    mid = np.repeat(np.arange(k), 5)
+    wk = np.repeat(np.arange(weeks), per * 5)
+    shift = np.repeat(rng.normal(0, 0.06, weeks), per * 5)
+    y = (rng.random(len(p)) < np.clip(p + shift, 0, 1)).astype(int)
+    by_match = pf.project(p, y, mid, sims=300)
+    by_week = pf.project(p, y, mid, unit_ids=wk, sims=300)
+    assert by_week.gap_se_cluster > 1.3 * by_match.gap_se_cluster
+    assert by_week.n_matches == weeks
+
+
+def test_unit_ids_length_checked():
+    p, y, mid = _band_data(80)
+    with pytest.raises(ValueError):
+        pf.project(p, y, mid, unit_ids=mid[:-1], sims=100)
+
+
+def test_persistent_warn_n():
+    r = pf.SequenceResult(
+        checkpoints=[350, 400, 450, 500, 550],
+        statuses=["ok", "would_warn", "ok", "would_warn", "would_warn"],
+        p_success=[0.5] * 5, first_warn_n=400, first_unstable_n=None,
+        ever_warned=True, currently_warned=True, warn_checkpoints=3,
+    )
+    assert pf.persistent_warn_n(r, 1) == 400
+    assert pf.persistent_warn_n(r, 2) == 550
+    assert pf.persistent_warn_n(r, 3) is None
+    with pytest.raises(ValueError):
+        pf.persistent_warn_n(r, 0)

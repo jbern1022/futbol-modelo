@@ -172,14 +172,25 @@ def project(
     hits,
     match_ids,
     *,
+    unit_ids=None,
     n_target: int = MATURE_N,
     tol: float = TOL_FINAL,
     sims: int = DEFAULT_SIMS,
     seed: int = 20261029,
     variants: tuple[tuple[str, float, float], ...] = VARIANTS,
 ) -> Projection:
-    """Projection for one band using all n supplied predictions (time-ordered)."""
+    """Projection for one band using all n supplied predictions (time-ordered).
+
+    unit_ids: optional coarser resampling unit than the match (for example a matchweek id).
+    When given, whole units are resampled, so dependence ACROSS the matches of a unit (a shared
+    matchweek effect) is respected as well as dependence within a match. Cost: fewer, larger
+    units, so the projection is less certain at small n. Default: resample by match."""
     p, y, m = _prepare(probs, hits, match_ids)
+    if unit_ids is not None:
+        u = np.asarray(unit_ids)
+        if u.shape != m.shape:
+            raise ValueError("unit_ids must have the same length as match_ids")
+        m = u
     n = len(p)
     assumptions = (
         "Future matches resemble observed matches (same stated-probability mix and match sizes).",
@@ -225,15 +236,14 @@ def project(
     )
 
 
-def formal_status(probs, hits, match_ids, **kw) -> Projection:
+def formal_status(probs, hits, match_ids, *, unit_ids=None, **kw) -> Projection:
     """Status at the latest checkpoint reached (350, 400, ...). Predictions after that
     checkpoint do not change the formal status until the next checkpoint is reached."""
     p, y, m = _prepare(probs, hits, match_ids)
     cps = checkpoints_up_to(len(p))
-    if not cps:
-        return project(p, y, m, **kw)
-    c = cps[-1]
-    return project(p[:c], y[:c], m[:c], **kw)
+    c = cps[-1] if cps else len(p)
+    u = None if unit_ids is None else np.asarray(unit_ids)[:c]
+    return project(p[:c], y[:c], m[:c], unit_ids=u, **kw)
 
 
 @dataclass(frozen=True)
@@ -248,13 +258,14 @@ class SequenceResult:
     warn_checkpoints: int  # how many checkpoints were would_warn (repeat behaviour)
 
 
-def sequence_status(probs, hits, match_ids, **kw) -> SequenceResult:
+def sequence_status(probs, hits, match_ids, *, unit_ids=None, **kw) -> SequenceResult:
     """Replay every checkpoint in order, so repeated monitoring is explicit."""
     p, y, m = _prepare(probs, hits, match_ids)
     cps = checkpoints_up_to(len(p))
     statuses, ps = [], []
     for c in cps:
-        r = project(p[:c], y[:c], m[:c], **kw)
+        u = None if unit_ids is None else np.asarray(unit_ids)[:c]
+        r = project(p[:c], y[:c], m[:c], unit_ids=u, **kw)
         statuses.append(r.status)
         ps.append(r.p_success)
     warn = [c for c, s in zip(cps, statuses) if s == "would_warn"]
@@ -269,6 +280,21 @@ def sequence_status(probs, hits, match_ids, **kw) -> SequenceResult:
         currently_warned=bool(statuses) and statuses[-1] == "would_warn",
         warn_checkpoints=len(warn),
     )
+
+
+def persistent_warn_n(result: SequenceResult, k: int) -> int | None:
+    """First checkpoint at which would_warn has held for k consecutive checkpoints (k >= 1).
+
+    A candidate repeated-monitoring rule: one noisy checkpoint no longer raises the review
+    trigger. It delays every true detection by (k - 1) * CHECKPOINT_STEP predictions."""
+    if k < 1:
+        raise ValueError("k must be >= 1")
+    run = 0
+    for c, s in zip(result.checkpoints, result.statuses):
+        run = run + 1 if s == "would_warn" else 0
+        if run >= k:
+            return c
+    return None
 
 
 def band_ids(probs) -> np.ndarray:
