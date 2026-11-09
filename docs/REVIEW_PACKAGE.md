@@ -45,8 +45,8 @@ production exactly (columns, constraints, indexes, triggers, functions: verified
 **not** reproduce the production schema (97 columns and 5 tables/views were missing), so any earlier claim
 that "the schema is in the repo" was wrong.
 
-The public GitHub mirror has deliberately clean history (a fresh initial commit); use the Gitea repository
-for commit-level history.
+The public GitHub mirror shares this repository's full commit history (it is not a fresh-start copy); the Gitea
+repository is the source of truth.
 
 ## What cannot be reproduced from the repository alone
 

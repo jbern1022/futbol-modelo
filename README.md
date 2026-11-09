@@ -171,7 +171,7 @@ docs/adr/petey-decisions.md    # Petey's 11 ADRs
 ## Repos
 
 - Private (real history): `gitea.josephbernal.com/joe/futbol-modelo`
-- Public mirror (clean history, no secrets): `github.com/jbern1022/futbol-modelo`
+- Public mirror (shares the full commit history): `github.com/jbern1022/futbol-modelo`
 
 ## Local dev
 

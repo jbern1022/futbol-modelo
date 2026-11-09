@@ -101,7 +101,7 @@ it actually works.
 ## Where things actually are
 
 - Repo (private): `https://gitea.josephbernal.com/joe/futbol-modelo`
-- Repo (public mirror, clean history, no secrets): `https://github.com/jbern1022/futbol-modelo`
+- Repo (public mirror on GitHub; shares this repository's full commit history): `https://github.com/jbern1022/futbol-modelo`
 - Live site: `https://futbol.josephbernal.com`
 - K8s manifests: `k8s/webapp.yaml`
 - Full design docs: `docs/petey-spec.md` and `docs/adr/petey-decisions.md`
@@ -124,8 +124,9 @@ Never hardcoded, never committed. Real values live in:
 
 Two credentials were found exposed in early commit history and have
 since been rotated (dead values now, harmless, but don't reintroduce
-the pattern). The public GitHub repo has clean history by design — a
-fresh initial commit, not the scrubbed original. Keep it that way.
+the pattern). The public GitHub repo is NOT a fresh-start copy: checked 2026-11-08, it shares this repository's
+full commit history, so that early history is public there too. A genuinely clean public history would need a rebuilt
+repository (a deliberate, destructive step, not yet decided); until then treat everything ever committed as public.
 
 ## The one real lesson worth internalizing from this project's history
 
