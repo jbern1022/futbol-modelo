@@ -143,3 +143,7 @@ count as validated:
   only) and this protocol's fixed sample-size bar exist to block: a
   market either clears the predefined bar on the predefined metric, or
   it doesn't yet.
+
+## Related documents
+
+- `docs/archive/RESEARCH_PROTOCOL_github_2026-10-05.md` — the version published on the public GitHub repository on 2026-10-05, archived verbatim (not reconciled with this document; see its header)

@@ -172,3 +172,5 @@ specific readership/usage milestone) is genuinely your call.
   make falsifiable.
 - `docs/RESEARCH_PROTOCOL.md` — the per-model/per-market rules this
   document builds on rather than duplicates.
+
+- `docs/archive/RESEARCH_SUCCESS_CRITERIA_github_2026-10-05.md` — the version published on the public GitHub repository on 2026-10-05, archived verbatim (not reconciled with this document; see its header)
